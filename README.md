@@ -1,2 +1,2 @@
-# rainfrog
-🐸 sql ide for the terminal
+# 🐸 rainfrog
+sql ide for the terminal
