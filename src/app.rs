@@ -1,62 +1,151 @@
-use std::collections::HashMap;
+use color_eyre::eyre::Result;
+use crossterm::event::KeyEvent;
+use ratatui::prelude::Rect;
+use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 
-pub enum CurrentScreen {
-    Main,
-    Editing,
-    Exiting,
-}
-
-pub enum CurrentlyEditing {
-    Key,
-    Value,
-}
+use crate::{
+  action::Action,
+  components::{home::Home, fps::FpsCounter, Component},
+  config::Config,
+  mode::Mode,
+  tui,
+};
 
 pub struct App {
-    pub key_input: String,
-    pub value_input: String,
-    pub pairs: HashMap<String, String>,
-    pub current_screen: CurrentScreen,
-    pub currently_editing: Option<CurrentlyEditing>,
+  pub config: Config,
+  pub tick_rate: f64,
+  pub frame_rate: f64,
+  pub components: Vec<Box<dyn Component>>,
+  pub should_quit: bool,
+  pub should_suspend: bool,
+  pub mode: Mode,
+  pub last_tick_key_events: Vec<KeyEvent>,
 }
 
 impl App {
-    pub fn new() -> App {
-        App {
-            key_input: String::new(),
-            value_input: String::new(),
-            pairs: HashMap::new(),
-            current_screen: CurrentScreen::Main,
-            currently_editing: None,
-        }
+  pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
+    let home = Home::new();
+    let fps = FpsCounter::default();
+    let config = Config::new()?;
+    let mode = Mode::Home;
+    Ok(Self {
+      tick_rate,
+      frame_rate,
+      components: vec![Box::new(home), Box::new(fps)],
+      should_quit: false,
+      should_suspend: false,
+      config,
+      mode,
+      last_tick_key_events: Vec::new(),
+    })
+  }
+
+  pub async fn run(&mut self) -> Result<()> {
+    let (action_tx, mut action_rx) = mpsc::unbounded_channel();
+
+    let mut tui = tui::Tui::new()?.tick_rate(self.tick_rate).frame_rate(self.frame_rate);
+    // tui.mouse(true);
+    tui.enter()?;
+
+    for component in self.components.iter_mut() {
+      component.register_action_handler(action_tx.clone())?;
     }
 
-    pub fn save_key_value(&mut self) {
-        self.pairs
-            .insert(self.key_input.clone(), self.value_input.clone());
-
-        self.key_input = String::new();
-        self.value_input = String::new();
-        self.currently_editing = None;
+    for component in self.components.iter_mut() {
+      component.register_config_handler(self.config.clone())?;
     }
 
-    pub fn toggle_editing(&mut self) {
-        if let Some(edit_mode) = &self.currently_editing {
-            match edit_mode {
-                CurrentlyEditing::Key => {
-                    self.currently_editing = Some(CurrentlyEditing::Value);
+    for component in self.components.iter_mut() {
+      component.init(tui.size()?)?;
+    }
+
+    loop {
+      if let Some(e) = tui.next().await {
+        match e {
+          tui::Event::Quit => action_tx.send(Action::Quit)?,
+          tui::Event::Tick => action_tx.send(Action::Tick)?,
+          tui::Event::Render => action_tx.send(Action::Render)?,
+          tui::Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
+          tui::Event::Key(key) => {
+            if let Some(keymap) = self.config.keybindings.get(&self.mode) {
+              if let Some(action) = keymap.get(&vec![key]) {
+                log::info!("Got action: {action:?}");
+                action_tx.send(action.clone())?;
+              } else {
+                // If the key was not handled as a single key action,
+                // then consider it for multi-key combinations.
+                self.last_tick_key_events.push(key);
+
+                // Check for multi-key combinations
+                if let Some(action) = keymap.get(&self.last_tick_key_events) {
+                  log::info!("Got action: {action:?}");
+                  action_tx.send(action.clone())?;
                 }
-                CurrentlyEditing::Value => {
-                    self.currently_editing = Some(CurrentlyEditing::Key);
-                }
-            }
-        } else {
-            self.currently_editing = Some(CurrentlyEditing::Key);
+              }
+            };
+          },
+          _ => {},
         }
-    }
+        for component in self.components.iter_mut() {
+          if let Some(action) = component.handle_events(Some(e.clone()))? {
+            action_tx.send(action)?;
+          }
+        }
+      }
 
-    pub fn print_json(&self) -> serde_json::Result<()> {
-        let output = serde_json::to_string_pretty(&self.pairs)?;
-        println!("{}", output);
-        Ok(())
+      while let Ok(action) = action_rx.try_recv() {
+        if action != Action::Tick && action != Action::Render {
+          log::debug!("{action:?}");
+        }
+        match action {
+          Action::Tick => {
+            self.last_tick_key_events.drain(..);
+          },
+          Action::Quit => self.should_quit = true,
+          Action::Suspend => self.should_suspend = true,
+          Action::Resume => self.should_suspend = false,
+          Action::Resize(w, h) => {
+            tui.resize(Rect::new(0, 0, w, h))?;
+            tui.draw(|f| {
+              for component in self.components.iter_mut() {
+                let r = component.draw(f, f.size());
+                if let Err(e) = r {
+                  action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
+                }
+              }
+            })?;
+          },
+          Action::Render => {
+            tui.draw(|f| {
+              for component in self.components.iter_mut() {
+                let r = component.draw(f, f.size());
+                if let Err(e) = r {
+                  action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
+                }
+              }
+            })?;
+          },
+          _ => {},
+        }
+        for component in self.components.iter_mut() {
+          if let Some(action) = component.update(action.clone())? {
+            action_tx.send(action)?
+          };
+        }
+      }
+      if self.should_suspend {
+        tui.suspend()?;
+        action_tx.send(Action::Resume)?;
+        tui = tui::Tui::new()?.tick_rate(self.tick_rate).frame_rate(self.frame_rate);
+        // tui.mouse(true);
+        tui.enter()?;
+      } else if self.should_quit {
+        tui.stop()?;
+        break;
+      }
     }
+    tui.exit()?;
+    Ok(())
+  }
 }
