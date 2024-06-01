@@ -1,38 +1,64 @@
+use std::sync::Arc;
+
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEvent;
-use ratatui::prelude::Rect;
+use ratatui::{
+  layout::{Constraint, Direction, Layout},
+  prelude::Rect,
+  widgets::{Block, Borders, Paragraph},
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::{
   action::Action,
-  components::{fps::FpsCounter, home::Home, Component},
+  components::{data::Data, ide::IDE, menu::Menu, Component},
   config::Config,
   mode::Mode,
   tui,
 };
 
+pub struct AppState {
+  pub connection_string: String,
+}
+
+pub struct Components {
+  pub menu: Box<dyn Component>,
+  pub ide: Box<dyn Component>,
+  pub data: Box<dyn Component>,
+}
+
+impl Components {
+  pub fn to_array(&mut self) -> [&mut Box<dyn Component>; 3] {
+    [&mut self.menu, &mut self.ide, &mut self.data]
+  }
+}
+
 pub struct App {
   pub config: Config,
-  pub tick_rate: f64,
-  pub frame_rate: f64,
-  pub components: Vec<Box<dyn Component>>,
+  pub tick_rate: Option<f64>,
+  pub frame_rate: Option<f64>,
+  pub components: Components,
   pub should_quit: bool,
   pub should_suspend: bool,
   pub mode: Mode,
   pub last_tick_key_events: Vec<KeyEvent>,
+  pub state: Arc<AppState>,
 }
 
 impl App {
-  pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
-    let home = Home::new();
-    let fps = FpsCounter::default();
+  pub fn new(connection_string: String, tick_rate: Option<f64>, frame_rate: Option<f64>) -> Result<Self> {
+    let state = Arc::new(AppState { connection_string });
+    let menu = Menu::new(Arc::clone(&state));
+    let ide = IDE::new(Arc::clone(&state));
+    let data = Data::new(Arc::clone(&state));
     let config = Config::new()?;
     let mode = Mode::Home;
     Ok(Self {
+      state: Arc::clone(&state),
       tick_rate,
       frame_rate,
-      components: vec![Box::new(home), Box::new(fps)],
+      components: Components { menu: Box::new(menu), ide: Box::new(ide), data: Box::new(data) },
       should_quit: false,
       should_suspend: false,
       config,
@@ -48,15 +74,15 @@ impl App {
     // tui.mouse(true);
     tui.enter()?;
 
-    for component in self.components.iter_mut() {
+    for component in self.components.to_array().iter_mut() {
       component.register_action_handler(action_tx.clone())?;
     }
 
-    for component in self.components.iter_mut() {
+    for component in self.components.to_array().iter_mut() {
       component.register_config_handler(self.config.clone())?;
     }
 
-    for component in self.components.iter_mut() {
+    for component in self.components.to_array().iter_mut() {
       component.init(tui.size()?)?;
     }
 
@@ -87,7 +113,7 @@ impl App {
           },
           _ => {},
         }
-        for component in self.components.iter_mut() {
+        for component in self.components.to_array().iter_mut() {
           if let Some(action) = component.handle_events(Some(e.clone()))? {
             action_tx.send(action)?;
           }
@@ -108,7 +134,7 @@ impl App {
           Action::Resize(w, h) => {
             tui.resize(Rect::new(0, 0, w, h))?;
             tui.draw(|f| {
-              for component in self.components.iter_mut() {
+              for component in self.components.to_array().iter_mut() {
                 let r = component.draw(f, f.size());
                 if let Err(e) = r {
                   action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
@@ -118,17 +144,23 @@ impl App {
           },
           Action::Render => {
             tui.draw(|f| {
-              for component in self.components.iter_mut() {
-                let r = component.draw(f, f.size());
-                if let Err(e) = r {
-                  action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
-                }
-              }
+              let root_layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
+                .split(f.size());
+              let right_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(root_layout[1]);
+
+              self.components.menu.draw(f, root_layout[0]).unwrap();
+              self.components.ide.draw(f, right_layout[0]).unwrap();
+              self.components.data.draw(f, right_layout[1]).unwrap();
             })?;
           },
           _ => {},
         }
-        for component in self.components.iter_mut() {
+        for component in self.components.to_array().iter_mut() {
           if let Some(action) = component.update(action.clone())? {
             action_tx.send(action)?
           };

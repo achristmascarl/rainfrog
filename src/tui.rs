@@ -68,13 +68,17 @@ impl Tui {
     Ok(Self { terminal, task, cancellation_token, event_rx, event_tx, frame_rate, tick_rate, mouse, paste })
   }
 
-  pub fn tick_rate(mut self, tick_rate: f64) -> Self {
-    self.tick_rate = tick_rate;
+  pub fn tick_rate(mut self, tick_rate: Option<f64>) -> Self {
+    if tick_rate.is_some() {
+      self.tick_rate = tick_rate.unwrap()
+    };
     self
   }
 
-  pub fn frame_rate(mut self, frame_rate: f64) -> Self {
-    self.frame_rate = frame_rate;
+  pub fn frame_rate(mut self, frame_rate: Option<f64>) -> Self {
+    if frame_rate.is_some() {
+      self.frame_rate = frame_rate.unwrap();
+    }
     self
   }
 
