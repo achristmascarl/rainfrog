@@ -1,10 +1,16 @@
 {
   "keybindings": {
-    "Home": {
+    "Menu": {
       "<q>": "Quit", // Quit the application
-      "<Ctrl-d>": "Quit", // Another way to quit
-      "<Ctrl-c>": "Quit", // Yet another way to quit
-      "<Ctrl-z>": "Suspend" // Suspend the application
+      "<Ctrl-c>": "Quit" // Yet another way to quit
     },
+    "IDE": {
+      "<Ctrl-c>": "Quit" // Yet another way to quit
+    },
+    "Data": {
+      "<q>": "Quit", // Quit the application
+      "<Ctrl-c>": "Quit" // Yet another way to quit
+    },
+
   }
 }

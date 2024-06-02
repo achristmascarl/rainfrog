@@ -14,7 +14,7 @@ use crate::{
   action::Action,
   components::{data::Data, ide::IDE, menu::Menu, Component},
   config::Config,
-  mode::Mode,
+  focus::Focus,
   tui,
 };
 
@@ -41,7 +41,7 @@ pub struct App {
   pub components: Components,
   pub should_quit: bool,
   pub should_suspend: bool,
-  pub mode: Mode,
+  pub focus: Focus,
   pub last_tick_key_events: Vec<KeyEvent>,
   pub state: Arc<AppState>,
 }
@@ -53,7 +53,7 @@ impl App {
     let ide = IDE::new(Arc::clone(&state));
     let data = Data::new(Arc::clone(&state));
     let config = Config::new()?;
-    let mode = Mode::Home;
+    let focus = Focus::Menu;
     Ok(Self {
       state: Arc::clone(&state),
       tick_rate,
@@ -62,7 +62,7 @@ impl App {
       should_quit: false,
       should_suspend: false,
       config,
-      mode,
+      focus,
       last_tick_key_events: Vec::new(),
     })
   }
@@ -94,7 +94,7 @@ impl App {
           tui::Event::Render => action_tx.send(Action::Render)?,
           tui::Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
           tui::Event::Key(key) => {
-            if let Some(keymap) = self.config.keybindings.get(&self.mode) {
+            if let Some(keymap) = self.config.keybindings.get(&self.focus) {
               if let Some(action) = keymap.get(&vec![key]) {
                 log::info!("Got action: {action:?}");
                 action_tx.send(action.clone())?;
