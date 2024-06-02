@@ -40,7 +40,6 @@ pub struct App {
   pub frame_rate: Option<f64>,
   pub components: Components,
   pub should_quit: bool,
-  pub should_suspend: bool,
   pub focus: Focus,
   pub last_tick_key_events: Vec<KeyEvent>,
   pub state: Arc<AppState>,
@@ -60,7 +59,6 @@ impl App {
       frame_rate,
       components: Components { menu: Box::new(menu), ide: Box::new(ide), data: Box::new(data) },
       should_quit: false,
-      should_suspend: false,
       config,
       focus,
       last_tick_key_events: Vec::new(),
@@ -129,8 +127,6 @@ impl App {
             self.last_tick_key_events.drain(..);
           },
           Action::Quit => self.should_quit = true,
-          Action::Suspend => self.should_suspend = true,
-          Action::Resume => self.should_suspend = false,
           Action::Resize(w, h) => {
             tui.resize(Rect::new(0, 0, w, h))?;
             tui.draw(|f| {
@@ -166,13 +162,7 @@ impl App {
           };
         }
       }
-      if self.should_suspend {
-        tui.suspend()?;
-        action_tx.send(Action::Resume)?;
-        tui = tui::Tui::new()?.tick_rate(self.tick_rate).frame_rate(self.frame_rate);
-        // tui.mouse(true);
-        tui.enter()?;
-      } else if self.should_quit {
+      if self.should_quit {
         tui.stop()?;
         break;
       }

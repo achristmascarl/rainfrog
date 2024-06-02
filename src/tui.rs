@@ -205,13 +205,6 @@ impl Tui {
     self.cancellation_token.cancel();
   }
 
-  pub fn suspend(&mut self) -> Result<()> {
-    self.exit()?;
-    #[cfg(not(windows))]
-    signal_hook::low_level::raise(signal_hook::consts::signal::SIGTSTP)?;
-    Ok(())
-  }
-
   pub fn resume(&mut self) -> Result<()> {
     self.enter()?;
     Ok(())

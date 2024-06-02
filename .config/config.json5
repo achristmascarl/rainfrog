@@ -5,12 +5,11 @@
       "<Ctrl-c>": "Quit" // Yet another way to quit
     },
     "IDE": {
-      "<Ctrl-c>": "Quit" // Yet another way to quit
+      "<Ctrl-c>": "Quit"
     },
     "Data": {
-      "<q>": "Quit", // Quit the application
-      "<Ctrl-c>": "Quit" // Yet another way to quit
-    },
-
+      "<q>": "Quit",
+      "<Ctrl-c>": "Quit"
+    }
   }
 }
