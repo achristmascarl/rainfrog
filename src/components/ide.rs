@@ -86,15 +86,14 @@ impl Component for IDE {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
     let state = self.state.lock().unwrap();
     let focused = state.focus == Focus::IDE;
+    let block = Block::default().title("top").borders(Borders::ALL).border_style(if focused {
+      Style::new().green()
+    } else {
+      Style::new().dim()
+    });
+    let text = Paragraph::new(self.lines[0].iter().collect::<String>()).block(block);
 
-    f.render_widget(
-      Block::default().title("top").borders(Borders::ALL).border_style(if focused {
-        Style::new().green()
-      } else {
-        Style::new().dim()
-      }),
-      area,
-    );
+    f.render_widget(text, area);
     Ok(())
   }
 }

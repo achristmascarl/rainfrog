@@ -1,7 +1,11 @@
-use std::sync::{Arc, Mutex};
+use std::{
+  fmt::format,
+  sync::{Arc, Mutex},
+};
 
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEvent;
+use log::log;
 use ratatui::{
   layout::{Constraint, Direction, Layout},
   prelude::Rect,
@@ -85,6 +89,7 @@ impl App {
 
     loop {
       if let Some(e) = tui.next().await {
+        let mut consumed = false;
         match e {
           tui::Event::Quit => action_tx.send(Action::Quit)?,
           tui::Event::Tick => action_tx.send(Action::Tick)?,
@@ -95,6 +100,7 @@ impl App {
               if let Some(action) = keymap.get(&vec![key]) {
                 log::info!("Got action: {action:?}");
                 action_tx.send(action.clone())?;
+                consumed = true;
               } else {
                 // If the key was not handled as a single key action,
                 // then consider it for multi-key combinations.
@@ -104,15 +110,18 @@ impl App {
                 if let Some(action) = keymap.get(&self.last_tick_key_events) {
                   log::info!("Got action: {action:?}");
                   action_tx.send(action.clone())?;
+                  consumed = true;
                 }
               }
             };
           },
           _ => {},
         }
-        for component in self.components.to_array().iter_mut() {
-          if let Some(action) = component.handle_events(Some(e.clone()))? {
-            action_tx.send(action)?;
+        if !consumed {
+          for component in self.components.to_array().iter_mut() {
+            if let Some(action) = component.handle_events(Some(e.clone()))? {
+              action_tx.send(action)?;
+            }
           }
         }
       }
@@ -154,14 +163,17 @@ impl App {
             })?;
           },
           Action::FocusMenu => {
+            log::info!("FocusMenu");
             let mut state = self.state.lock().unwrap();
             state.focus = Focus::Menu;
           },
           Action::FocusIDE => {
+            log::info!("FocusIDE");
             let mut state = self.state.lock().unwrap();
             state.focus = Focus::IDE;
           },
           Action::FocusData => {
+            log::info!("FocusData");
             let mut state = self.state.lock().unwrap();
             state.focus = Focus::Data;
           },
