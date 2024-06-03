@@ -1,0 +1,24 @@
+{
+  "keybindings": {
+    "Menu": {
+      "<q>": "Quit", // Quit the application
+      "<Ctrl-c>": "Quit", // Yet another way to quit
+      "<Ctrl-1>": "FocusMenu",
+      "<Ctrl-2>": "FocusIDE",
+      "<Ctrl-3>": "FocusData"
+    },
+    "IDE": {
+      "<Ctrl-c>": "Quit",
+      "<Ctrl-1>": "FocusMenu",
+      "<Ctrl-2>": "FocusIDE",
+      "<Ctrl-3>": "FocusData"
+    },
+    "Data": {
+      "<q>": "Quit",
+      "<Ctrl-c>": "Quit",
+      "<Ctrl-1>": "FocusMenu",
+      "<Ctrl-2>": "FocusIDE",
+      "<Ctrl-3>": "FocusData"
+    }
+  }
+}

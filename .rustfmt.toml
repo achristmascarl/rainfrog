@@ -1,0 +1,16 @@
+max_width = 120
+use_small_heuristics = "Max"
+empty_item_single_line = false
+force_multiline_blocks = true
+format_code_in_doc_comments = true
+match_block_trailing_comma = true
+imports_granularity = "Crate"
+normalize_comments = true
+normalize_doc_attributes = true
+overflow_delimited_expr = true
+reorder_impl_items = true
+reorder_imports = true
+group_imports = "StdExternalCrate"
+tab_spaces = 2
+use_field_init_shorthand = true
+use_try_shorthand = true
