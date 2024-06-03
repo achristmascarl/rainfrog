@@ -21,7 +21,7 @@ lazy_static! {
 }
 
 fn project_directory() -> Option<ProjectDirs> {
-  ProjectDirs::from("com", "kdheepak", env!("CARGO_PKG_NAME"))
+  ProjectDirs::from("so", "carl", env!("CARGO_PKG_NAME"))
 }
 
 pub fn initialize_panic_handler() -> Result<()> {
@@ -123,23 +123,23 @@ pub fn initialize_logging() -> Result<()> {
 /// this can be customized.
 #[macro_export]
 macro_rules! trace_dbg {
-    (target: $target:expr, level: $level:expr, $ex:expr) => {{
-        match $ex {
-            value => {
-                tracing::event!(target: $target, $level, ?value, stringify!($ex));
-                value
-            }
-        }
-    }};
-    (level: $level:expr, $ex:expr) => {
-        trace_dbg!(target: module_path!(), level: $level, $ex)
-    };
-    (target: $target:expr, $ex:expr) => {
-        trace_dbg!(target: $target, level: tracing::Level::DEBUG, $ex)
-    };
-    ($ex:expr) => {
-        trace_dbg!(level: tracing::Level::DEBUG, $ex)
-    };
+  (target: $target:expr, level: $level:expr, $ex:expr) => {{
+    match $ex {
+      value => {
+        tracing::event!(target: $target, $level, ?value, stringify!($ex));
+        value
+      },
+    }
+  }};
+  (level: $level:expr, $ex:expr) => {
+    trace_dbg!(target: module_path!(), level: $level, $ex)
+  };
+  (target: $target:expr, $ex:expr) => {
+    trace_dbg!(target: $target, level: tracing::Level::DEBUG, $ex)
+  };
+  ($ex:expr) => {
+    trace_dbg!(level: tracing::Level::DEBUG, $ex)
+  };
 }
 
 pub fn version() -> String {

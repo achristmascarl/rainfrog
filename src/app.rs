@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEvent;
@@ -20,6 +20,7 @@ use crate::{
 
 pub struct AppState {
   pub connection_string: String,
+  pub focus: Focus,
 }
 
 pub struct Components {
@@ -40,19 +41,18 @@ pub struct App {
   pub frame_rate: Option<f64>,
   pub components: Components,
   pub should_quit: bool,
-  pub focus: Focus,
   pub last_tick_key_events: Vec<KeyEvent>,
-  pub state: Arc<AppState>,
+  pub state: Arc<Mutex<AppState>>,
 }
 
 impl App {
   pub fn new(connection_string: String, tick_rate: Option<f64>, frame_rate: Option<f64>) -> Result<Self> {
-    let state = Arc::new(AppState { connection_string });
+    let focus = Focus::Menu;
+    let state = Arc::new(Mutex::new(AppState { connection_string, focus }));
     let menu = Menu::new(Arc::clone(&state));
     let ide = IDE::new(Arc::clone(&state));
     let data = Data::new(Arc::clone(&state));
     let config = Config::new()?;
-    let focus = Focus::Menu;
     Ok(Self {
       state: Arc::clone(&state),
       tick_rate,
@@ -60,7 +60,6 @@ impl App {
       components: Components { menu: Box::new(menu), ide: Box::new(ide), data: Box::new(data) },
       should_quit: false,
       config,
-      focus,
       last_tick_key_events: Vec::new(),
     })
   }
@@ -92,7 +91,7 @@ impl App {
           tui::Event::Render => action_tx.send(Action::Render)?,
           tui::Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
           tui::Event::Key(key) => {
-            if let Some(keymap) = self.config.keybindings.get(&self.focus) {
+            if let Some(keymap) = self.config.keybindings.get(&self.state.lock().unwrap().focus) {
               if let Some(action) = keymap.get(&vec![key]) {
                 log::info!("Got action: {action:?}");
                 action_tx.send(action.clone())?;
@@ -153,6 +152,18 @@ impl App {
               self.components.ide.draw(f, right_layout[0]).unwrap();
               self.components.data.draw(f, right_layout[1]).unwrap();
             })?;
+          },
+          Action::FocusMenu => {
+            let mut state = self.state.lock().unwrap();
+            state.focus = Focus::Menu;
+          },
+          Action::FocusIDE => {
+            let mut state = self.state.lock().unwrap();
+            state.focus = Focus::IDE;
+          },
+          Action::FocusData => {
+            let mut state = self.state.lock().unwrap();
+            state.focus = Focus::Data;
           },
           _ => {},
         }
