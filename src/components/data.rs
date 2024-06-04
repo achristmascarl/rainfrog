@@ -15,6 +15,7 @@ use crate::{
   action::Action,
   app::{App, AppState},
   config::{Config, KeyBindings},
+  database::{row_to_json, DbError, Rows},
   focus::Focus,
 };
 
@@ -45,14 +46,23 @@ impl Component for Data {
     let state = self.state.lock().unwrap();
     let focused = state.focus == Focus::Data;
 
-    f.render_widget(
-      Block::default().title("bottom").borders(Borders::ALL).border_style(if focused {
-        Style::new().green()
-      } else {
-        Style::new().dim()
-      }),
-      area,
-    );
+    let block = Block::default().title("bottom").borders(Borders::ALL).border_style(if focused {
+      Style::new().green()
+    } else {
+      Style::new().dim()
+    });
+
+    let content: String = match &state.data {
+      Some(Ok(rows)) => rows.iter().map(|row| format!("{:?}", row_to_json(row))).collect::<Vec<String>>().join("\n"),
+      Some(Err(e)) => {
+        format!("{:?}", e)
+      },
+      _ => "".to_string(),
+    };
+
+    let paragraph = Paragraph::new(content.clone()).wrap(Wrap { trim: false }).block(block);
+
+    f.render_widget(paragraph, area);
 
     Ok(())
   }

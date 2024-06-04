@@ -75,7 +75,6 @@ impl Config {
       }
     }
 
-    log::info!("{cfg:?}");
     Ok(cfg)
   }
 }

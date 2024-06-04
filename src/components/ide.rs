@@ -69,6 +69,11 @@ impl Component for IDE {
     }
     if let Some(Event::Key(key)) = event {
       match key.code {
+        KeyCode::F(5) => {
+          if let Some(sender) = &self.command_tx {
+            sender.send(Action::Query(self.lines[0].iter().collect::<String>()))?;
+          }
+        },
         KeyCode::Backspace => {
           if !self.lines[0].is_empty() {
             self.lines[0].pop();
@@ -91,7 +96,7 @@ impl Component for IDE {
     } else {
       Style::new().dim()
     });
-    let text = Paragraph::new(self.lines[0].iter().collect::<String>()).block(block);
+    let text = Paragraph::new(self.lines[0].iter().collect::<String>()).wrap(Wrap { trim: false }).block(block);
 
     f.render_widget(text, area);
     Ok(())

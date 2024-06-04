@@ -1,8 +1,7 @@
 {
   "keybindings": {
     "Menu": {
-      "<q>": "Quit", // Quit the application
-      "<Ctrl-c>": "Quit", // Yet another way to quit
+      "<Ctrl-c>": "Quit", 
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusIDE",
       "<Alt-3>": "FocusData"
@@ -14,7 +13,6 @@
       "<Alt-3>": "FocusData"
     },
     "Data": {
-      "<q>": "Quit",
       "<Ctrl-c>": "Quit",
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusIDE",
