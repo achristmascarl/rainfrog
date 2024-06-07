@@ -7,8 +7,6 @@ repository = "https://github.com/achristmascarl/rainfrog"
 authors = ["achristmascarl <hi@carl.so>"]
 build = "build.rs"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 better-panic = "0.3.0"
 clap = { version = "4.4.5", features = ["derive", "cargo", "wrap_help", "unicode", "string", "unstable-styles"] }
@@ -28,7 +26,7 @@ ratatui = { version = "0.26.0", features = ["serde", "macros"] }
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.107"
 signal-hook = "0.3.17"
-sqlx = { version = "0.7", features = [ "runtime-tokio", "tls-rustls", "postgres", "uuid" ] }
+sqlx = { version = "0.7", features = [ "runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "ipnetwork" ] }
 strip-ansi-escapes = "0.2.0"
 strum = { version = "0.26.1", features = ["derive"] }
 tokio = { version = "1.32.0", features = ["full"] }
@@ -36,6 +34,8 @@ tokio-util = "0.7.9"
 tracing = "0.1.37"
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter", "serde"] }
+chrono = { version = "0.4", default-features = false }
+chrono-tz = { version = "0.5", default-features = false }
 
 [build-dependencies]
 vergen = { version = "8.2.6", features = [ "build", "git", "gitoxide", "cargo" ]}
