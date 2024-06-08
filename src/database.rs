@@ -98,6 +98,81 @@ pub fn parse_value(row: &PgRow, col: &PgColumn) -> Option<Value> {
       })
     },
     "VOID" => Some(Value { string: "".to_string(), is_null: false }),
+    _ if col_type.to_uppercase().ends_with("ARRAY") => {
+      let array_type = col_type.to_uppercase().replace("ARRAY", "");
+      match array_type.as_str() {
+        "TIMESTAMPTZ" => {
+          let received: Vec<chrono::DateTime<chrono::Utc>> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "TIMESTAMP" => {
+          let received: Vec<chrono::NaiveDateTime> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "DATE" => {
+          let received: Vec<chrono::NaiveDate> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "TIME" => {
+          let received: Vec<chrono::NaiveTime> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "UUID" => {
+          let received: Vec<Uuid> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "INET" | "CIDR" => {
+          let received: Vec<std::net::IpAddr> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "JSON" | "JSONB" => {
+          let received: Vec<serde_json::Value> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "BOOL" => {
+          let received: Vec<bool> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "SMALLINT" | "SMALLSERIAL" | "INT2" => {
+          let received: Vec<i16> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "INT" | "SERIAL" | "INT4" => {
+          let received: Vec<i32> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "BIGINT" | "BIGSERIAL" | "INT8" => {
+          let received: Vec<i64> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "REAL" | "FLOAT4" => {
+          let received: Vec<f32> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "DOUBLE PRECISION" | "FLOAT8" => {
+          let received: Vec<f64> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "TEXT" | "VARCHAR" | "NAME" | "CITEXT" | "BPCHAR" | "CHAR" => {
+          let received: Vec<String> = row.try_get(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
+        },
+        "BYTEA" => {
+          let received: Vec<u8> = row.try_get(col.ordinal()).unwrap();
+          Some(Value {
+            string: received.iter().fold(String::new(), |mut output, b| {
+              let _ = write!(output, "{b:02X}");
+              output
+            }),
+            is_null: false,
+          })
+        },
+        _ => {
+          log::warn!("unsupported array type: {:?}", col_type);
+          None
+        },
+      }
+    },
     _ => {
       log::warn!("unsupported type: {:?}", col_type);
       None
@@ -116,4 +191,12 @@ pub fn row_to_json(row: &PgRow) -> HashMap<String, String> {
   }
 
   result
+}
+
+pub fn vec_to_string<T: std::string::ToString>(vec: Vec<T>) -> String {
+  vec.iter().fold(String::new(), |mut output, b| {
+    let s = b.to_string();
+    let _ = write!(output, "{s}");
+    output
+  })
 }

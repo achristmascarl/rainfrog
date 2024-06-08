@@ -2,9 +2,9 @@
 name = "rainfrog"
 version = "0.1.0"
 edition = "2021"
-description = "sql ide for the terminal"
+description = "a database management tui for postgres"
 repository = "https://github.com/achristmascarl/rainfrog"
-authors = ["achristmascarl <hi@carl.so>"]
+authors = ["achristmascarl <carl@rainfrog.dev>"]
 build = "build.rs"
 
 [dependencies]

@@ -21,7 +21,7 @@ lazy_static! {
 }
 
 fn project_directory() -> Option<ProjectDirs> {
-  ProjectDirs::from("so", "carl", env!("CARGO_PKG_NAME"))
+  ProjectDirs::from("dev", "rainfrog", env!("CARGO_PKG_NAME"))
 }
 
 pub fn initialize_panic_handler() -> Result<()> {
