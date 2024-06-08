@@ -15,7 +15,7 @@ use crate::{
   action::Action,
   app::{App, AppState},
   config::{Config, KeyBindings},
-  database::{row_to_json, DbError, Rows},
+  database::{get_headers, parse_value, row_to_json, row_to_vec, DbError, Rows},
   focus::Focus,
 };
 
@@ -52,17 +52,24 @@ impl Component for Data {
       Style::new().dim()
     });
 
-    let content: String = match &state.data {
-      Some(Ok(rows)) => rows.iter().map(|row| format!("{:?}", row_to_json(row))).collect::<Vec<String>>().join("\n"),
-      Some(Err(e)) => {
-        format!("{:?}", e)
+    match &state.data {
+      Some(Ok(rows)) => 'rows: {
+        if rows.is_empty() {
+          f.render_widget(Paragraph::new("no results").wrap(Wrap { trim: false }).block(block), area);
+          break 'rows;
+        }
+        let headers = get_headers(rows);
+        let header_row =
+          Row::new(headers.iter().map(|h| Cell::from(format!("{}\n{}", h.name, h.type_name))).collect::<Vec<Cell>>())
+            .height(2)
+            .bottom_margin(1);
+        let value_rows = rows.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
+        let table = Table::default().rows(value_rows).header(header_row).block(block).style(Style::default());
+        f.render_widget(table, area);
       },
-      _ => "".to_string(),
-    };
-
-    let paragraph = Paragraph::new(content.clone()).wrap(Wrap { trim: false }).block(block);
-
-    f.render_widget(paragraph, area);
+      Some(Err(e)) => f.render_widget(Paragraph::new(format!("{:?}", e)).wrap(Wrap { trim: false }).block(block), area),
+      _ => f.render_widget(Paragraph::new("").wrap(Wrap { trim: false }).block(block), area),
+    }
 
     Ok(())
   }

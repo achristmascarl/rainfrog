@@ -3,19 +3,19 @@
     "Menu": {
       "<Ctrl-c>": "Quit", 
       "<Alt-1>": "FocusMenu",
-      "<Alt-2>": "FocusIDE",
+      "<Alt-2>": "FocusEditor",
       "<Alt-3>": "FocusData"
     },
-    "IDE": {
+    "Editor": {
       "<Ctrl-c>": "Quit",
       "<Alt-1>": "FocusMenu",
-      "<Alt-2>": "FocusIDE",
+      "<Alt-2>": "FocusEditor",
       "<Alt-3>": "FocusData"
     },
     "Data": {
       "<Ctrl-c>": "Quit",
       "<Alt-1>": "FocusMenu",
-      "<Alt-2>": "FocusIDE",
+      "<Alt-2>": "FocusEditor",
       "<Alt-3>": "FocusData"
     }
   }

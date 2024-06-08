@@ -6,14 +6,20 @@ use sqlx::{
   Column, Database, Error, Pool, Row, ValueRef,
 };
 
-pub type Rows = Vec<PgRow>;
-pub type DbPool = PgPool;
-pub type DbError = Error;
+pub struct Header {
+  pub name: String,
+  pub type_name: String,
+}
 
 pub struct Value {
   pub is_null: bool,
   pub string: String,
 }
+
+pub type Rows = Vec<PgRow>;
+pub type Headers = Vec<Header>;
+pub type DbPool = PgPool;
+pub type DbError = Error;
 
 pub async fn init_pool(url: String) -> Result<PgPool, Error> {
   PgPoolOptions::new().max_connections(5).connect(&url).await
@@ -21,6 +27,19 @@ pub async fn init_pool(url: String) -> Result<PgPool, Error> {
 
 pub async fn query(query: String, pool: &PgPool) -> Result<Rows, Error> {
   sqlx::query(&query).fetch_all(pool).await
+}
+
+pub fn get_headers(rows: &Rows) -> Headers {
+  match rows.len() {
+    0 => vec![],
+    _ => {
+      rows[0]
+        .columns()
+        .iter()
+        .map(|col| Header { name: col.name().to_string(), type_name: col.type_info().to_string() })
+        .collect()
+    },
+  }
 }
 
 // parsed based on https://docs.rs/sqlx/latest/sqlx/postgres/types/index.html
@@ -98,8 +117,8 @@ pub fn parse_value(row: &PgRow, col: &PgColumn) -> Option<Value> {
       })
     },
     "VOID" => Some(Value { string: "".to_string(), is_null: false }),
-    _ if col_type.to_uppercase().ends_with("ARRAY") => {
-      let array_type = col_type.to_uppercase().replace("ARRAY", "");
+    _ if col_type.to_uppercase().ends_with("[]") => {
+      let array_type = col_type.to_uppercase().replace("[]", "");
       match array_type.as_str() {
         "TIMESTAMPTZ" => {
           let received: Vec<chrono::DateTime<chrono::Utc>> = row.try_get(col.ordinal()).unwrap();
@@ -168,13 +187,13 @@ pub fn parse_value(row: &PgRow, col: &PgColumn) -> Option<Value> {
           })
         },
         _ => {
-          log::warn!("unsupported array type: {:?}", col_type);
+          log::error!("unsupported array type: {:?}", col_type);
           None
         },
       }
     },
     _ => {
-      log::warn!("unsupported type: {:?}", col_type);
+      log::error!("unsupported type: {:?}", col_type);
       None
     },
   }
@@ -199,4 +218,8 @@ pub fn vec_to_string<T: std::string::ToString>(vec: Vec<T>) -> String {
     let _ = write!(output, "{s}");
     output
   })
+}
+
+pub fn row_to_vec(row: &PgRow) -> Vec<String> {
+  row.columns().iter().map(|col| parse_value(row, col).unwrap().string).collect()
 }

@@ -55,7 +55,7 @@ pub struct App {
 
 impl App {
   pub fn new(connection_string: String, tick_rate: Option<f64>, frame_rate: Option<f64>) -> Result<Self> {
-    let focus = Focus::Menu;
+    let focus = Focus::Editor;
     let state = Arc::new(Mutex::new(AppState { connection_string, focus, data: None }));
     let menu = Menu::new(Arc::clone(&state));
     let editor = Editor::new(Arc::clone(&state));
