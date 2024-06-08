@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 
 use crate::{
   action::Action,
-  components::{data::Data, ide::IDE, menu::Menu, Component},
+  components::{data::Data, editor::Editor, menu::Menu, Component},
   config::Config,
   database,
   database::{DbError, DbPool, Rows},
@@ -32,13 +32,13 @@ pub struct AppState {
 
 pub struct Components {
   pub menu: Box<dyn Component>,
-  pub ide: Box<dyn Component>,
+  pub editor: Box<dyn Component>,
   pub data: Box<dyn Component>,
 }
 
 impl Components {
   pub fn to_array(&mut self) -> [&mut Box<dyn Component>; 3] {
-    [&mut self.menu, &mut self.ide, &mut self.data]
+    [&mut self.menu, &mut self.editor, &mut self.data]
   }
 }
 
@@ -58,14 +58,14 @@ impl App {
     let focus = Focus::Menu;
     let state = Arc::new(Mutex::new(AppState { connection_string, focus, data: None }));
     let menu = Menu::new(Arc::clone(&state));
-    let ide = IDE::new(Arc::clone(&state));
+    let editor = Editor::new(Arc::clone(&state));
     let data = Data::new(Arc::clone(&state));
     let config = Config::new()?;
     Ok(Self {
       state: Arc::clone(&state),
       tick_rate,
       frame_rate,
-      components: Components { menu: Box::new(menu), ide: Box::new(ide), data: Box::new(data) },
+      components: Components { menu: Box::new(menu), editor: Box::new(editor), data: Box::new(data) },
       should_quit: false,
       config,
       last_tick_key_events: Vec::new(),
@@ -168,7 +168,7 @@ impl App {
                 .split(root_layout[1]);
 
               self.components.menu.draw(f, root_layout[0]).unwrap();
-              self.components.ide.draw(f, right_layout[0]).unwrap();
+              self.components.editor.draw(f, right_layout[0]).unwrap();
               self.components.data.draw(f, right_layout[1]).unwrap();
             })?;
           },
@@ -177,10 +177,10 @@ impl App {
             let mut state = self.state.lock().unwrap();
             state.focus = Focus::Menu;
           },
-          Action::FocusIDE => {
-            log::info!("FocusIDE");
+          Action::FocusEditor => {
+            log::info!("FocusEditor");
             let mut state = self.state.lock().unwrap();
-            state.focus = Focus::IDE;
+            state.focus = Focus::Editor;
           },
           Action::FocusData => {
             log::info!("FocusData");

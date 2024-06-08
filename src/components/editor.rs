@@ -29,7 +29,7 @@ struct Selection {
   pub end: CursorPosition,
 }
 
-pub struct IDE {
+pub struct Editor {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   state: Arc<Mutex<AppState>>,
@@ -38,9 +38,9 @@ pub struct IDE {
   selection: Option<Selection>,
 }
 
-impl IDE {
+impl Editor {
   pub fn new(state: Arc<Mutex<AppState>>) -> Self {
-    IDE {
+    Editor {
       command_tx: None,
       config: Config::default(),
       state,
@@ -51,7 +51,7 @@ impl IDE {
   }
 }
 
-impl Component for IDE {
+impl Component for Editor {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -64,7 +64,7 @@ impl Component for IDE {
 
   fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
     let state = self.state.lock().unwrap();
-    if state.focus != Focus::IDE {
+    if state.focus != Focus::Editor {
       return Ok(None);
     }
     if let Some(Event::Key(key)) = event {
@@ -90,7 +90,7 @@ impl Component for IDE {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
     let state = self.state.lock().unwrap();
-    let focused = state.focus == Focus::IDE;
+    let focused = state.focus == Focus::Editor;
     let block = Block::default().title("top").borders(Borders::ALL).border_style(if focused {
       Style::new().green()
     } else {

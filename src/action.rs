@@ -20,6 +20,6 @@ pub enum Action {
   Help,
   Query(String),
   FocusMenu,
-  FocusIDE,
+  FocusEditor,
   FocusData,
 }

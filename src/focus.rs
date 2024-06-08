@@ -4,6 +4,6 @@ use serde::{Deserialize, Serialize};
 pub enum Focus {
   #[default]
   Menu,
-  IDE,
+  Editor,
   Data,
 }
