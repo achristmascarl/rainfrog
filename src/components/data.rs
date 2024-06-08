@@ -67,7 +67,9 @@ impl Component for Data {
         let table = Table::default().rows(value_rows).header(header_row).block(block).style(Style::default());
         f.render_widget(table, area);
       },
-      Some(Err(e)) => f.render_widget(Paragraph::new(format!("{:?}", e)).wrap(Wrap { trim: false }).block(block), area),
+      Some(Err(e)) => {
+        f.render_widget(Paragraph::new(format!("{:?}", e.to_string())).wrap(Wrap { trim: false }).block(block), area)
+      },
       _ => f.render_widget(Paragraph::new("").wrap(Wrap { trim: false }).block(block), area),
     }
 
