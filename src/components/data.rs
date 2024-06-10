@@ -64,7 +64,8 @@ impl Component for Data {
             .height(2)
             .bottom_margin(1);
         let value_rows = rows.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
-        let table = Table::default().rows(value_rows).header(header_row).block(block).style(Style::default());
+        let table =
+          Table::default().rows(value_rows).header(header_row).block(block).style(Style::default()).column_spacing(1);
         f.render_widget(table, area);
       },
       Some(Err(e)) => {
