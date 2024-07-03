@@ -28,6 +28,7 @@ pub struct AppState {
   pub connection_string: String,
   pub focus: Focus,
   pub data: Option<Result<Rows, DbError>>,
+  pub table_buf_logged: bool,
 }
 
 pub struct Components {
@@ -56,7 +57,7 @@ pub struct App {
 impl App {
   pub fn new(connection_string: String, tick_rate: Option<f64>, frame_rate: Option<f64>) -> Result<Self> {
     let focus = Focus::Editor;
-    let state = Arc::new(Mutex::new(AppState { connection_string, focus, data: None }));
+    let state = Arc::new(Mutex::new(AppState { connection_string, focus, data: None, table_buf_logged: false }));
     let menu = Menu::new(Arc::clone(&state));
     let editor = Editor::new(Arc::clone(&state));
     let data = Data::new(Arc::clone(&state));
@@ -195,6 +196,7 @@ impl App {
               match &results {
                 Ok(rows) => {
                   log::info!("{:?}", rows.len());
+                  state.table_buf_logged = false;
                 },
                 Err(e) => {
                   log::error!("{e:?}");

@@ -69,7 +69,7 @@ impl Component for Editor {
     }
     if let Some(Event::Key(key)) = event {
       match key.code {
-        KeyCode::F(5) => {
+        KeyCode::Enter => {
           if let Some(sender) = &self.command_tx {
             sender.send(Action::Query(self.lines[0].iter().collect::<String>()))?;
           }
