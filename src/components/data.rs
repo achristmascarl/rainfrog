@@ -17,6 +17,7 @@ use crate::{
   config::{Config, KeyBindings},
   database::{get_headers, parse_value, row_to_json, row_to_vec, DbError, Rows},
   focus::Focus,
+  widgets::scrollable::{Scrollable, ScrollableState},
 };
 
 pub struct Data {
@@ -65,36 +66,17 @@ impl Component for Data {
             .bottom_margin(1);
         let value_rows = rows.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
         let buf_table = Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
+        let max_height = 250;
+        let max_width = 500;
+        let scrollable = Scrollable::new(Box::new(buf_table.clone()), max_height, max_width).block(block);
+        let mut scrollable_state = ScrollableState::default();
 
         if !state.table_buf_logged {
-          let max_height = 250;
-          let max_width = 500;
-          let mut buf = Buffer::empty(Rect::new(0, 0, max_width, max_height));
-          ratatui::widgets::Widget::render(buf_table.clone(), buf.area, &mut buf);
-          buf = clamp(buf);
-          let buf_height = buf.area.height;
-          let buf_width = buf.area.width;
-          for n in 0..buf_height {
-            let mut line: String = String::from("");
-            let cells = buf.content.to_vec()[((n * buf_width) as usize)..(((n + 1) * buf_width) as usize)].to_vec();
-            for cell in cells.iter() {
-              line += cell.clone().symbol();
-            }
-            // log::info!(
-            //   "rendering line {}/{}, length {}, last symbol {}, last symbol is blank {}:",
-            //   n,
-            //   buf_height,
-            //   line.len(),
-            //   cells[cells.len() - 1].symbol(),
-            //   cells[cells.len() - 1].symbol() == " "
-            // );
-            log::info!("{}", line.as_str());
-          }
+          scrollable.log();
           state.table_buf_logged = true;
         }
 
-        let table = buf_table.block(block);
-        f.render_widget(table, area);
+        f.render_stateful_widget(scrollable, area, &mut scrollable_state);
       },
       Some(Err(e)) => {
         f.render_widget(Paragraph::new(format!("{:?}", e.to_string())).wrap(Wrap { trim: false }).block(block), area)
@@ -104,31 +86,4 @@ impl Component for Data {
 
     Ok(())
   }
-}
-
-pub fn clamp(buf: Buffer) -> Buffer {
-  let height = buf.area.height;
-  let width = buf.area.width;
-  log::info!("original height: {}, width: {}", height, width);
-  let mut used_height: u16 = 0;
-  let mut used_width: u16 = 0;
-  for i in (0..height).rev() {
-    let row = buf.content.to_vec()[((i * width) as usize)..(((i + 1) * width) as usize)].to_vec();
-    for j in (0..width).rev() {
-      let cell = row[j as usize].clone();
-      if cell.symbol() != " " {
-        used_height = std::cmp::max(used_height, i + 1);
-        used_width = std::cmp::max(used_width, j + 1);
-      }
-    }
-  }
-  let mut content: Vec<ratatui::buffer::Cell> = Vec::new();
-  for i in 0..used_height {
-    let row = buf.content.to_vec()[((i * width) as usize)..(((i + 1) * width) as usize)].to_vec();
-    for j in 0..used_width {
-      content.push(row[j as usize].clone().to_owned());
-    }
-  }
-  log::info!("clamped height: {}, width: {}", used_height, used_width);
-  Buffer { area: Rect::new(0, 0, used_width, used_height), content }
 }
