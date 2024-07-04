@@ -10,6 +10,7 @@ use ratatui::{
   layout::{Constraint, Direction, Layout},
   prelude::Rect,
   widgets::{Block, Borders, Paragraph},
+  Frame,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
@@ -149,28 +150,12 @@ impl App {
           Action::Resize(w, h) => {
             tui.resize(Rect::new(0, 0, *w, *h))?;
             tui.draw(|f| {
-              for component in self.components.to_array().iter_mut() {
-                let r = component.draw(f, f.size());
-                if let Err(e) = r {
-                  action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
-                }
-              }
+              self.draw_layout(f);
             })?;
           },
           Action::Render => {
             tui.draw(|f| {
-              let root_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
-                .split(f.size());
-              let right_layout = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .split(root_layout[1]);
-
-              self.components.menu.draw(f, root_layout[0]).unwrap();
-              self.components.editor.draw(f, right_layout[0]).unwrap();
-              self.components.data.draw(f, right_layout[1]).unwrap();
+              self.draw_layout(f);
             })?;
           },
           Action::FocusMenu => {
@@ -223,5 +208,20 @@ impl App {
     }
     tui.exit()?;
     Ok(())
+  }
+
+  fn draw_layout(&mut self, f: &mut Frame) {
+    let root_layout = Layout::default()
+      .direction(Direction::Horizontal)
+      .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
+      .split(f.size());
+    let right_layout = Layout::default()
+      .direction(Direction::Vertical)
+      .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+      .split(root_layout[1]);
+
+    self.components.menu.draw(f, root_layout[0]).unwrap();
+    self.components.editor.draw(f, right_layout[0]).unwrap();
+    self.components.data.draw(f, right_layout[1]).unwrap();
   }
 }
