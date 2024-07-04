@@ -1,4 +1,5 @@
 use ratatui::{
+  buffer::Cell,
   prelude::*,
   widgets::{Block, WidgetRef},
 };
@@ -38,7 +39,7 @@ impl<'a> Scrollable<'a> {
       let cells =
         self.child_buffer.content.to_vec()[((n * buf_width) as usize)..(((n + 1) * buf_width) as usize)].to_vec();
       for cell in cells.iter() {
-        line += cell.clone().symbol();
+        line += cell.symbol();
       }
       log::info!("{}", line.as_str());
     }
@@ -52,7 +53,7 @@ impl<'a> Scrollable<'a> {
       let cells =
         self.child_buffer.content.to_vec()[((n * buf_width) as usize)..(((n + 1) * buf_width) as usize)].to_vec();
       for cell in cells.iter() {
-        line += cell.clone().symbol();
+        line += cell.symbol();
       }
       log::info!(
         "rendering line {}/{}, length {}, last symbol {}, last symbol is blank {}:",
@@ -84,15 +85,13 @@ impl<'a> StatefulWidget for Scrollable<'a> {
     let max_y = Ord::min(area.y.saturating_add(area.height), buf.area.bottom());
     let content_height = self.child_buffer.area.height;
     let content_width = self.child_buffer.area.width;
-    for i in area.y..max_y {
-      let content_i = i - area.y;
-      let row = self.child_buffer.content.to_vec()[(((content_i + state.y_offset) * content_width) as usize)
-        ..(((content_i + state.y_offset + 1) * content_width) as usize)]
-        .to_vec();
-      for j in area.x..max_x {
-        let content_j = j - area.x;
-        let cell = &row[(content_j + state.x_offset) as usize];
-        buf.get_mut(j, i).set_symbol(cell.symbol()).set_fg(cell.fg).set_bg(cell.bg).set_skip(cell.skip);
+    for y in area.y..max_y {
+      let content_y = y - area.y;
+      let row = get_row(&self.child_buffer.content, content_y, content_width);
+      for x in area.x..max_x {
+        let content_x = x - area.x;
+        let cell = &row[(content_x + state.x_offset) as usize];
+        buf.get_mut(x, y).set_symbol(cell.symbol()).set_fg(cell.fg).set_bg(cell.bg).set_skip(cell.skip);
       }
     }
   }
@@ -103,22 +102,26 @@ fn clamp(buf: Buffer) -> Buffer {
   let width = buf.area.width;
   let mut used_height: u16 = 0;
   let mut used_width: u16 = 0;
-  for i in (0..height).rev() {
-    let row = buf.content.to_vec()[((i * width) as usize)..(((i + 1) * width) as usize)].to_vec();
-    for j in (0..width).rev() {
-      let cell = row[j as usize].clone();
+  for y in (0..height).rev() {
+    let row = get_row(&buf.content, y, width);
+    for x in (0..width).rev() {
+      let cell = &row[x as usize];
       if cell.symbol() != " " {
-        used_height = std::cmp::max(used_height, i + 1);
-        used_width = std::cmp::max(used_width, j + 1);
+        used_height = std::cmp::max(used_height, y + 1);
+        used_width = std::cmp::max(used_width, x + 1);
       }
     }
   }
   let mut content: Vec<ratatui::buffer::Cell> = Vec::new();
-  for i in 0..used_height {
-    let row = buf.content.to_vec()[((i * width) as usize)..(((i + 1) * width) as usize)].to_vec();
-    for j in 0..used_width {
-      content.push(row[j as usize].clone().to_owned());
+  for y in 0..used_height {
+    let row = get_row(&buf.content, y, width);
+    for x in 0..used_width {
+      content.push(row[x as usize].to_owned());
     }
   }
   Buffer { area: Rect::new(0, 0, used_width, used_height), content }
+}
+
+fn get_row(content: &[Cell], row: u16, width: u16) -> Vec<Cell> {
+  content[((row * width) as usize)..(((row + 1) * width) as usize)].to_vec()
 }

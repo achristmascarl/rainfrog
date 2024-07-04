@@ -68,7 +68,7 @@ impl Component for Data {
         let buf_table = Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
         let max_height = 250;
         let max_width = 500;
-        let scrollable = Scrollable::new(Box::new(buf_table.clone()), max_height, max_width).block(block);
+        let scrollable = Scrollable::new(Box::new(buf_table), max_height, max_width).block(block);
         let mut scrollable_state = ScrollableState::default();
 
         if !state.table_buf_logged {
