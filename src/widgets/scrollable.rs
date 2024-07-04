@@ -13,8 +13,8 @@ pub struct Scrollable<'a> {
 
 #[derive(Debug, Clone, Default)]
 pub struct ScrollableState {
-  x_offset: u16,
-  y_offset: u16,
+  pub x_offset: u16,
+  pub y_offset: u16,
 }
 
 impl<'a> Scrollable<'a> {
@@ -86,11 +86,11 @@ impl<'a> StatefulWidget for Scrollable<'a> {
     let content_height = self.child_buffer.area.height;
     let content_width = self.child_buffer.area.width;
     for y in area.y..max_y {
-      let content_y = y - area.y;
+      let content_y = y + state.y_offset - area.y;
       let row = get_row(&self.child_buffer.content, content_y, content_width);
       for x in area.x..max_x {
-        let content_x = x - area.x;
-        let cell = &row[(content_x + state.x_offset) as usize];
+        let content_x = x + state.x_offset - area.x;
+        let cell = &row[content_x as usize];
         buf.get_mut(x, y).set_symbol(cell.symbol()).set_fg(cell.fg).set_bg(cell.bg).set_skip(cell.skip);
       }
     }

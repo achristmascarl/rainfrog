@@ -17,18 +17,20 @@ use crate::{
   config::{Config, KeyBindings},
   database::{get_headers, parse_value, row_to_json, row_to_vec, DbError, Rows},
   focus::Focus,
+  tui::Event,
   widgets::scrollable::{Scrollable, ScrollableState},
 };
 
 pub struct Data {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
+  scroll: ScrollableState,
   state: Arc<Mutex<AppState>>,
 }
 
 impl Data {
   pub fn new(state: Arc<Mutex<AppState>>) -> Self {
-    Data { command_tx: None, config: Config::default(), state }
+    Data { command_tx: None, config: Config::default(), scroll: ScrollableState::default(), state }
   }
 }
 
@@ -41,6 +43,31 @@ impl Component for Data {
   fn register_config_handler(&mut self, config: Config) -> Result<()> {
     self.config = config;
     Ok(())
+  }
+
+  fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
+    let state = self.state.lock().unwrap();
+    if state.focus != Focus::Data {
+      return Ok(None);
+    }
+    if let Some(Event::Key(key)) = event {
+      match key.code {
+        KeyCode::Right => {
+          self.scroll.x_offset += 1;
+        },
+        KeyCode::Left => {
+          self.scroll.x_offset -= 1;
+        },
+        KeyCode::Down => {
+          self.scroll.y_offset += 1;
+        },
+        KeyCode::Up => {
+          self.scroll.y_offset -= 1;
+        },
+        _ => {},
+      }
+    };
+    Ok(None)
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
@@ -66,17 +93,14 @@ impl Component for Data {
             .bottom_margin(1);
         let value_rows = rows.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
         let buf_table = Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
-        let max_height = 250;
-        let max_width = 500;
-        let scrollable = Scrollable::new(Box::new(buf_table), max_height, max_width).block(block);
-        let mut scrollable_state = ScrollableState::default();
+        let scrollable = Scrollable::new(Box::new(buf_table), 100, 250).block(block);
 
         if !state.table_buf_logged {
           scrollable.log();
           state.table_buf_logged = true;
         }
 
-        f.render_stateful_widget(scrollable, area, &mut scrollable_state);
+        f.render_stateful_widget(scrollable, area, &mut self.scroll);
       },
       Some(Err(e)) => {
         f.render_widget(Paragraph::new(format!("{:?}", e.to_string())).wrap(Wrap { trim: false }).block(block), area)
