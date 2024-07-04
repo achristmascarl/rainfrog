@@ -189,7 +189,6 @@ impl App {
               }
               state.data = Some(results);
             }
-            action_consumed = true;
           },
           _ => {},
         }

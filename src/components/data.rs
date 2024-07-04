@@ -70,6 +70,16 @@ impl<'a> Component for Data<'a> {
     Ok(None)
   }
 
+  fn update(&mut self, action: Action) -> Result<Option<Action>> {
+    match action {
+      Action::Query(query) => {
+        self.scrollable.reset_scroll();
+      },
+      _ => {},
+    }
+    Ok(None)
+  }
+
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
     let mut state = self.state.lock().unwrap();
     let focused = state.focus == Focus::Data;
