@@ -14,27 +14,27 @@ use super::{Component, Frame};
 use crate::{
   action::Action,
   app::{App, AppState},
+  components::scrollable::{ScrollXDirection, ScrollYDirection, Scrollable},
   config::{Config, KeyBindings},
   database::{get_headers, parse_value, row_to_json, row_to_vec, DbError, Rows},
   focus::Focus,
   tui::Event,
-  widgets::scrollable::{Scrollable, ScrollableState},
 };
 
-pub struct Data {
+pub struct Data<'a> {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
-  scroll: ScrollableState,
+  scrollable: Scrollable<'a>,
   state: Arc<Mutex<AppState>>,
 }
 
-impl Data {
+impl<'a> Data<'a> {
   pub fn new(state: Arc<Mutex<AppState>>) -> Self {
-    Data { command_tx: None, config: Config::default(), scroll: ScrollableState::default(), state }
+    Data { command_tx: None, config: Config::default(), scrollable: Scrollable::default(), state }
   }
 }
 
-impl Component for Data {
+impl<'a> Component for Data<'a> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -53,16 +53,16 @@ impl Component for Data {
     if let Some(Event::Key(key)) = event {
       match key.code {
         KeyCode::Right => {
-          self.scroll.x_offset += 1;
+          self.scrollable.scroll_x(ScrollXDirection::Right);
         },
         KeyCode::Left => {
-          self.scroll.x_offset -= 1;
+          self.scrollable.scroll_x(ScrollXDirection::Left);
         },
         KeyCode::Down => {
-          self.scroll.y_offset += 1;
+          self.scrollable.scroll_y(ScrollYDirection::Down);
         },
         KeyCode::Up => {
-          self.scroll.y_offset -= 1;
+          self.scrollable.scroll_y(ScrollYDirection::Up);
         },
         _ => {},
       }
@@ -93,14 +93,14 @@ impl Component for Data {
             .bottom_margin(1);
         let value_rows = rows.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
         let buf_table = Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
-        let scrollable = Scrollable::new(Box::new(buf_table), 100, 250).block(block);
+        self.scrollable.child(Box::new(buf_table), 100, 250).block(block);
 
         if !state.table_buf_logged {
-          scrollable.log();
+          self.scrollable.log();
           state.table_buf_logged = true;
         }
 
-        f.render_stateful_widget(scrollable, area, &mut self.scroll);
+        self.scrollable.draw(f, area).unwrap();
       },
       Some(Err(e)) => {
         f.render_widget(Paragraph::new(format!("{:?}", e.to_string())).wrap(Wrap { trim: false }).block(block), area)

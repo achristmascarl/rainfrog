@@ -11,7 +11,6 @@ pub mod database;
 pub mod focus;
 pub mod tui;
 pub mod utils;
-pub mod widgets;
 
 use clap::Parser;
 use cli::Cli;
