@@ -2,17 +2,15 @@ use color_eyre::eyre::Result;
 use ratatui::{
   buffer::Cell,
   prelude::*,
-  widgets::{Block, WidgetRef},
+  widgets::{Block, ScrollDirection as RatatuiScrollDir, Scrollbar, ScrollbarOrientation, ScrollbarState, WidgetRef},
 };
+use symbols::scrollbar;
 
 use super::Component;
 
-pub enum ScrollXDirection {
+pub enum ScrollDirection {
   Left,
   Right,
-}
-
-pub enum ScrollYDirection {
   Up,
   Down,
 }
@@ -52,34 +50,14 @@ impl<'a> Scrollable<'a> {
     self
   }
 
-  pub fn scroll_x(&mut self, direction: ScrollXDirection) -> &mut Self {
+  pub fn scroll(&mut self, direction: ScrollDirection) -> &mut Self {
     match direction {
-      ScrollXDirection::Left => {
-        if self.x_offset > 0 {
-          self.x_offset -= 1;
-        }
+      ScrollDirection::Left => self.x_offset = self.x_offset.saturating_sub(1),
+      ScrollDirection::Right => {
+        self.x_offset = Ord::min(self.x_offset.saturating_add(1), self.max_offsets.max_x_offset)
       },
-      ScrollXDirection::Right => {
-        if self.x_offset < self.max_offsets.max_x_offset {
-          self.x_offset += 1;
-        }
-      },
-    }
-    self
-  }
-
-  pub fn scroll_y(&mut self, direction: ScrollYDirection) -> &mut Self {
-    match direction {
-      ScrollYDirection::Up => {
-        if self.y_offset > 0 {
-          self.y_offset -= 1;
-        }
-      },
-      ScrollYDirection::Down => {
-        if self.y_offset < self.max_offsets.max_y_offset {
-          self.y_offset += 1;
-        }
-      },
+      ScrollDirection::Up => self.y_offset = self.y_offset.saturating_sub(1),
+      ScrollDirection::Down => self.y_offset = Ord::min(self.y_offset.saturating_add(1), self.max_offsets.max_y_offset),
     }
     self
   }
@@ -137,6 +115,42 @@ impl<'a> Component for Scrollable<'a> {
     self.parent_area = area;
     self.max_offsets = get_max_offsets(&self.child_buffer, &self.parent_area, &self.block);
     f.render_widget(self.widget(), area);
+    let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight).symbols(scrollbar::VERTICAL);
+    let mut vertical_scrollbar_state =
+      ScrollbarState::new(self.max_offsets.max_y_offset as usize).position(self.y_offset as usize);
+    let horizontal_scrollbar =
+      Scrollbar::new(ScrollbarOrientation::HorizontalBottom).symbols(scrollbar::HORIZONTAL).thumb_symbol("▀");
+    let mut horizontal_scrollbar_state =
+      ScrollbarState::new(self.max_offsets.max_x_offset as usize).position(self.x_offset as usize);
+    match self.max_offsets {
+      MaxOffsets { max_x_offset: 0, max_y_offset: 0 } => {},
+      MaxOffsets { max_x_offset: 0, max_y_offset } => {
+        f.render_stateful_widget(
+          vertical_scrollbar,
+          area.inner(&Margin { vertical: 1, horizontal: 0 }),
+          &mut vertical_scrollbar_state,
+        );
+      },
+      MaxOffsets { max_x_offset, max_y_offset: 0 } => {
+        f.render_stateful_widget(
+          horizontal_scrollbar,
+          area.inner(&Margin { vertical: 0, horizontal: 1 }),
+          &mut horizontal_scrollbar_state,
+        );
+      },
+      MaxOffsets { max_x_offset, max_y_offset } => {
+        f.render_stateful_widget(
+          vertical_scrollbar,
+          area.inner(&Margin { vertical: 1, horizontal: 0 }),
+          &mut vertical_scrollbar_state,
+        );
+        f.render_stateful_widget(
+          horizontal_scrollbar,
+          area.inner(&Margin { vertical: 0, horizontal: 1 }),
+          &mut horizontal_scrollbar_state,
+        );
+      },
+    };
     Ok(())
   }
 }
@@ -153,14 +167,14 @@ fn get_max_offsets(child_buffer: &Buffer, parent_area: &Rect, parent_block: &Opt
   if render_area.is_empty() {
     return MaxOffsets { max_x_offset: 0, max_y_offset: 0 };
   }
-  let parent_width = render_area.width as i32;
-  let parent_height = render_area.height as i32;
-  let content_height = child_buffer.area.height as i32;
-  let content_width = child_buffer.area.width as i32;
-  MaxOffsets {
-    max_x_offset: Ord::max(content_width - parent_width, 0) as u16,
-    max_y_offset: Ord::max(content_height - parent_height, 0) as u16,
-  }
+  let parent_width = render_area.width;
+  let parent_height = render_area.height;
+  let content_width = child_buffer.area.width;
+  let content_height = child_buffer.area.height;
+  let x_diff = content_width.saturating_sub(parent_width);
+  let y_diff = content_height.saturating_sub(parent_height);
+
+  MaxOffsets { max_x_offset: x_diff, max_y_offset: y_diff }
 }
 
 fn clamp(buf: Buffer) -> Buffer {

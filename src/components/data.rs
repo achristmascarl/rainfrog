@@ -14,7 +14,7 @@ use super::{Component, Frame};
 use crate::{
   action::Action,
   app::{App, AppState},
-  components::scrollable::{ScrollXDirection, ScrollYDirection, Scrollable},
+  components::scrollable::{ScrollDirection, Scrollable},
   config::{Config, KeyBindings},
   database::{get_headers, parse_value, row_to_json, row_to_vec, DbError, Rows},
   focus::Focus,
@@ -53,16 +53,16 @@ impl<'a> Component for Data<'a> {
     if let Some(Event::Key(key)) = event {
       match key.code {
         KeyCode::Right => {
-          self.scrollable.scroll_x(ScrollXDirection::Right);
+          self.scrollable.scroll(ScrollDirection::Right);
         },
         KeyCode::Left => {
-          self.scrollable.scroll_x(ScrollXDirection::Left);
+          self.scrollable.scroll(ScrollDirection::Left);
         },
         KeyCode::Down => {
-          self.scrollable.scroll_y(ScrollYDirection::Down);
+          self.scrollable.scroll(ScrollDirection::Down);
         },
         KeyCode::Up => {
-          self.scrollable.scroll_y(ScrollYDirection::Up);
+          self.scrollable.scroll(ScrollDirection::Up);
         },
         _ => {},
       }
