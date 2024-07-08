@@ -32,6 +32,10 @@ impl<'a> Data<'a> {
   pub fn new(state: Arc<Mutex<AppState>>) -> Self {
     Data { command_tx: None, config: Config::default(), scrollable: Scrollable::default(), state }
   }
+
+  pub fn set_data() {
+      // TODO
+  }
 }
 
 impl<'a> Component for Data<'a> {
