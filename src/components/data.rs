@@ -10,31 +10,86 @@ use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::{Component, Frame};
+use super::Frame;
 use crate::{
   action::Action,
   app::{App, AppState},
-  components::scrollable::{ScrollDirection, Scrollable},
+  components::{
+    scrollable::{ScrollDirection, Scrollable},
+    Component,
+  },
   config::{Config, KeyBindings},
   database::{get_headers, parse_value, row_to_json, row_to_vec, DbError, Rows},
   focus::Focus,
   tui::Event,
 };
 
+pub enum DataState {
+  NoResults,
+  Blank,
+  HasResults,
+  Error(DbError),
+}
+
+pub trait SettableDataTable<'a> {
+  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>);
+}
+
+pub trait DataComponent<'a>: Component + SettableDataTable<'a> {}
+impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a>
+{
+}
+
 pub struct Data<'a> {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   scrollable: Scrollable<'a>,
+  data_state: DataState,
   state: Arc<Mutex<AppState>>,
 }
 
 impl<'a> Data<'a> {
   pub fn new(state: Arc<Mutex<AppState>>) -> Self {
-    Data { command_tx: None, config: Config::default(), scrollable: Scrollable::default(), state }
+    Data {
+      command_tx: None,
+      config: Config::default(),
+      scrollable: Scrollable::default(),
+      data_state: DataState::Blank,
+      state,
+    }
   }
+}
 
-  pub fn set_data() {
-      // TODO
+impl<'a> SettableDataTable<'a> for Data<'a> {
+  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>) {
+    match data {
+      Some(Ok(rows)) => {
+        if rows.is_empty() {
+          self.data_state = DataState::NoResults;
+        } else {
+          let headers = get_headers(&rows);
+          let header_row =
+            Row::new(headers.iter().map(|h| Cell::from(format!("{}\n{}", h.name, h.type_name))).collect::<Vec<Cell>>())
+              .height(2)
+              .bottom_margin(1);
+          let value_rows = rows.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
+          let buf_table =
+            Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
+          self.scrollable.child(
+            Box::new(buf_table),
+            16_u16.saturating_mul(headers.len() as u16),
+            4_u16.saturating_mul(rows.len() as u16),
+          );
+          self.data_state = DataState::HasResults;
+        }
+      },
+      Some(Err(e)) => {
+        self.data_state = DataState::Error(e);
+      },
+      _ => {
+        self.data_state = DataState::Blank;
+      },
+    }
   }
 }
 
@@ -94,34 +149,58 @@ impl<'a> Component for Data<'a> {
       Style::new().dim()
     });
 
-    match &state.data {
-      Some(Ok(rows)) => 'rows: {
-        if rows.is_empty() {
-          f.render_widget(Paragraph::new("no results").wrap(Wrap { trim: false }).block(block), area);
-          break 'rows;
-        }
-        let headers = get_headers(rows);
-        let header_row =
-          Row::new(headers.iter().map(|h| Cell::from(format!("{}\n{}", h.name, h.type_name))).collect::<Vec<Cell>>())
-            .height(2)
-            .bottom_margin(1);
-        let value_rows = rows.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
-        let buf_table = Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
-        self.scrollable.child(Box::new(buf_table), 100, 250).block(block);
-
+    match &self.data_state {
+      DataState::NoResults => {
+        f.render_widget(Paragraph::new("no results").wrap(Wrap { trim: false }).block(block), area);
+      },
+      DataState::Blank => {
+        f.render_widget(Paragraph::new("").wrap(Wrap { trim: false }).block(block), area);
+      },
+      DataState::HasResults => {
         if !state.table_buf_logged {
           self.scrollable.log();
           state.table_buf_logged = true;
         }
-
-        self.scrollable.draw(f, area).unwrap();
+        self.scrollable.block(block);
+        self.scrollable.draw(f, area)?;
       },
-      Some(Err(e)) => {
-        f.render_widget(Paragraph::new(format!("{:?}", e.to_string())).wrap(Wrap { trim: false }).block(block), area)
+      DataState::Error(e) => {
+        f.render_widget(Paragraph::new(format!("{:?}", e.to_string())).wrap(Wrap { trim: false }).block(block), area);
       },
-      _ => f.render_widget(Paragraph::new("").wrap(Wrap { trim: false }).block(block), area),
     }
 
     Ok(())
   }
 }
+
+// // TODO: see if this trait can be fixed and used
+//
+// // based on: https://users.rust-lang.org/t/casting-traitobject-to-super-trait/33524/9
+// pub trait IntoComponent<'a, Super: ?Sized> {
+//   fn as_super(&self) -> &Super;
+//   fn as_super_mut(&mut self) -> &mut Super;
+//   fn into_super(self: Box<Self>) -> Box<Super>;
+//   fn into_super_ref_mut(self: &'a mut Box<Self>) -> &'a mut Box<Super>;
+// }
+//
+// impl<'a, T: 'a + Component> IntoComponent<'a, dyn Component + 'a> for T
+// where
+//   T: Component + 'a,
+// {
+//   fn as_super(&self) -> &(dyn Component + 'a) {
+//     self
+//   }
+//
+//   fn as_super_mut(&mut self) -> &mut (dyn Component + 'a) {
+//     self
+//   }
+//
+//   fn into_super(self: Box<Self>) -> Box<dyn Component + 'a> {
+//     self
+//   }
+//
+//   fn into_super_ref_mut(self: &'a mut Box<Self>) -> &'a mut Box<dyn Component + 'a> {
+//     self
+//   }
+// }
+//

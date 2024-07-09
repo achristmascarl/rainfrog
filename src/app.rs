@@ -1,4 +1,5 @@
 use std::{
+  borrow::Borrow,
   fmt::format,
   sync::{Arc, Mutex},
 };
@@ -17,10 +18,14 @@ use tokio::sync::mpsc;
 
 use crate::{
   action::Action,
-  components::{data::Data, editor::Editor, menu::Menu, Component},
+  components::{
+    data::{Data, DataComponent},
+    editor::Editor,
+    menu::Menu,
+    Component,
+  },
   config::Config,
-  database,
-  database::{DbError, DbPool, Rows},
+  database::{self, DbError, DbPool, Rows},
   focus::Focus,
   tui,
 };
@@ -32,23 +37,25 @@ pub struct AppState {
   pub table_buf_logged: bool,
 }
 
-pub struct Components {
+pub struct Components<'a> {
   pub menu: Box<dyn Component>,
   pub editor: Box<dyn Component>,
-  pub data: Box<dyn Component>,
+  pub data: Box<dyn DataComponent<'a>>,
 }
 
-impl Components {
-  pub fn to_array(&mut self) -> [&mut Box<dyn Component>; 3] {
-    [&mut self.menu, &mut self.editor, &mut self.data]
-  }
-}
+// // TODO: see if the into_super_ref_mut fn can be fixed
+//
+// impl Components {
+//   pub fn to_array(&mut self) -> [&mut Box<dyn Component>; 3] {
+//     [&mut self.menu, &mut self.editor, self.data.into_super_ref_mut()]
+//   }
+// }
 
 pub struct App {
   pub config: Config,
   pub tick_rate: Option<f64>,
   pub frame_rate: Option<f64>,
-  pub components: Components,
+  pub components: Components<'static>,
   pub should_quit: bool,
   pub last_tick_key_events: Vec<KeyEvent>,
   pub state: Arc<Mutex<AppState>>,
@@ -86,17 +93,17 @@ impl App {
     // tui.mouse(true);
     tui.enter()?;
 
-    for component in self.components.to_array().iter_mut() {
-      component.register_action_handler(action_tx.clone())?;
-    }
+    self.components.menu.register_action_handler(action_tx.clone())?;
+    self.components.editor.register_action_handler(action_tx.clone())?;
+    self.components.data.register_action_handler(action_tx.clone())?;
 
-    for component in self.components.to_array().iter_mut() {
-      component.register_config_handler(self.config.clone())?;
-    }
+    self.components.menu.register_config_handler(self.config.clone())?;
+    self.components.editor.register_config_handler(self.config.clone())?;
+    self.components.data.register_config_handler(self.config.clone())?;
 
-    for component in self.components.to_array().iter_mut() {
-      component.init(tui.size()?)?;
-    }
+    self.components.menu.init(tui.size()?)?;
+    self.components.editor.init(tui.size()?)?;
+    self.components.data.init(tui.size()?)?;
 
     loop {
       if let Some(e) = tui.next().await {
@@ -129,10 +136,14 @@ impl App {
           _ => {},
         }
         if !event_consumed {
-          for component in self.components.to_array().iter_mut() {
-            if let Some(action) = component.handle_events(Some(e.clone()))? {
-              action_tx.send(action)?;
-            }
+          if let Some(action) = self.components.menu.handle_events(Some(e.clone()))? {
+            action_tx.send(action)?;
+          }
+          if let Some(action) = self.components.editor.handle_events(Some(e.clone()))? {
+            action_tx.send(action)?;
+          }
+          if let Some(action) = self.components.data.handle_events(Some(e.clone()))? {
+            action_tx.send(action)?;
           }
         }
       }
@@ -180,23 +191,27 @@ impl App {
               let mut state = self.state.lock().unwrap();
               match &results {
                 Ok(rows) => {
-                  log::info!("{:?}", rows.len());
+                  log::info!("{:?}  rows", rows.len());
                   state.table_buf_logged = false;
                 },
                 Err(e) => {
                   log::error!("{e:?}");
                 },
-              }
-              state.data = Some(results);
+              };
+              self.components.data.set_data_state(Some(results));
             }
           },
           _ => {},
         }
         if !action_consumed {
-          for component in self.components.to_array().iter_mut() {
-            if let Some(action) = component.update(action.clone())? {
-              action_tx.send(action)?
-            };
+          if let Some(action) = self.components.menu.update(action.clone())? {
+            action_tx.send(action)?;
+          }
+          if let Some(action) = self.components.editor.update(action.clone())? {
+            action_tx.send(action)?;
+          }
+          if let Some(action) = self.components.data.update(action.clone())? {
+            action_tx.send(action)?;
           }
         }
       }

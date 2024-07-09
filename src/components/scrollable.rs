@@ -37,10 +37,11 @@ impl<'a> Scrollable<'a> {
     }
   }
 
-  pub fn child(&mut self, child_widget: Box<dyn WidgetRef>, max_height: u16, max_width: u16) -> &mut Self {
+  pub fn child(&mut self, child_widget: Box<dyn WidgetRef>, max_width: u16, max_height: u16) -> &mut Self {
     let mut buf = Buffer::empty(Rect::new(0, 0, max_width, max_height));
     child_widget.render_ref(buf.area, &mut buf);
     let child_buffer = clamp(buf);
+    log::info!("child buffer: {:?}", child_buffer.area);
     self.child_buffer = child_buffer;
     self
   }
@@ -73,6 +74,7 @@ impl<'a> Scrollable<'a> {
   }
 
   pub fn log(&self) {
+    log::info!("logging");
     let buf_height = self.child_buffer.area.height;
     let buf_width = self.child_buffer.area.width;
     for n in 0..buf_height {
@@ -180,6 +182,7 @@ fn get_max_offsets(child_buffer: &Buffer, parent_area: &Rect, parent_block: &Opt
 fn clamp(buf: Buffer) -> Buffer {
   let height = buf.area.height;
   let width = buf.area.width;
+  log::info!("height, width: {} {}", height, width);
   let mut used_height: u16 = 0;
   let mut used_width: u16 = 0;
   for y in (0..height).rev() {
@@ -187,12 +190,13 @@ fn clamp(buf: Buffer) -> Buffer {
     for x in (0..width).rev() {
       let cell = &row[x as usize];
       if cell.symbol() != " " {
-        used_height = std::cmp::max(used_height, y + 1);
-        used_width = std::cmp::max(used_width, x + 1);
+        used_height = std::cmp::max(used_height, y.saturating_add(1));
+        used_width = std::cmp::max(used_width, x.saturating_add(1));
       }
     }
   }
   let mut content: Vec<ratatui::buffer::Cell> = Vec::new();
+  log::info!("used height, width: {} {}", used_height, used_width);
   for y in 0..used_height {
     let row = get_row(&buf.content, y, width);
     for x in 0..used_width {
