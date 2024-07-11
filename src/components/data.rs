@@ -36,9 +36,7 @@ pub trait SettableDataTable<'a> {
 }
 
 pub trait DataComponent<'a>: Component + SettableDataTable<'a> {}
-impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a>
-{
-}
+impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a> {}
 
 pub struct Data<'a> {
   command_tx: Option<UnboundedSender<Action>>,
@@ -75,11 +73,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
           let value_rows = rows.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
           let buf_table =
             Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
-          self.scrollable.child(
-            Box::new(buf_table),
-            16_u16.saturating_mul(headers.len() as u16),
-            4_u16.saturating_mul(rows.len() as u16),
-          );
+          self.scrollable.child(Box::new(buf_table), 36_u16.saturating_mul(headers.len() as u16));
           self.data_state = DataState::HasResults;
         }
       },

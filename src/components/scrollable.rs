@@ -2,7 +2,10 @@ use color_eyre::eyre::Result;
 use ratatui::{
   buffer::Cell,
   prelude::*,
-  widgets::{Block, ScrollDirection as RatatuiScrollDir, Scrollbar, ScrollbarOrientation, ScrollbarState, WidgetRef},
+  widgets::{
+    Block, ScrollDirection as RatatuiScrollDir, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState,
+    WidgetRef,
+  },
 };
 use symbols::scrollbar;
 
@@ -17,7 +20,9 @@ pub enum ScrollDirection {
 
 #[derive(Debug, Clone, Default)]
 pub struct Scrollable<'a> {
-  child_buffer: Buffer,
+  viewport_buffer: Buffer,
+  table: Table<'a>,
+  table_state: TableState,
   parent_area: Rect,
   block: Option<Block<'a>>,
   x_offset: u16,
@@ -28,7 +33,8 @@ pub struct Scrollable<'a> {
 impl<'a> Scrollable<'a> {
   pub fn new() -> Self {
     Self {
-      child_buffer: Buffer::empty(Rect::new(0, 0, 0, 0)),
+      viewport_buffer: Buffer::empty(Rect::new(0, 0, 0, 0)),
+      table: Table::default(),
       parent_area: Rect::new(0, 0, 0, 0),
       block: None,
       x_offset: 0,
@@ -37,7 +43,8 @@ impl<'a> Scrollable<'a> {
     }
   }
 
-  pub fn child(&mut self, child_widget: Box<dyn WidgetRef>, max_width: u16, max_height: u16) -> &mut Self {
+  pub fn child(&mut self, table: Box<dyn Table>, max_width: u16) -> &mut Self {
+    let max_height = u16::MAX.saturating_div(max_width);
     let mut buf = Buffer::empty(Rect::new(0, 0, max_width, max_height));
     child_widget.render_ref(buf.area, &mut buf);
     let child_buffer = clamp(buf);
