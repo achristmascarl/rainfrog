@@ -15,7 +15,7 @@ use crate::{
   action::Action,
   app::{App, AppState},
   components::{
-    scrollable::{ScrollDirection, Scrollable},
+    scroll_table::{ScrollDirection, ScrollTable},
     Component,
   },
   config::{Config, KeyBindings},
@@ -36,12 +36,14 @@ pub trait SettableDataTable<'a> {
 }
 
 pub trait DataComponent<'a>: Component + SettableDataTable<'a> {}
-impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a> {}
+impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a>
+{
+}
 
 pub struct Data<'a> {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
-  scrollable: Scrollable<'a>,
+  scrollable: ScrollTable<'a>,
   data_state: DataState,
   state: Arc<Mutex<AppState>>,
 }
@@ -51,7 +53,7 @@ impl<'a> Data<'a> {
     Data {
       command_tx: None,
       config: Config::default(),
-      scrollable: Scrollable::default(),
+      scrollable: ScrollTable::default(),
       data_state: DataState::Blank,
       state,
     }
@@ -73,7 +75,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
           let value_rows = rows.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
           let buf_table =
             Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
-          self.scrollable.child(Box::new(buf_table), 36_u16.saturating_mul(headers.len() as u16));
+          self.scrollable.set_table(Box::new(buf_table), 36_u16.saturating_mul(headers.len() as u16), rows.len());
           self.data_state = DataState::HasResults;
         }
       },
@@ -124,11 +126,8 @@ impl<'a> Component for Data<'a> {
   }
 
   fn update(&mut self, action: Action) -> Result<Option<Action>> {
-    match action {
-      Action::Query(query) => {
-        self.scrollable.reset_scroll();
-      },
-      _ => {},
+    if let Action::Query(query) = action {
+      self.scrollable.reset_scroll();
     }
     Ok(None)
   }
@@ -152,7 +151,6 @@ impl<'a> Component for Data<'a> {
       },
       DataState::HasResults => {
         if !state.table_buf_logged {
-          self.scrollable.log();
           state.table_buf_logged = true;
         }
         self.scrollable.block(block);
