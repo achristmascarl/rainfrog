@@ -75,7 +75,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
           let value_rows = rows.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
           let buf_table =
             Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
-          self.scrollable.set_table(Box::new(buf_table), 36_u16.saturating_mul(headers.len() as u16), rows.len());
+          self.scrollable.set_table(Box::new(buf_table), headers.len(), rows.len(), 36_u16);
           self.data_state = DataState::HasResults;
         }
       },
@@ -107,17 +107,35 @@ impl<'a> Component for Data<'a> {
     }
     if let Some(Event::Key(key)) = event {
       match key.code {
-        KeyCode::Right => {
+        KeyCode::Right | KeyCode::Char('l') => {
           self.scrollable.scroll(ScrollDirection::Right);
         },
-        KeyCode::Left => {
+        KeyCode::Left | KeyCode::Char('h') => {
           self.scrollable.scroll(ScrollDirection::Left);
         },
-        KeyCode::Down => {
+        KeyCode::Down | KeyCode::Char('j') => {
           self.scrollable.scroll(ScrollDirection::Down);
         },
-        KeyCode::Up => {
+        KeyCode::Up | KeyCode::Char('k') => {
           self.scrollable.scroll(ScrollDirection::Up);
+        },
+        KeyCode::Char('e') => {
+          self.scrollable.next_column();
+        },
+        KeyCode::Char('b') => {
+          self.scrollable.prev_column();
+        },
+        KeyCode::Char('g') => {
+          self.scrollable.top_row();
+        },
+        KeyCode::Char('G') => {
+          self.scrollable.bottom_row();
+        },
+        KeyCode::Char('0') => {
+          self.scrollable.first_column();
+        },
+        KeyCode::Char('$') => {
+          self.scrollable.last_column();
         },
         _ => {},
       }

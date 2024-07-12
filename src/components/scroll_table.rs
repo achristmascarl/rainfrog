@@ -27,6 +27,7 @@ pub struct ScrollTable<'a> {
   parent_area: Rect,
   block: Option<Block<'a>>,
   requested_width: u16,
+  column_width: u16,
   max_height: u16,
   x_offset: u16,
   y_offset: usize,
@@ -42,6 +43,7 @@ impl<'a> ScrollTable<'a> {
       parent_area: Rect::new(0, 0, 0, 0),
       block: None,
       requested_width: 0,
+      column_width: 0,
       max_height: 0,
       x_offset: 0,
       y_offset: 0,
@@ -50,9 +52,17 @@ impl<'a> ScrollTable<'a> {
     }
   }
 
-  pub fn set_table(&mut self, table: Box<Table<'a>>, requested_width: u16, row_count: usize) -> &mut Self {
+  pub fn set_table(
+    &mut self,
+    table: Box<Table<'a>>,
+    column_count: usize,
+    row_count: usize,
+    column_width: u16,
+  ) -> &mut Self {
+    let requested_width = column_width.saturating_mul(column_count as u16);
     let max_height = u16::MAX.saturating_div(requested_width);
     self.table = *table;
+    self.column_width = column_width;
     self.requested_width = requested_width;
     self.max_height = max_height;
     self.max_y_offset = row_count.saturating_sub(1);
@@ -66,11 +76,50 @@ impl<'a> ScrollTable<'a> {
 
   pub fn scroll(&mut self, direction: ScrollDirection) -> &mut Self {
     match direction {
-      ScrollDirection::Left => self.x_offset = self.x_offset.saturating_sub(1),
-      ScrollDirection::Right => self.x_offset = Ord::min(self.x_offset.saturating_add(1), self.max_x_offset),
+      ScrollDirection::Left => self.x_offset = self.x_offset.saturating_sub(2),
+      ScrollDirection::Right => self.x_offset = Ord::min(self.x_offset.saturating_add(2), self.max_x_offset),
       ScrollDirection::Up => self.y_offset = self.y_offset.saturating_sub(1),
       ScrollDirection::Down => self.y_offset = Ord::min(self.y_offset.saturating_add(1), self.max_y_offset),
     }
+    self
+  }
+
+  pub fn next_column(&mut self) -> &mut Self {
+    let x_over = self.x_offset % self.column_width;
+    self.x_offset = Ord::min(self.x_offset.saturating_add(self.column_width).saturating_sub(x_over), self.max_x_offset);
+    self
+  }
+
+  pub fn prev_column(&mut self) -> &mut Self {
+    let x_over = self.x_offset % self.column_width;
+    match x_over {
+      0 => {
+        self.x_offset = self.x_offset.saturating_sub(self.column_width);
+      },
+      x => {
+        self.x_offset = self.x_offset.saturating_sub(x);
+      },
+    }
+    self
+  }
+
+  pub fn bottom_row(&mut self) -> &mut Self {
+    self.y_offset = self.max_y_offset;
+    self
+  }
+
+  pub fn top_row(&mut self) -> &mut Self {
+    self.y_offset = 0;
+    self
+  }
+
+  pub fn last_column(&mut self) -> &mut Self {
+    self.x_offset = self.max_x_offset;
+    self
+  }
+
+  pub fn first_column(&mut self) -> &mut Self {
+    self.x_offset = 0;
     self
   }
 
