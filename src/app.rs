@@ -152,7 +152,7 @@ impl App {
         if action != Action::Tick && action != Action::Render {
           log::debug!("{action:?}");
         }
-        let mut action_consumed = false;
+        let action_consumed = false;
         match &action {
           Action::Tick => {
             self.last_tick_key_events.drain(..);
