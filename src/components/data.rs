@@ -27,7 +27,7 @@ use crate::{
 pub enum DataState {
   NoResults,
   Blank,
-  HasResults,
+  HasResults(Rows),
   Error(DbError),
 }
 
@@ -76,7 +76,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
           let buf_table =
             Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
           self.scrollable.set_table(Box::new(buf_table), headers.len(), rows.len(), 36_u16);
-          self.data_state = DataState::HasResults;
+          self.data_state = DataState::HasResults(rows);
         }
       },
       Some(Err(e)) => {
@@ -151,7 +151,7 @@ impl<'a> Component for Data<'a> {
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    let mut state = self.state.lock().unwrap();
+    let state = self.state.lock().unwrap();
     let focused = state.focus == Focus::Data;
 
     let block = Block::default().title("bottom").borders(Borders::ALL).border_style(if focused {
@@ -167,10 +167,7 @@ impl<'a> Component for Data<'a> {
       DataState::Blank => {
         f.render_widget(Paragraph::new("").wrap(Wrap { trim: false }).block(block), area);
       },
-      DataState::HasResults => {
-        if !state.table_buf_logged {
-          state.table_buf_logged = true;
-        }
+      DataState::HasResults(rows) => {
         self.scrollable.block(block);
         self.scrollable.draw(f, area)?;
       },

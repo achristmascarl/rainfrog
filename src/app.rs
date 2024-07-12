@@ -21,7 +21,7 @@ use crate::{
   components::{
     data::{Data, DataComponent},
     editor::Editor,
-    menu::Menu,
+    menu::{Menu, MenuComponent},
     Component,
   },
   config::Config,
@@ -34,11 +34,10 @@ pub struct AppState {
   pub connection_string: String,
   pub focus: Focus,
   pub data: Option<Result<Rows, DbError>>,
-  pub table_buf_logged: bool,
 }
 
 pub struct Components<'a> {
-  pub menu: Box<dyn Component>,
+  pub menu: Box<dyn MenuComponent<'a>>,
   pub editor: Box<dyn Component>,
   pub data: Box<dyn DataComponent<'a>>,
 }
@@ -65,7 +64,7 @@ pub struct App {
 impl App {
   pub fn new(connection_string: String, tick_rate: Option<f64>, frame_rate: Option<f64>) -> Result<Self> {
     let focus = Focus::Editor;
-    let state = Arc::new(Mutex::new(AppState { connection_string, focus, data: None, table_buf_logged: false }));
+    let state = Arc::new(Mutex::new(AppState { connection_string, focus, data: None }));
     let menu = Menu::new(Arc::clone(&state));
     let editor = Editor::new(Arc::clone(&state));
     let data = Data::new(Arc::clone(&state));
@@ -104,6 +103,8 @@ impl App {
     self.components.menu.init(tui.size()?)?;
     self.components.editor.init(tui.size()?)?;
     self.components.data.init(tui.size()?)?;
+
+    action_tx.send(Action::LoadMenu)?;
 
     loop {
       if let Some(e) = tui.next().await {
@@ -184,21 +185,37 @@ impl App {
             let mut state = self.state.lock().unwrap();
             state.focus = Focus::Data;
           },
+          Action::LoadMenu => {
+            log::info!("LoadMenu");
+            if let Some(pool) = &self.pool {
+              let results = database::query(
+                "select table_schema, table_name
+                        from information_schema.tables
+                        where table_schema != 'pg_catalog'
+                        and table_schema != 'information_schema'
+                        group by table_schema, table_name
+                        order by table_schema, table_name asc"
+                  .to_owned(),
+                pool,
+              )
+              .await;
+              self.components.menu.set_table_list(Some(results));
+            }
+          },
           Action::Query(query) => {
             log::info!("Query: {}", query.clone());
             if let Some(pool) = &self.pool {
               let results = database::query(query.clone(), pool).await;
-              let mut state = self.state.lock().unwrap();
               match &results {
                 Ok(rows) => {
                   log::info!("{:?}  rows", rows.len());
-                  state.table_buf_logged = false;
                 },
                 Err(e) => {
                   log::error!("{e:?}");
                 },
               };
               self.components.data.set_data_state(Some(results));
+              action_tx.send(Action::LoadMenu)?;
             }
           },
           _ => {},
@@ -231,7 +248,7 @@ impl App {
       .split(f.size());
     let right_layout = Layout::default()
       .direction(Direction::Vertical)
-      .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+      .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
       .split(root_layout[1]);
 
     self.components.menu.draw(f, root_layout[0]).unwrap();

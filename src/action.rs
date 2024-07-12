@@ -22,4 +22,5 @@ pub enum Action {
   FocusMenu,
   FocusEditor,
   FocusData,
+  LoadMenu,
 }

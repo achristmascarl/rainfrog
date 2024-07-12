@@ -15,8 +15,18 @@ use crate::{
   action::Action,
   app::{App, AppState},
   config::{Config, KeyBindings},
+  database::{get_headers, parse_value, row_to_json, row_to_vec, DbError, Rows},
   focus::Focus,
 };
+
+pub trait SettableTableList<'a> {
+  fn set_table_list(&mut self, data: Option<Result<Rows, DbError>>);
+}
+
+pub trait MenuComponent<'a>: Component + SettableTableList<'a> {}
+impl<'a, T> MenuComponent<'a> for T where T: Component + SettableTableList<'a>
+{
+}
 
 pub struct Menu {
   command_tx: Option<UnboundedSender<Action>>,
@@ -27,6 +37,21 @@ pub struct Menu {
 impl Menu {
   pub fn new(state: Arc<Mutex<AppState>>) -> Self {
     Menu { command_tx: None, config: Config::default(), state }
+  }
+}
+
+impl<'a> SettableTableList<'a> for Menu {
+  fn set_table_list(&mut self, data: Option<Result<Rows, DbError>>) {
+    log::info!("setting menu table list");
+    match data {
+      Some(Ok(rows)) => {
+        rows.iter().for_each(|row| log::info!("{}", row_to_vec(row).join(",")));
+      },
+      Some(Err(e)) => {
+        log::info!("{}", e);
+      },
+      None => {},
+    }
   }
 }
 
