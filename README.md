@@ -5,6 +5,7 @@ a database management tui for postgres
 
 ## TODO
 - [x] scrollable table 
+- [ ] async querying (spawn tokio task?)
 - [ ] menu list with tables and schemas (collapsable)
 - [ ] loading state when querying
 - [ ] tui-textarea for query editor
