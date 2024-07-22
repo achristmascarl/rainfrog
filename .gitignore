@@ -2,3 +2,4 @@
 .data/*.log
 flamegraph*
 *flamegraph.stacks
+*.data
