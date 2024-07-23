@@ -21,5 +21,6 @@ or
 - [ ] handle mouse events
 - [ ] handle explain / analyze output
 - [ ] confirm before delete
+- [ ] editor syntax highlighting
 - [ ] table styling
 - [ ] perf (limit rendering)
