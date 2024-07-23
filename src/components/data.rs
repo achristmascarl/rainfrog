@@ -1,14 +1,10 @@
-use std::{
-  collections::HashMap,
-  sync::{Arc, Mutex},
-  time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::{mpsc::UnboundedSender, Mutex};
 
 use super::Frame;
 use crate::{
@@ -25,6 +21,7 @@ use crate::{
 };
 
 pub enum DataState {
+  Loading,
   NoResults,
   Blank,
   HasResults(Rows),
@@ -33,6 +30,7 @@ pub enum DataState {
 
 pub trait SettableDataTable<'a> {
   fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>);
+  fn set_loading(&mut self);
 }
 
 pub trait DataComponent<'a>: Component + SettableDataTable<'a> {}
@@ -45,17 +43,15 @@ pub struct Data<'a> {
   config: Config,
   scrollable: ScrollTable<'a>,
   data_state: DataState,
-  state: Arc<Mutex<AppState>>,
 }
 
 impl<'a> Data<'a> {
-  pub fn new(state: Arc<Mutex<AppState>>) -> Self {
+  pub fn new() -> Self {
     Data {
       command_tx: None,
       config: Config::default(),
       scrollable: ScrollTable::default(),
       data_state: DataState::Blank,
-      state,
     }
   }
 }
@@ -87,6 +83,10 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
       },
     }
   }
+
+  fn set_loading(&mut self) {
+    self.data_state = DataState::Loading;
+  }
 }
 
 impl<'a> Component for Data<'a> {
@@ -100,9 +100,8 @@ impl<'a> Component for Data<'a> {
     Ok(())
   }
 
-  fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
-    let state = self.state.lock().unwrap();
-    if state.focus != Focus::Data {
+  fn handle_events(&mut self, event: Option<Event>, app_state: &AppState) -> Result<Option<Action>> {
+    if app_state.focus != Focus::Data {
       return Ok(None);
     }
     if let Some(Event::Key(key)) = event {
@@ -143,16 +142,15 @@ impl<'a> Component for Data<'a> {
     Ok(None)
   }
 
-  fn update(&mut self, action: Action) -> Result<Option<Action>> {
+  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
     if let Action::Query(query) = action {
       self.scrollable.reset_scroll();
     }
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    let state = self.state.lock().unwrap();
-    let focused = state.focus == Focus::Data;
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
+    let focused = app_state.focus == Focus::Data;
 
     let block = Block::default().title("bottom").borders(Borders::ALL).border_style(if focused {
       Style::new().green()
@@ -169,10 +167,13 @@ impl<'a> Component for Data<'a> {
       },
       DataState::HasResults(rows) => {
         self.scrollable.block(block);
-        self.scrollable.draw(f, area)?;
+        self.scrollable.draw(f, area, app_state)?;
       },
       DataState::Error(e) => {
         f.render_widget(Paragraph::new(format!("{:?}", e.to_string())).wrap(Wrap { trim: false }).block(block), area);
+      },
+      DataState::Loading => {
+        f.render_widget(Paragraph::new("Loading...").wrap(Wrap { trim: false }).block(block), area);
       },
     }
 

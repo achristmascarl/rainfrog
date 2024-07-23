@@ -12,6 +12,7 @@ use ratatui::{
 use symbols::scrollbar;
 
 use super::Component;
+use crate::app::AppState;
 
 pub enum ScrollDirection {
   Left,
@@ -135,7 +136,7 @@ impl<'a> ScrollTable<'a> {
 }
 
 impl<'a> Component for ScrollTable<'a> {
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     self.parent_area = area;
     self.max_x_offset = get_max_x_offset(self.requested_width, &self.parent_area, &self.block);
     let max_x_offset = self.max_x_offset;

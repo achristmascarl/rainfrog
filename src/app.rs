@@ -1,11 +1,8 @@
-use std::{
-  borrow::Borrow,
-  fmt::format,
-  sync::{Arc, Mutex},
-};
+use std::{borrow::Borrow, fmt::format, sync::Arc};
 
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEvent;
+use futures::{task::Poll, FutureExt};
 use log::log;
 use ratatui::{
   layout::{Constraint, Direction, Layout},
@@ -14,7 +11,13 @@ use ratatui::{
   Frame,
 };
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use tokio::{
+  sync::{
+    mpsc::{self},
+    Mutex,
+  },
+  task::JoinHandle,
+};
 
 use crate::{
   action::Action,
@@ -33,7 +36,7 @@ use crate::{
 pub struct AppState {
   pub connection_string: String,
   pub focus: Focus,
-  pub data: Option<Result<Rows, DbError>>,
+  pub query_task: Option<tokio::task::JoinHandle<Result<Rows, DbError>>>,
 }
 
 pub struct Components<'a> {
@@ -57,20 +60,18 @@ pub struct App {
   pub components: Components<'static>,
   pub should_quit: bool,
   pub last_tick_key_events: Vec<KeyEvent>,
-  pub state: Arc<Mutex<AppState>>,
   pub pool: Option<DbPool>,
+  pub state: AppState,
 }
 
 impl App {
   pub fn new(connection_string: String, tick_rate: Option<f64>, frame_rate: Option<f64>) -> Result<Self> {
     let focus = Focus::Editor;
-    let state = Arc::new(Mutex::new(AppState { connection_string, focus, data: None }));
-    let menu = Menu::new(Arc::clone(&state));
-    let editor = Editor::new(Arc::clone(&state));
-    let data = Data::new(Arc::clone(&state));
+    let menu = Menu::new();
+    let editor = Editor::new();
+    let data = Data::new();
     let config = Config::new()?;
     Ok(Self {
-      state: Arc::clone(&state),
       tick_rate,
       frame_rate,
       components: Components { menu: Box::new(menu), editor: Box::new(editor), data: Box::new(data) },
@@ -78,12 +79,13 @@ impl App {
       config,
       last_tick_key_events: Vec::new(),
       pool: None,
+      state: AppState { connection_string, focus, query_task: None },
     })
   }
 
   pub async fn run(&mut self) -> Result<()> {
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
-    let connection_url = self.state.lock().unwrap().connection_string.clone();
+    let connection_url = self.state.connection_string.clone();
     let pool = database::init_pool(connection_url).await?;
     log::info!("{pool:?}");
     self.pool = Some(pool);
@@ -107,6 +109,13 @@ impl App {
     action_tx.send(Action::LoadMenu)?;
 
     loop {
+      if let Some(query_task) = &mut self.state.query_task {
+        if query_task.is_finished() {
+          let results = query_task.await?;
+          self.state.query_task = None;
+          self.components.data.set_data_state(Some(results));
+        }
+      }
       if let Some(e) = tui.next().await {
         let mut event_consumed = false;
         match e {
@@ -115,7 +124,7 @@ impl App {
           tui::Event::Render => action_tx.send(Action::Render)?,
           tui::Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
           tui::Event::Key(key) => {
-            if let Some(keymap) = self.config.keybindings.get(&self.state.lock().unwrap().focus) {
+            if let Some(keymap) = self.config.keybindings.get(&self.state.focus) {
               if let Some(action) = keymap.get(&vec![key]) {
                 log::info!("Got action: {action:?}");
                 action_tx.send(action.clone())?;
@@ -137,13 +146,13 @@ impl App {
           _ => {},
         }
         if !event_consumed {
-          if let Some(action) = self.components.menu.handle_events(Some(e.clone()))? {
+          if let Some(action) = self.components.menu.handle_events(Some(e.clone()), &self.state)? {
             action_tx.send(action)?;
           }
-          if let Some(action) = self.components.editor.handle_events(Some(e.clone()))? {
+          if let Some(action) = self.components.editor.handle_events(Some(e.clone()), &self.state)? {
             action_tx.send(action)?;
           }
-          if let Some(action) = self.components.data.handle_events(Some(e.clone()))? {
+          if let Some(action) = self.components.data.handle_events(Some(e.clone()), &self.state)? {
             action_tx.send(action)?;
           }
         }
@@ -172,18 +181,15 @@ impl App {
           },
           Action::FocusMenu => {
             log::info!("FocusMenu");
-            let mut state = self.state.lock().unwrap();
-            state.focus = Focus::Menu;
+            self.state.focus = Focus::Menu;
           },
           Action::FocusEditor => {
             log::info!("FocusEditor");
-            let mut state = self.state.lock().unwrap();
-            state.focus = Focus::Editor;
+            self.state.focus = Focus::Editor;
           },
           Action::FocusData => {
             log::info!("FocusData");
-            let mut state = self.state.lock().unwrap();
-            state.focus = Focus::Data;
+            self.state.focus = Focus::Data;
           },
           Action::LoadMenu => {
             log::info!("LoadMenu");
@@ -203,31 +209,37 @@ impl App {
             }
           },
           Action::Query(query) => {
-            log::info!("Query: {}", query.clone());
+            let query = query.to_owned();
+            let action_tx = action_tx.clone();
             if let Some(pool) = &self.pool {
-              let results = database::query(query.clone(), pool).await;
-              match &results {
-                Ok(rows) => {
-                  log::info!("{:?}  rows", rows.len());
-                },
-                Err(e) => {
-                  log::error!("{e:?}");
-                },
-              };
-              self.components.data.set_data_state(Some(results));
-              action_tx.send(Action::LoadMenu)?;
+              let pool = pool.clone();
+              self.components.data.set_loading();
+              self.state.query_task = Some(tokio::spawn(async move {
+                log::info!("Query: {}", query);
+                let results = database::query(query, &pool).await;
+                match &results {
+                  Ok(rows) => {
+                    log::info!("{:?}  rows", rows.len());
+                  },
+                  Err(e) => {
+                    log::error!("{e:?}");
+                  },
+                };
+                action_tx.send(Action::LoadMenu).unwrap();
+                results
+              }));
             }
           },
           _ => {},
         }
         if !action_consumed {
-          if let Some(action) = self.components.menu.update(action.clone())? {
+          if let Some(action) = self.components.menu.update(action.clone(), &self.state)? {
             action_tx.send(action)?;
           }
-          if let Some(action) = self.components.editor.update(action.clone())? {
+          if let Some(action) = self.components.editor.update(action.clone(), &self.state)? {
             action_tx.send(action)?;
           }
-          if let Some(action) = self.components.data.update(action.clone())? {
+          if let Some(action) = self.components.data.update(action.clone(), &self.state)? {
             action_tx.send(action)?;
           }
         }
@@ -250,9 +262,10 @@ impl App {
       .direction(Direction::Vertical)
       .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
       .split(root_layout[1]);
+    let state = &self.state;
 
-    self.components.menu.draw(f, root_layout[0]).unwrap();
-    self.components.editor.draw(f, right_layout[0]).unwrap();
-    self.components.data.draw(f, right_layout[1]).unwrap();
+    self.components.menu.draw(f, root_layout[0], &state).unwrap();
+    self.components.editor.draw(f, right_layout[0], &state).unwrap();
+    self.components.data.draw(f, right_layout[1], &state).unwrap();
   }
 }

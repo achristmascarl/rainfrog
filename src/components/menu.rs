@@ -31,12 +31,11 @@ impl<'a, T> MenuComponent<'a> for T where T: Component + SettableTableList<'a>
 pub struct Menu {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
-  state: Arc<Mutex<AppState>>,
 }
 
 impl Menu {
-  pub fn new(state: Arc<Mutex<AppState>>) -> Self {
-    Menu { command_tx: None, config: Config::default(), state }
+  pub fn new() -> Self {
+    Menu { command_tx: None, config: Config::default() }
   }
 }
 
@@ -66,12 +65,11 @@ impl Component for Menu {
     Ok(())
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    let state = self.state.lock().unwrap();
-    let focused = state.focus == Focus::Menu;
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
+    let focused = app_state.focus == Focus::Menu;
 
     f.render_widget(
-      Block::default().title(state.connection_string.to_string()).borders(Borders::ALL).border_style(if focused {
+      Block::default().title(app_state.connection_string.to_string()).borders(Borders::ALL).border_style(if focused {
         Style::new().green()
       } else {
         Style::new().dim()

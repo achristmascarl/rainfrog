@@ -32,18 +32,16 @@ struct Selection {
 pub struct Editor {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
-  state: Arc<Mutex<AppState>>,
   lines: Vec<Vec<char>>,
   cursor: CursorPosition,
   selection: Option<Selection>,
 }
 
 impl Editor {
-  pub fn new(state: Arc<Mutex<AppState>>) -> Self {
+  pub fn new() -> Self {
     Editor {
       command_tx: None,
       config: Config::default(),
-      state,
       cursor: CursorPosition { row: 0, line: 0 },
       selection: None,
       lines: vec![vec![]],
@@ -62,9 +60,8 @@ impl Component for Editor {
     Ok(())
   }
 
-  fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
-    let state = self.state.lock().unwrap();
-    if state.focus != Focus::Editor {
+  fn handle_events(&mut self, event: Option<Event>, app_state: &AppState) -> Result<Option<Action>> {
+    if app_state.focus != Focus::Editor {
       return Ok(None);
     }
     if let Some(Event::Key(key)) = event {
@@ -88,9 +85,8 @@ impl Component for Editor {
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    let state = self.state.lock().unwrap();
-    let focused = state.focus == Focus::Editor;
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
+    let focused = app_state.focus == Focus::Editor;
     let block = Block::default().title("top").borders(Borders::ALL).border_style(if focused {
       Style::new().green()
     } else {

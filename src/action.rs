@@ -6,7 +6,10 @@ use serde::{
 };
 use strum::Display;
 
-use crate::focus::Focus;
+use crate::{
+  database::{DbError, Rows},
+  focus::Focus,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
 pub enum Action {
