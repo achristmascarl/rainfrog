@@ -2,18 +2,21 @@
   "keybindings": {
     "Menu": {
       "<Ctrl-c>": "Quit", 
+      "q": "AbortQuery",
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
       "<Alt-3>": "FocusData"
     },
     "Editor": {
       "<Ctrl-c>": "Quit",
+      "q": "AbortQuery",
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
       "<Alt-3>": "FocusData"
     },
     "Data": {
       "<Ctrl-c>": "Quit",
+      "q": "AbortQuery",
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
       "<Alt-3>": "FocusData"

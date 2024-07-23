@@ -230,6 +230,13 @@ impl App {
               }));
             }
           },
+          Action::AbortQuery => {
+            if let Some(query_task) = &self.state.query_task {
+              query_task.abort();
+              self.state.query_task = None;
+              self.components.data.set_cancelled();
+            }
+          },
           _ => {},
         }
         if !action_consumed {
@@ -264,8 +271,8 @@ impl App {
       .split(root_layout[1]);
     let state = &self.state;
 
-    self.components.menu.draw(f, root_layout[0], &state).unwrap();
-    self.components.editor.draw(f, right_layout[0], &state).unwrap();
-    self.components.data.draw(f, right_layout[1], &state).unwrap();
+    self.components.menu.draw(f, root_layout[0], state).unwrap();
+    self.components.editor.draw(f, right_layout[0], state).unwrap();
+    self.components.data.draw(f, right_layout[1], state).unwrap();
   }
 }

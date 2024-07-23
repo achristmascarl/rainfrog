@@ -20,17 +20,21 @@ use crate::{
   tui::Event,
 };
 
+#[derive(Default)]
 pub enum DataState {
   Loading,
   NoResults,
+  #[default]
   Blank,
   HasResults(Rows),
   Error(DbError),
+  Cancelled,
 }
 
 pub trait SettableDataTable<'a> {
   fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>);
   fn set_loading(&mut self);
+  fn set_cancelled(&mut self);
 }
 
 pub trait DataComponent<'a>: Component + SettableDataTable<'a> {}
@@ -38,6 +42,7 @@ impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a>
 {
 }
 
+#[derive(Default)]
 pub struct Data<'a> {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
@@ -86,6 +91,10 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
 
   fn set_loading(&mut self) {
     self.data_state = DataState::Loading;
+  }
+
+  fn set_cancelled(&mut self) {
+    self.data_state = DataState::Cancelled;
   }
 }
 
@@ -173,7 +182,10 @@ impl<'a> Component for Data<'a> {
         f.render_widget(Paragraph::new(format!("{:?}", e.to_string())).wrap(Wrap { trim: false }).block(block), area);
       },
       DataState::Loading => {
-        f.render_widget(Paragraph::new("Loading...").wrap(Wrap { trim: false }).block(block), area);
+        f.render_widget(Paragraph::new("loading...").wrap(Wrap { trim: false }).block(block), area);
+      },
+      DataState::Cancelled => {
+        f.render_widget(Paragraph::new("query cancelled.").wrap(Wrap { trim: false }).block(block), area);
       },
     }
 

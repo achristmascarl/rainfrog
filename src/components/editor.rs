@@ -19,16 +19,19 @@ use crate::{
   tui::Event,
 };
 
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct CursorPosition {
   pub row: u32,
   pub line: u32,
 }
 
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct Selection {
   pub start: CursorPosition,
   pub end: CursorPosition,
 }
 
+#[derive(Default, Debug, Clone)]
 pub struct Editor {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
@@ -65,21 +68,23 @@ impl Component for Editor {
       return Ok(None);
     }
     if let Some(Event::Key(key)) = event {
-      match key.code {
-        KeyCode::Enter => {
-          if let Some(sender) = &self.command_tx {
-            sender.send(Action::Query(self.lines[0].iter().collect::<String>()))?;
-          }
-        },
-        KeyCode::Backspace => {
-          if !self.lines[0].is_empty() {
-            self.lines[0].pop();
-          };
-        },
-        KeyCode::Char(c) => {
-          self.lines[0].push(c);
-        },
-        _ => {},
+      if app_state.query_task.is_none() {
+        match key.code {
+          KeyCode::Enter => {
+            if let Some(sender) = &self.command_tx {
+              sender.send(Action::Query(self.lines[0].iter().collect::<String>()))?;
+            }
+          },
+          KeyCode::Backspace => {
+            if !self.lines[0].is_empty() {
+              self.lines[0].pop();
+            };
+          },
+          KeyCode::Char(c) => {
+            self.lines[0].push(c);
+          },
+          _ => {},
+        }
       }
     };
     Ok(None)

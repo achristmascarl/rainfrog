@@ -28,6 +28,7 @@ impl<'a, T> MenuComponent<'a> for T where T: Component + SettableTableList<'a>
 {
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct Menu {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
