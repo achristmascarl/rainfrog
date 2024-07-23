@@ -5,7 +5,9 @@ a database management tui for postgres
 
 ## usage
 `make dev`
+
 or
+
 `cargo run -- -u $(url)`
 
 ## TODO
