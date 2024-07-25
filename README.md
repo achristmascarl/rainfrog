@@ -13,7 +13,7 @@ or
 ## TODO
 - [x] scrollable table 
 - [x] cancellable async querying (spawn tokio task)
-- [ ] menu list with tables and schemas (collapsable)
+- [x] menu list with tables and schemas (collapsable)
 - [ ] tui-textarea for query editor
 - [ ] loading state when querying
 - [ ] keybindings hints at bottom
