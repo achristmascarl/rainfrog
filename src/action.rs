@@ -22,6 +22,7 @@ pub enum Action {
   Error(String),
   Help,
   Query(String),
+  MenuSelect(String, String),
   AbortQuery,
   FocusMenu,
   FocusEditor,

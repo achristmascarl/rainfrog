@@ -6,8 +6,10 @@ use std::{
 
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
+use indexmap::IndexMap;
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
+use symbols::scrollbar;
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::{Component, Frame};
@@ -17,7 +19,15 @@ use crate::{
   config::{Config, KeyBindings},
   database::{get_headers, parse_value, row_to_json, row_to_vec, DbError, Rows},
   focus::Focus,
+  tui::Event,
 };
+
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub enum MenuFocus {
+  #[default]
+  Schema,
+  Table,
+}
 
 pub trait SettableTableList<'a> {
   fn set_table_list(&mut self, data: Option<Result<Rows, DbError>>);
@@ -32,11 +42,87 @@ impl<'a, T> MenuComponent<'a> for T where T: Component + SettableTableList<'a>
 pub struct Menu {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
+  table_map: IndexMap<String, Vec<String>>,
+  schema_index: usize,
+  list_state: ListState,
+  menu_focus: MenuFocus,
 }
 
 impl Menu {
   pub fn new() -> Self {
-    Menu { command_tx: None, config: Config::default() }
+    Menu {
+      command_tx: None,
+      config: Config::default(),
+      table_map: IndexMap::new(),
+      schema_index: 0,
+      list_state: ListState::default(),
+      menu_focus: MenuFocus::default(),
+    }
+  }
+
+  pub fn change_focus(&mut self, new_focus: MenuFocus) {
+    if self.menu_focus != new_focus && self.table_map.keys().len() > 1 {
+      match new_focus {
+        MenuFocus::Schema => {
+          self.list_state = ListState::default();
+        },
+        MenuFocus::Table => {
+          self.list_state = ListState::default().with_selected(Some(0));
+        },
+      }
+      self.menu_focus = new_focus;
+    }
+  }
+
+  pub fn scroll_down(&mut self) {
+    match self.menu_focus {
+      MenuFocus::Table => {
+        if let Some(i) = self.list_state.selected() {
+          let tables = self.table_map.get_index(self.schema_index).unwrap().1;
+          self.list_state =
+            ListState::default().with_selected(Some(i.saturating_add(1).clamp(0, tables.len().saturating_sub(1))));
+        }
+      },
+      MenuFocus::Schema => {
+        self.schema_index = self.schema_index.saturating_add(1).clamp(0, self.table_map.keys().len().saturating_sub(1))
+      },
+    }
+  }
+
+  pub fn scroll_up(&mut self) {
+    match self.menu_focus {
+      MenuFocus::Table => {
+        if let Some(i) = self.list_state.selected() {
+          self.list_state = ListState::default().with_selected(Some(i.saturating_sub(1)));
+        }
+      },
+      MenuFocus::Schema => self.schema_index = self.schema_index.saturating_sub(1),
+    }
+  }
+
+  pub fn scroll_bottom(&mut self) {
+    match self.menu_focus {
+      MenuFocus::Table => {
+        if let Some(i) = self.list_state.selected() {
+          let tables = self.table_map.get_index(self.schema_index).unwrap().1;
+          self.list_state = ListState::default().with_selected(Some(tables.len().saturating_sub(1)));
+        }
+      },
+      MenuFocus::Schema => {
+        self.schema_index = self.table_map.keys().len().saturating_sub(1);
+      },
+    }
+  }
+
+  pub fn scroll_top(&mut self) {
+    match self.menu_focus {
+      MenuFocus::Table => {
+        if let Some(i) = self.list_state.selected() {
+          self.list_state = ListState::default().with_selected(Some(0));
+        }
+      },
+      MenuFocus::Schema => self.schema_index = 0,
+    }
   }
 }
 
@@ -45,7 +131,23 @@ impl<'a> SettableTableList<'a> for Menu {
     log::info!("setting menu table list");
     match data {
       Some(Ok(rows)) => {
-        rows.iter().for_each(|row| log::info!("{}", row_to_vec(row).join(",")));
+        rows.iter().for_each(|row| {
+          let row_as_strings = row_to_vec(row);
+          let schema = row_as_strings[0].clone();
+          let table = row_as_strings[1].clone();
+          if !self.table_map.contains_key(&schema) {
+            self.table_map.insert(schema.clone(), vec![]);
+          }
+          self.table_map.get_mut(&schema).unwrap().push(table.clone());
+        });
+        log::info!("table map: {:?}", self.table_map);
+        if self.table_map.keys().len() == 1 {
+          self.menu_focus = MenuFocus::Table;
+          self.list_state = ListState::default().with_selected(Some(0));
+        } else {
+          self.menu_focus = MenuFocus::Schema;
+          self.list_state = ListState::default();
+        }
       },
       Some(Err(e)) => {
         log::info!("{}", e);
@@ -66,17 +168,98 @@ impl Component for Menu {
     Ok(())
   }
 
+  fn handle_events(&mut self, event: Option<Event>, app_state: &AppState) -> Result<Option<Action>> {
+    if app_state.focus != Focus::Menu {
+      return Ok(None);
+    }
+    if let Some(Event::Key(key)) = event {
+      match key.code {
+        KeyCode::Right | KeyCode::Char('l') => self.change_focus(MenuFocus::Table),
+        KeyCode::Left | KeyCode::Char('h') => self.change_focus(MenuFocus::Schema),
+        KeyCode::Down | KeyCode::Char('j') => self.scroll_down(),
+        KeyCode::Up | KeyCode::Char('k') => self.scroll_up(),
+        KeyCode::Char('g') => self.scroll_top(),
+        KeyCode::Char('G') => self.scroll_bottom(),
+        KeyCode::Enter => {
+          if let Some(selected) = self.list_state.selected() {
+            let (schema, tables) = self.table_map.get_index(self.schema_index).unwrap();
+            self.command_tx.as_ref().unwrap().send(Action::MenuSelect(schema.clone(), tables[selected].clone()))?;
+          }
+        },
+        _ => {},
+      }
+    };
+    Ok(None)
+  }
+
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Menu;
+    let parent_block = Block::default();
+    let stable_keys = self.table_map.keys().enumerate();
+    let constraints = stable_keys.clone().map(|(i, k)| {
+      match i {
+        x if x == self.schema_index => Constraint::Min(5),
+        _ => Constraint::Length(1),
+      }
+    });
+    let layout =
+      Layout::default().constraints(constraints).direction(Direction::Vertical).split(parent_block.inner(area));
+    stable_keys.for_each(|(i, k)| {
+      match i {
+        x if x == self.schema_index => {
+          let block = Block::default().title(k.as_str().to_owned() + "(schema)").borders(Borders::ALL).border_style(
+            if focused && self.menu_focus == MenuFocus::Schema {
+              Style::default().fg(Color::Green)
+            } else if focused {
+              Style::default()
+            } else {
+              Style::new().dim()
+            },
+          );
+          let block_margin = layout[i].inner(Margin { vertical: 1, horizontal: 0 });
+          let tables = self.table_map.get_key_value(k).unwrap().1.clone();
+          let table_length = tables.len();
+          let available_height = block.inner(parent_block.inner(area)).height as usize;
+          let list = List::default().items(tables).block(block).highlight_style(
+            Style::default().bg(if focused { Color::Green } else { Color::White }).fg(Color::DarkGray),
+          );
+          f.render_stateful_widget(list, layout[i], &mut self.list_state);
+          let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight).symbols(scrollbar::VERTICAL);
+          let mut vertical_scrollbar_state =
+            ScrollbarState::new(table_length.saturating_sub(available_height)).position(self.list_state.offset());
+          f.render_stateful_widget(vertical_scrollbar, block_margin, &mut vertical_scrollbar_state);
+        },
+        x if x == self.table_map.keys().len().saturating_sub(1) => {
+          f.render_widget(
+            Text::styled(
+              "└".to_owned() + k.to_owned().as_str() + "(schema)",
+              if focused { Style::default() } else { Style::new().dim() },
+            ),
+            layout[i],
+          );
+        },
+        0 => {
+          f.render_widget(
+            Text::styled(
+              "┌".to_owned() + k.to_owned().as_str() + "(schema)",
+              if focused { Style::default() } else { Style::new().dim() },
+            ),
+            layout[i],
+          );
+        },
+        _ => {
+          f.render_widget(
+            Text::styled(
+              "├".to_owned() + k.to_owned().as_str() + "(schema)",
+              if focused { Style::default() } else { Style::new().dim() },
+            ),
+            layout[i],
+          )
+        },
+      };
+    });
 
-    f.render_widget(
-      Block::default().title(app_state.connection_string.to_string()).borders(Borders::ALL).border_style(if focused {
-        Style::new().green()
-      } else {
-        Style::new().dim()
-      }),
-      area,
-    );
+    f.render_widget(parent_block, area);
     Ok(())
   }
 }

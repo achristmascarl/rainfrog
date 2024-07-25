@@ -2099,7 +2099,6 @@ dependencies = [
 name = "rainfrog"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "better-panic",
  "chrono",
  "chrono-tz",
@@ -2111,6 +2110,7 @@ dependencies = [
  "directories",
  "futures",
  "human-panic",
+ "indexmap",
  "json5",
  "lazy_static",
  "libc",

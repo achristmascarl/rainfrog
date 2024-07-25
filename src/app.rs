@@ -66,7 +66,7 @@ pub struct App {
 
 impl App {
   pub fn new(connection_string: String, tick_rate: Option<f64>, frame_rate: Option<f64>) -> Result<Self> {
-    let focus = Focus::Editor;
+    let focus = Focus::Menu;
     let menu = Menu::new();
     let editor = Editor::new();
     let data = Data::new();
@@ -225,7 +225,6 @@ impl App {
                     log::error!("{e:?}");
                   },
                 };
-                action_tx.send(Action::LoadMenu).unwrap();
                 results
               }));
             }

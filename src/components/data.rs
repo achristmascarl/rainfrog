@@ -161,7 +161,7 @@ impl<'a> Component for Data<'a> {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Data;
 
-    let block = Block::default().title("bottom").borders(Borders::ALL).border_style(if focused {
+    let block = Block::default().title("results").borders(Borders::ALL).border_style(if focused {
       Style::new().green()
     } else {
       Style::new().dim()

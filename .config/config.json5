@@ -3,23 +3,34 @@
     "Menu": {
       "<Ctrl-c>": "Quit", 
       "q": "AbortQuery",
+      "r": "LoadMenu",
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
-      "<Alt-3>": "FocusData"
+      "<Alt-3>": "FocusData",
+      "<Ctrl-1>": "FocusMenu",
+      "<Ctrl-2>": "FocusEditor",
+      "<Ctrl-3>": "FocusData"
+
     },
     "Editor": {
       "<Ctrl-c>": "Quit",
       "q": "AbortQuery",
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
-      "<Alt-3>": "FocusData"
+      "<Alt-3>": "FocusData",
+      "<Ctrl-1>": "FocusMenu",
+      "<Ctrl-2>": "FocusEditor",
+      "<Ctrl-3>": "FocusData"
     },
     "Data": {
       "<Ctrl-c>": "Quit",
       "q": "AbortQuery",
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
-      "<Alt-3>": "FocusData"
+      "<Alt-3>": "FocusData",
+      "<Ctrl-1>": "FocusMenu",
+      "<Ctrl-2>": "FocusEditor",
+      "<Ctrl-3>": "FocusData"
     }
   }
 }

@@ -22,7 +22,7 @@ use crate::{
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct CursorPosition {
   pub row: u32,
-  pub line: u32,
+  pub col: u32,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -45,7 +45,7 @@ impl Editor {
     Editor {
       command_tx: None,
       config: Config::default(),
-      cursor: CursorPosition { row: 0, line: 0 },
+      cursor: CursorPosition { row: 0, col: 0 },
       selection: None,
       lines: vec![vec![]],
     }
@@ -90,9 +90,19 @@ impl Component for Editor {
     Ok(None)
   }
 
+  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
+    if let Action::MenuSelect(schema, table) = action {
+      let query = format!("select * from {}.{} limit 100", schema, table);
+      let chars: Vec<char> = format!("select * from {}.{} limit 100", schema, table).chars().collect();
+      self.lines = vec![chars];
+      self.command_tx.as_ref().unwrap().send(Action::Query(query))?;
+    }
+    Ok(None)
+  }
+
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Editor;
-    let block = Block::default().title("top").borders(Borders::ALL).border_style(if focused {
+    let block = Block::default().title("query").borders(Borders::ALL).border_style(if focused {
       Style::new().green()
     } else {
       Style::new().dim()

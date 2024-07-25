@@ -39,7 +39,7 @@ tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter", "serde"] }
 chrono = { version = "0.4", default-features = false }
 chrono-tz = { version = "0.5", default-features = false }
-async-trait = "0.1.81"
+indexmap = "2.2.6"
 
 [build-dependencies]
 vergen = { version = "8.2.6", features = [ "build", "git", "gitoxide", "cargo" ]}

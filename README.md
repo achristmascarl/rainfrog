@@ -4,7 +4,7 @@ a database management tui for postgres
 > [frogs find refuge in elephant tracks](https://www.sciencedaily.com/releases/2019/06/190604131157.htm) 
 
 ## usage
-`make dev`
+`make dev url=$(url)`
 
 or
 
@@ -14,8 +14,8 @@ or
 - [x] scrollable table 
 - [x] cancellable async querying (spawn tokio task)
 - [ ] menu list with tables and schemas (collapsable)
-- [ ] loading state when querying
 - [ ] tui-textarea for query editor
+- [ ] loading state when querying
 - [ ] keybindings hints at bottom
 - [ ] table selection and yanking
 - [ ] handle mouse events
