@@ -1,4 +1,5 @@
 use std::{
+  borrow::BorrowMut,
   collections::HashMap,
   sync::{Arc, Mutex},
   time::Duration,
@@ -46,6 +47,8 @@ pub struct Menu {
   schema_index: usize,
   list_state: ListState,
   menu_focus: MenuFocus,
+  search: Option<String>,
+  search_focused: bool,
 }
 
 impl Menu {
@@ -57,6 +60,8 @@ impl Menu {
       schema_index: 0,
       list_state: ListState::default(),
       menu_focus: MenuFocus::default(),
+      search: None,
+      search_focused: false,
     }
   }
 
@@ -124,6 +129,12 @@ impl Menu {
       MenuFocus::Schema => self.schema_index = 0,
     }
   }
+
+  pub fn reset_search(&mut self) {
+    self.search = None;
+    self.search_focused = false;
+    self.list_state = ListState::default().with_selected(Some(0));
+  }
 }
 
 impl<'a> SettableTableList<'a> for Menu {
@@ -174,16 +185,51 @@ impl Component for Menu {
     }
     if let Some(Event::Key(key)) = event {
       match key.code {
-        KeyCode::Right | KeyCode::Char('l') => self.change_focus(MenuFocus::Table),
-        KeyCode::Left | KeyCode::Char('h') => self.change_focus(MenuFocus::Schema),
-        KeyCode::Down | KeyCode::Char('j') => self.scroll_down(),
-        KeyCode::Up | KeyCode::Char('k') => self.scroll_up(),
-        KeyCode::Char('g') => self.scroll_top(),
-        KeyCode::Char('G') => self.scroll_bottom(),
+        KeyCode::Right => self.change_focus(MenuFocus::Table),
+        KeyCode::Left => self.change_focus(MenuFocus::Schema),
+        KeyCode::Down => self.scroll_down(),
+        KeyCode::Up => self.scroll_up(),
+        KeyCode::Char(c) => {
+          if self.search.is_some() && self.search_focused {
+            if let Some(search) = self.search.as_mut() {
+              search.push(c);
+              self.list_state = ListState::default().with_selected(Some(0));
+            }
+          } else {
+            match key.code {
+              KeyCode::Char('/') => {
+                self.search_focused = true;
+                if self.search.is_none() {
+                  self.search = Some("".to_owned())
+                }
+              },
+              KeyCode::Char('l') => self.change_focus(MenuFocus::Table),
+              KeyCode::Char('h') => self.change_focus(MenuFocus::Schema),
+              KeyCode::Char('j') => self.scroll_down(),
+              KeyCode::Char('k') => self.scroll_up(),
+              KeyCode::Char('g') => self.scroll_top(),
+              KeyCode::Char('G') => self.scroll_bottom(),
+              _ => {},
+            }
+          }
+        },
         KeyCode::Enter => {
-          if let Some(selected) = self.list_state.selected() {
+          if self.search.is_some() && self.search_focused {
+            self.search_focused = false;
+          } else if let Some(selected) = self.list_state.selected() {
             let (schema, tables) = self.table_map.get_index(self.schema_index).unwrap();
             self.command_tx.as_ref().unwrap().send(Action::MenuSelect(schema.clone(), tables[selected].clone()))?;
+          }
+        },
+        KeyCode::Esc => self.reset_search(),
+        KeyCode::Backspace => {
+          if let Some(search) = self.search.as_mut() {
+            if !search.is_empty() {
+              search.pop();
+              self.list_state = ListState::default().with_selected(Some(0));
+            } else {
+              self.reset_search();
+            }
           }
         },
         _ => {},
@@ -196,34 +242,70 @@ impl Component for Menu {
     let focused = app_state.focus == Focus::Menu;
     let parent_block = Block::default();
     let stable_keys = self.table_map.keys().enumerate();
-    let constraints = stable_keys.clone().map(|(i, k)| {
-      match i {
-        x if x == self.schema_index => Constraint::Min(5),
-        _ => Constraint::Length(1),
-      }
-    });
+    let mut constraints: Vec<Constraint> = stable_keys
+      .clone()
+      .map(|(i, k)| {
+        match i {
+          x if x == self.schema_index => Constraint::Min(5),
+          _ => Constraint::Length(1),
+        }
+      })
+      .collect();
+    if let Some(search) = self.search.as_ref() {
+      constraints.insert(0, Constraint::Length(1));
+    }
     let layout =
       Layout::default().constraints(constraints).direction(Direction::Vertical).split(parent_block.inner(area));
+    if let Some(search) = self.search.as_ref() {
+      f.render_widget(
+        Text::styled(
+          "/ ".to_owned() + search.to_owned().as_str(),
+          if !focused {
+            Style::new().dim()
+          } else if self.search_focused {
+            Style::default().fg(Color::Yellow)
+          } else {
+            Style::default()
+          },
+        ),
+        layout[0],
+      )
+    }
     stable_keys.for_each(|(i, k)| {
+      let layout_index = if self.search.is_some() { i + 1 } else { i };
       match i {
         x if x == self.schema_index => {
-          let block = Block::default().title(k.as_str().to_owned() + "(schema)").borders(Borders::ALL).border_style(
-            if focused && self.menu_focus == MenuFocus::Schema {
+          let block = Block::default()
+            .title(k.as_str().to_owned() + "(schema)")
+            .borders(Borders::ALL)
+            .border_style(if focused && self.menu_focus == MenuFocus::Schema {
               Style::default().fg(Color::Green)
             } else if focused {
               Style::default()
             } else {
               Style::new().dim()
-            },
-          );
-          let block_margin = layout[i].inner(Margin { vertical: 1, horizontal: 0 });
+            })
+            .padding(Padding { left: 0, right: 1, top: 0, bottom: 0 });
+          let block_margin = layout[layout_index].inner(Margin { vertical: 1, horizontal: 0 });
           let tables = self.table_map.get_key_value(k).unwrap().1.clone();
-          let table_length = tables.len();
+          let filtered_tables: Vec<String> = tables
+            .into_iter()
+            .filter(|t| {
+              if let Some(search) = self.search.as_ref() {
+                t.to_lowercase().contains(search.to_lowercase().trim())
+              } else {
+                true
+              }
+            })
+            .collect();
+          let table_length = filtered_tables.len();
           let available_height = block.inner(parent_block.inner(area)).height as usize;
-          let list = List::default().items(tables).block(block).highlight_style(
-            Style::default().bg(if focused { Color::Green } else { Color::White }).fg(Color::DarkGray),
+          let list = List::default().items(filtered_tables).block(block).highlight_style(
+            Style::default()
+              .bg(if focused && !self.search_focused { Color::Green } else { Color::White })
+              .fg(Color::DarkGray),
           );
-          f.render_stateful_widget(list, layout[i], &mut self.list_state);
+          f.render_stateful_widget(list, layout[layout_index], &mut self.list_state);
           let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight).symbols(scrollbar::VERTICAL);
           let mut vertical_scrollbar_state =
             ScrollbarState::new(table_length.saturating_sub(available_height)).position(self.list_state.offset());
@@ -235,7 +317,7 @@ impl Component for Menu {
               "└".to_owned() + k.to_owned().as_str() + "(schema)",
               if focused { Style::default() } else { Style::new().dim() },
             ),
-            layout[i],
+            layout[layout_index],
           );
         },
         0 => {
@@ -244,7 +326,7 @@ impl Component for Menu {
               "┌".to_owned() + k.to_owned().as_str() + "(schema)",
               if focused { Style::default() } else { Style::new().dim() },
             ),
-            layout[i],
+            layout[layout_index],
           );
         },
         _ => {
@@ -253,7 +335,7 @@ impl Component for Menu {
               "├".to_owned() + k.to_owned().as_str() + "(schema)",
               if focused { Style::default() } else { Style::new().dim() },
             ),
-            layout[i],
+            layout[layout_index],
           )
         },
       };
