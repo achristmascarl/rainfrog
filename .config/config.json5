@@ -3,7 +3,6 @@
     "Menu": {
       "<Ctrl-c>": "Quit", 
       "q": "AbortQuery",
-      "r": "LoadMenu",
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
       "<Alt-3>": "FocusData",

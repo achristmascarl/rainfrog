@@ -61,7 +61,7 @@ impl<'a> ScrollTable<'a> {
     column_width: u16,
   ) -> &mut Self {
     let requested_width = column_width.saturating_mul(column_count as u16);
-    let max_height = u16::MAX.saturating_div(requested_width);
+    let max_height = u16::MAX.saturating_div(std::cmp::max(1, requested_width));
     self.table = *table;
     self.column_width = column_width;
     self.requested_width = requested_width;

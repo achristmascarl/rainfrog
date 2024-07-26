@@ -83,9 +83,19 @@ impl Menu {
     match self.menu_focus {
       MenuFocus::Table => {
         if let Some(i) = self.list_state.selected() {
-          let tables = self.table_map.get_index(self.schema_index).unwrap().1;
-          self.list_state =
-            ListState::default().with_selected(Some(i.saturating_add(1).clamp(0, tables.len().saturating_sub(1))));
+          let tables = self.table_map.get_index(self.schema_index).unwrap().1.to_owned();
+          let filtered_tables: Vec<String> = tables
+            .into_iter()
+            .filter(|t| {
+              if let Some(search) = self.search.as_ref() {
+                t.to_lowercase().contains(search.to_lowercase().trim())
+              } else {
+                true
+              }
+            })
+            .collect();
+          self.list_state = ListState::default()
+            .with_selected(Some(i.saturating_add(1).clamp(0, filtered_tables.len().saturating_sub(1))));
         }
       },
       MenuFocus::Schema => {
@@ -109,8 +119,18 @@ impl Menu {
     match self.menu_focus {
       MenuFocus::Table => {
         if let Some(i) = self.list_state.selected() {
-          let tables = self.table_map.get_index(self.schema_index).unwrap().1;
-          self.list_state = ListState::default().with_selected(Some(tables.len().saturating_sub(1)));
+          let tables = self.table_map.get_index(self.schema_index).unwrap().1.to_owned();
+          let filtered_tables: Vec<String> = tables
+            .into_iter()
+            .filter(|t| {
+              if let Some(search) = self.search.as_ref() {
+                t.to_lowercase().contains(search.to_lowercase().trim())
+              } else {
+                true
+              }
+            })
+            .collect();
+          self.list_state = ListState::default().with_selected(Some(filtered_tables.len().saturating_sub(1)));
         }
       },
       MenuFocus::Schema => {
@@ -214,6 +234,7 @@ impl Component for Menu {
               KeyCode::Char('k') => self.scroll_up(),
               KeyCode::Char('g') => self.scroll_top(),
               KeyCode::Char('G') => self.scroll_bottom(),
+              KeyCode::Char('R') => self.command_tx.as_ref().unwrap().send(Action::LoadMenu)?,
               _ => {},
             }
           }
@@ -223,7 +244,22 @@ impl Component for Menu {
             self.search_focused = false;
           } else if let Some(selected) = self.list_state.selected() {
             let (schema, tables) = self.table_map.get_index(self.schema_index).unwrap();
-            self.command_tx.as_ref().unwrap().send(Action::MenuSelect(schema.clone(), tables[selected].clone()))?;
+            let filtered_tables: Vec<String> = tables
+              .iter()
+              .filter(|t| {
+                if let Some(search) = self.search.as_ref() {
+                  t.to_lowercase().contains(search.to_lowercase().trim())
+                } else {
+                  true
+                }
+              })
+              .cloned()
+              .collect();
+            self
+              .command_tx
+              .as_ref()
+              .unwrap()
+              .send(Action::MenuSelect(schema.clone(), filtered_tables[selected].clone()))?;
           }
         },
         KeyCode::Esc => self.reset_search(),

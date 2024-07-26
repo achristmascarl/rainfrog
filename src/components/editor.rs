@@ -36,22 +36,13 @@ struct Selection {
 pub struct Editor<'a> {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
-  lines: Vec<Vec<char>>,
-  cursor: CursorPosition,
   selection: Option<Selection>,
   textarea: TextArea<'a>,
 }
 
 impl<'a> Editor<'a> {
   pub fn new() -> Self {
-    Editor {
-      command_tx: None,
-      config: Config::default(),
-      cursor: CursorPosition { row: 0, col: 0 },
-      selection: None,
-      lines: vec![vec![]],
-      textarea: TextArea::default(),
-    }
+    Editor { command_tx: None, config: Config::default(), selection: None, textarea: TextArea::default() }
   }
 }
 
@@ -86,8 +77,7 @@ impl<'a> Component for Editor<'a> {
   fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
     if let Action::MenuSelect(schema, table) = action {
       let query = format!("select * from {}.{} limit 100", schema, table);
-      let chars: Vec<char> = format!("select * from {}.{} limit 100", schema, table).chars().collect();
-      self.lines = vec![chars];
+      self.textarea = TextArea::from(vec![query.clone()]);
       self.command_tx.as_ref().unwrap().send(Action::Query(query))?;
     } else if let Action::SubmitEditorQuery = action {
       if let Some(sender) = &self.command_tx {
