@@ -179,7 +179,12 @@ impl Component for Menu {
     Ok(())
   }
 
-  fn handle_events(&mut self, event: Option<Event>, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_events(
+    &mut self,
+    event: Option<Event>,
+    last_tick_key_events: Vec<KeyEvent>,
+    app_state: &AppState,
+  ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Menu {
       return Ok(None);
     }

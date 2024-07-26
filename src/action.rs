@@ -21,6 +21,7 @@ pub enum Action {
   Refresh,
   Error(String),
   Help,
+  SubmitEditorQuery,
   Query(String),
   MenuSelect(String, String),
   AbortQuery,

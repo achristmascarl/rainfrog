@@ -146,13 +146,19 @@ impl App {
           _ => {},
         }
         if !event_consumed {
-          if let Some(action) = self.components.menu.handle_events(Some(e.clone()), &self.state)? {
+          if let Some(action) =
+            self.components.menu.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
+          {
             action_tx.send(action)?;
           }
-          if let Some(action) = self.components.editor.handle_events(Some(e.clone()), &self.state)? {
+          if let Some(action) =
+            self.components.editor.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
+          {
             action_tx.send(action)?;
           }
-          if let Some(action) = self.components.data.handle_events(Some(e.clone()), &self.state)? {
+          if let Some(action) =
+            self.components.data.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
+          {
             action_tx.send(action)?;
           }
         }

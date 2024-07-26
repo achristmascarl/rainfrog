@@ -9,6 +9,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
+use tui_textarea::{Input, Key, TextArea};
 
 use super::{Component, Frame};
 use crate::{
@@ -32,15 +33,16 @@ struct Selection {
 }
 
 #[derive(Default, Debug, Clone)]
-pub struct Editor {
+pub struct Editor<'a> {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   lines: Vec<Vec<char>>,
   cursor: CursorPosition,
   selection: Option<Selection>,
+  textarea: TextArea<'a>,
 }
 
-impl Editor {
+impl<'a> Editor<'a> {
   pub fn new() -> Self {
     Editor {
       command_tx: None,
@@ -48,11 +50,12 @@ impl Editor {
       cursor: CursorPosition { row: 0, col: 0 },
       selection: None,
       lines: vec![vec![]],
+      textarea: TextArea::default(),
     }
   }
 }
 
-impl Component for Editor {
+impl<'a> Component for Editor<'a> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -63,28 +66,18 @@ impl Component for Editor {
     Ok(())
   }
 
-  fn handle_events(&mut self, event: Option<Event>, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_events(
+    &mut self,
+    event: Option<Event>,
+    last_tick_key_events: Vec<KeyEvent>,
+    app_state: &AppState,
+  ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Editor {
       return Ok(None);
     }
     if let Some(Event::Key(key)) = event {
       if app_state.query_task.is_none() {
-        match key.code {
-          KeyCode::Enter => {
-            if let Some(sender) = &self.command_tx {
-              sender.send(Action::Query(self.lines[0].iter().collect::<String>()))?;
-            }
-          },
-          KeyCode::Backspace => {
-            if !self.lines[0].is_empty() {
-              self.lines[0].pop();
-            };
-          },
-          KeyCode::Char(c) => {
-            self.lines[0].push(c);
-          },
-          _ => {},
-        }
+        self.textarea.input(key);
       }
     };
     Ok(None)
@@ -96,6 +89,10 @@ impl Component for Editor {
       let chars: Vec<char> = format!("select * from {}.{} limit 100", schema, table).chars().collect();
       self.lines = vec![chars];
       self.command_tx.as_ref().unwrap().send(Action::Query(query))?;
+    } else if let Action::SubmitEditorQuery = action {
+      if let Some(sender) = &self.command_tx {
+        sender.send(Action::Query(self.textarea.lines().join(" ")))?;
+      }
     }
     Ok(None)
   }
@@ -107,9 +104,13 @@ impl Component for Editor {
     } else {
       Style::new().dim()
     });
-    let text = Paragraph::new(self.lines[0].iter().collect::<String>()).wrap(Wrap { trim: false }).block(block);
 
-    f.render_widget(text, area);
+    self.textarea.set_block(block);
+    self.textarea.set_line_number_style(if focused { Style::default().fg(Color::Yellow) } else { Style::new().dim() });
+    self.textarea.set_cursor_line_style(Style::default().not_underlined());
+    self.textarea.set_hard_tab_indent(false);
+    self.textarea.set_tab_length(2);
+    f.render_widget(self.textarea.widget(), area);
     Ok(())
   }
 }

@@ -20,7 +20,8 @@
       "<Alt-3>": "FocusData",
       "<Ctrl-1>": "FocusMenu",
       "<Ctrl-2>": "FocusEditor",
-      "<Ctrl-3>": "FocusData"
+      "<Ctrl-3>": "FocusData",
+      "<F5>": "SubmitEditorQuery"
     },
     "Data": {
       "<Ctrl-c>": "Quit",

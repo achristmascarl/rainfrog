@@ -14,13 +14,15 @@ or
 - [x] scrollable table 
 - [x] cancellable async querying (spawn tokio task)
 - [x] menu list with tables and schemas (collapsable)
-- [ ] tui-textarea for query editor
+- [x] tui-textarea for query editor
 - [ ] loading state when querying
 - [ ] keybindings hints at bottom
 - [ ] table selection and yanking
 - [ ] handle mouse events
+- [ ] tui-textarea vim keybindings
 - [ ] handle explain / analyze output
 - [ ] confirm before delete
 - [ ] editor syntax highlighting
+- [ ] view indexes, constraints, etc.
 - [ ] table styling
 - [ ] perf (limit rendering)

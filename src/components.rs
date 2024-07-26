@@ -66,7 +66,12 @@ pub trait Component {
   /// # Returns
   ///
   /// * `Result<Option<Action>>` - An action to be processed or none.
-  fn handle_events(&mut self, event: Option<Event>, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_events(
+    &mut self,
+    event: Option<Event>,
+    last_tick_key_events: Vec<KeyEvent>,
+    app_state: &AppState,
+  ) -> Result<Option<Action>> {
     let r = match event {
       Some(Event::Key(key_event)) => self.handle_key_events(key_event, app_state)?,
       Some(Event::Mouse(mouse_event)) => self.handle_mouse_events(mouse_event, app_state)?,
