@@ -76,6 +76,9 @@ impl<'a> Component for Editor<'a> {
 
   fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
     if let Action::MenuSelect(schema, table) = action {
+      if app_state.query_task.is_some() {
+        return Ok(None);
+      }
       let query = format!("select * from {}.{} limit 100", schema, table);
       self.textarea = TextArea::from(vec![query.clone()]);
       self.command_tx.as_ref().unwrap().send(Action::Query(query))?;

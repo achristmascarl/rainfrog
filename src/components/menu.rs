@@ -27,7 +27,7 @@ use crate::{
 pub enum MenuFocus {
   #[default]
   Schema,
-  Table,
+  Tables,
 }
 
 pub trait SettableTableList<'a> {
@@ -71,7 +71,7 @@ impl Menu {
         MenuFocus::Schema => {
           self.list_state = ListState::default();
         },
-        MenuFocus::Table => {
+        MenuFocus::Tables => {
           self.list_state = ListState::default().with_selected(Some(0));
         },
       }
@@ -81,7 +81,7 @@ impl Menu {
 
   pub fn scroll_down(&mut self) {
     match self.menu_focus {
-      MenuFocus::Table => {
+      MenuFocus::Tables => {
         if let Some(i) = self.list_state.selected() {
           let tables = self.table_map.get_index(self.schema_index).unwrap().1.to_owned();
           let filtered_tables: Vec<String> = tables
@@ -106,7 +106,7 @@ impl Menu {
 
   pub fn scroll_up(&mut self) {
     match self.menu_focus {
-      MenuFocus::Table => {
+      MenuFocus::Tables => {
         if let Some(i) = self.list_state.selected() {
           self.list_state = ListState::default().with_selected(Some(i.saturating_sub(1)));
         }
@@ -117,7 +117,7 @@ impl Menu {
 
   pub fn scroll_bottom(&mut self) {
     match self.menu_focus {
-      MenuFocus::Table => {
+      MenuFocus::Tables => {
         if let Some(i) = self.list_state.selected() {
           let tables = self.table_map.get_index(self.schema_index).unwrap().1.to_owned();
           let filtered_tables: Vec<String> = tables
@@ -141,7 +141,7 @@ impl Menu {
 
   pub fn scroll_top(&mut self) {
     match self.menu_focus {
-      MenuFocus::Table => {
+      MenuFocus::Tables => {
         if let Some(i) = self.list_state.selected() {
           self.list_state = ListState::default().with_selected(Some(0));
         }
@@ -173,7 +173,7 @@ impl<'a> SettableTableList<'a> for Menu {
         });
         log::info!("table map: {:?}", self.table_map);
         if self.table_map.keys().len() == 1 {
-          self.menu_focus = MenuFocus::Table;
+          self.menu_focus = MenuFocus::Tables;
           self.list_state = ListState::default().with_selected(Some(0));
         } else {
           self.menu_focus = MenuFocus::Schema;
@@ -210,7 +210,7 @@ impl Component for Menu {
     }
     if let Some(Event::Key(key)) = event {
       match key.code {
-        KeyCode::Right => self.change_focus(MenuFocus::Table),
+        KeyCode::Right => self.change_focus(MenuFocus::Tables),
         KeyCode::Left => self.change_focus(MenuFocus::Schema),
         KeyCode::Down => self.scroll_down(),
         KeyCode::Up => self.scroll_up(),
@@ -228,7 +228,7 @@ impl Component for Menu {
                   self.search = Some("".to_owned())
                 }
               },
-              KeyCode::Char('l') => self.change_focus(MenuFocus::Table),
+              KeyCode::Char('l') => self.change_focus(MenuFocus::Tables),
               KeyCode::Char('h') => self.change_focus(MenuFocus::Schema),
               KeyCode::Char('j') => self.scroll_down(),
               KeyCode::Char('k') => self.scroll_up(),
@@ -242,6 +242,8 @@ impl Component for Menu {
         KeyCode::Enter => {
           if self.search.is_some() && self.search_focused {
             self.search_focused = false;
+          } else if self.menu_focus == MenuFocus::Schema {
+            self.change_focus(MenuFocus::Tables);
           } else if let Some(selected) = self.list_state.selected() {
             let (schema, tables) = self.table_map.get_index(self.schema_index).unwrap();
             let filtered_tables: Vec<String> = tables
@@ -264,13 +266,17 @@ impl Component for Menu {
         },
         KeyCode::Esc => self.reset_search(),
         KeyCode::Backspace => {
-          if let Some(search) = self.search.as_mut() {
-            if !search.is_empty() {
-              search.pop();
-              self.list_state = ListState::default().with_selected(Some(0));
-            } else {
-              self.reset_search();
+          if self.search.is_some() && self.search_focused {
+            if let Some(search) = self.search.as_mut() {
+              if !search.is_empty() {
+                search.pop();
+                self.list_state = ListState::default().with_selected(Some(0));
+              } else {
+                self.reset_search();
+              }
             }
+          } else if self.menu_focus == MenuFocus::Tables {
+            self.change_focus(MenuFocus::Schema);
           }
         },
         _ => {},
@@ -343,11 +349,21 @@ impl Component for Menu {
           let available_height = block.inner(parent_block.inner(area)).height as usize;
           let list = List::default().items(filtered_tables).block(block).highlight_style(
             Style::default()
-              .bg(if focused && !self.search_focused { Color::Green } else { Color::White })
+              .bg(if focused && !self.search_focused && self.menu_focus == MenuFocus::Tables {
+                Color::Green
+              } else {
+                Color::White
+              })
               .fg(Color::DarkGray),
           );
           f.render_stateful_widget(list, layout[layout_index], &mut self.list_state);
-          let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight).symbols(scrollbar::VERTICAL);
+          let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .symbols(scrollbar::VERTICAL)
+            .style(Style::default().fg(if focused && !self.search_focused && self.menu_focus == MenuFocus::Tables {
+              Color::Green
+            } else {
+              Color::DarkGray
+            }));
           let mut vertical_scrollbar_state =
             ScrollbarState::new(table_length.saturating_sub(available_height)).position(self.list_state.offset());
           f.render_stateful_widget(vertical_scrollbar, block_margin, &mut vertical_scrollbar_state);
