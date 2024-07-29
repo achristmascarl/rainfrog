@@ -18,6 +18,7 @@ use crate::{
   config::{Config, KeyBindings},
   focus::Focus,
   tui::Event,
+  vim::{Mode, Transition, Vim},
 };
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -32,17 +33,24 @@ struct Selection {
   pub end: CursorPosition,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default)]
 pub struct Editor<'a> {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   selection: Option<Selection>,
   textarea: TextArea<'a>,
+  vim_state: Vim,
 }
 
 impl<'a> Editor<'a> {
   pub fn new() -> Self {
-    Editor { command_tx: None, config: Config::default(), selection: None, textarea: TextArea::default() }
+    Editor {
+      command_tx: None,
+      config: Config::default(),
+      selection: None,
+      textarea: TextArea::default(),
+      vim_state: Vim::new(Mode::Normal),
+    }
   }
 }
 
@@ -68,7 +76,15 @@ impl<'a> Component for Editor<'a> {
     }
     if let Some(Event::Key(key)) = event {
       if app_state.query_task.is_none() {
-        self.textarea.input(key);
+        let new_vim_state = self.vim_state.clone();
+        self.vim_state = match new_vim_state.transition(Input::from(key), &mut self.textarea) {
+          Transition::Mode(mode) if new_vim_state.mode != mode => {
+            self.textarea.set_cursor_style(mode.cursor_style());
+            Vim::new(mode)
+          },
+          Transition::Nop | Transition::Mode(_) => new_vim_state,
+          Transition::Pending(input) => new_vim_state.with_pending(input),
+        };
       }
     };
     Ok(None)
@@ -92,11 +108,8 @@ impl<'a> Component for Editor<'a> {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Editor;
-    let block = Block::default().title("query").borders(Borders::ALL).border_style(if focused {
-      Style::new().green()
-    } else {
-      Style::new().dim()
-    });
+    let block =
+      self.vim_state.mode.block().border_style(if focused { Style::new().green() } else { Style::new().dim() });
 
     self.textarea.set_block(block);
     self.textarea.set_line_number_style(if focused { Style::default().fg(Color::Yellow) } else { Style::new().dim() });
