@@ -8,7 +8,7 @@ use crossterm::{
 };
 use ratatui::{
   backend::CrosstermBackend,
-  style::{Color, Modifier, Style},
+  style::{Color, Modifier, Style, Stylize},
   text::Line,
   widgets::{Block, Borders},
   Terminal,
@@ -21,6 +21,7 @@ pub enum Mode {
   Normal,
   Insert,
   Visual,
+  Replace,
   Operator(char),
 }
 
@@ -30,6 +31,7 @@ impl Mode {
       Self::Normal => "type i to enter insert mode",
       Self::Insert => "type Esc to back to normal mode",
       Self::Visual => "type y to yank, type d to delete, type Esc to back to normal mode",
+      Self::Replace => "type character to replace underlined",
       Self::Operator(_) => "move cursor to apply operator",
     };
     let title = format!("{} MODE ({})", self, help);
@@ -41,9 +43,10 @@ impl Mode {
       Self::Normal => Color::Reset,
       Self::Insert => Color::LightBlue,
       Self::Visual => Color::LightYellow,
+      Self::Replace => Color::LightGreen,
       Self::Operator(_) => Color::LightGreen,
     };
-    Style::default().add_modifier(Modifier::SLOW_BLINK)
+    Style::default().add_modifier(Modifier::REVERSED)
   }
 }
 
@@ -53,6 +56,7 @@ impl fmt::Display for Mode {
       Self::Normal => write!(f, "NORMAL"),
       Self::Insert => write!(f, "INSERT"),
       Self::Visual => write!(f, "VISUAL"),
+      Self::Replace => write!(f, "REPLACE"),
       Self::Operator(c) => write!(f, "OPERATOR({})", c),
     }
   }
@@ -118,6 +122,9 @@ impl Vim {
           Input { key: Key::Char('r'), ctrl: true, .. } => {
             textarea.redo();
             return Transition::Mode(Mode::Normal);
+          },
+          Input { key: Key::Char('r'), ctrl: false, .. } => {
+            return Transition::Mode(Mode::Replace);
           },
           Input { key: Key::Char('x'), .. } => {
             textarea.delete_next_char();
@@ -237,6 +244,14 @@ impl Vim {
             Transition::Mode(Mode::Insert)
           },
         }
+      },
+      Mode::Replace => match input {
+        Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
+        input => {
+          textarea.delete_str(1);
+          textarea.input(input);
+          Transition::Mode(Mode::Normal)
+        },
       },
     }
   }
