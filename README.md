@@ -10,7 +10,7 @@ or
 
 `cargo run -- -u $(connection_url)`
 
-where `connection_url` includes the username:password for accessing the database (ex. postgres://username:password@localhost:5432/postgres)
+where `connection_url` includes the username:password for accessing the database (ex. `postgres://username:password@localhost:5432/postgres`)
 
 ## known issues
 - for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535)
@@ -20,7 +20,8 @@ where `connection_url` includes the username:password for accessing the database
 - [x] cancellable async querying (spawn tokio task)
 - [x] menu list with tables and schemas (collapsable)
 - [x] tui-textarea for query editor
-- [ ] tui-textarea vim keybindings
+- [x] basic tui-textarea vim keybindings
+= [ ] table footer
 - [ ] table selection and yanking
 - [ ] keybindings hints at bottom
 - [ ] handle mouse events
@@ -31,3 +32,4 @@ where `connection_url` includes the username:password for accessing the database
 - [ ] loading animation
 - [ ] table styling
 - [ ] perf (limit rendering)
+- [ ] improved tui-textarea vim keybindings

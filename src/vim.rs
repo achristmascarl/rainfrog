@@ -39,14 +39,13 @@ impl Mode {
   }
 
   pub fn cursor_style(&self) -> Style {
-    let color = match self {
-      Self::Normal => Color::Reset,
-      Self::Insert => Color::LightBlue,
-      Self::Visual => Color::LightYellow,
-      Self::Replace => Color::LightGreen,
-      Self::Operator(_) => Color::LightGreen,
-    };
-    Style::default().add_modifier(Modifier::REVERSED)
+    match self {
+      Self::Normal => Style::default().fg(Color::Reset).add_modifier(Modifier::REVERSED),
+      Self::Insert => Style::default().fg(Color::LightBlue).add_modifier(Modifier::SLOW_BLINK | Modifier::REVERSED),
+      Self::Visual => Style::default().fg(Color::LightYellow).add_modifier(Modifier::REVERSED),
+      Self::Replace => Style::default().fg(Color::LightMagenta).add_modifier(Modifier::UNDERLINED | Modifier::REVERSED),
+      Self::Operator(_) => Style::default().fg(Color::LightGreen).add_modifier(Modifier::REVERSED),
+    }
   }
 }
 
@@ -101,6 +100,7 @@ impl Vim {
           Input { key: Key::Char('e'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordForward),
           Input { key: Key::Char('b'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordBack),
           Input { key: Key::Char('^'), .. } => textarea.move_cursor(CursorMove::Head),
+          Input { key: Key::Char('0'), .. } => textarea.move_cursor(CursorMove::Head),
           Input { key: Key::Char('$'), .. } => textarea.move_cursor(CursorMove::End),
           Input { key: Key::Char('D'), .. } => {
             textarea.delete_line_by_end();
@@ -245,13 +245,15 @@ impl Vim {
           },
         }
       },
-      Mode::Replace => match input {
-        Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
-        input => {
-          textarea.delete_str(1);
-          textarea.input(input);
-          Transition::Mode(Mode::Normal)
-        },
+      Mode::Replace => {
+        match input {
+          Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
+          input => {
+            textarea.delete_str(1);
+            textarea.input(input);
+            Transition::Mode(Mode::Normal)
+          },
+        }
       },
     }
   }
