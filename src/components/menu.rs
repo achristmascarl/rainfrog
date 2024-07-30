@@ -359,11 +359,11 @@ impl Component for Menu {
           f.render_stateful_widget(list, layout[layout_index], &mut self.list_state);
           let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .symbols(scrollbar::VERTICAL)
-            .style(Style::default().fg(if focused && !self.search_focused && self.menu_focus == MenuFocus::Tables {
-              Color::Green
+            .style(if focused && !self.search_focused && self.menu_focus == MenuFocus::Tables {
+              Style::default().fg(Color::Green)
             } else {
-              Color::DarkGray
-            }));
+              Style::default()
+            });
           let mut vertical_scrollbar_state =
             ScrollbarState::new(table_length.saturating_sub(available_height)).position(self.list_state.offset());
           f.render_stateful_widget(vertical_scrollbar, block_margin, &mut vertical_scrollbar_state);

@@ -108,8 +108,11 @@ impl<'a> Component for Editor<'a> {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Editor;
-    let block =
-      self.vim_state.mode.block().border_style(if focused { Style::new().green() } else { Style::new().dim() });
+    let block = self.vim_state.mode.block().title("query").border_style(if focused {
+      Style::new().green()
+    } else {
+      Style::new().dim()
+    });
 
     self.textarea.set_block(block);
     self.textarea.set_line_number_style(if focused { Style::default().fg(Color::Yellow) } else { Style::new().dim() });

@@ -1,4 +1,4 @@
-// vim emulation for tui_textarea. from:
+// vim emulation for tui_textarea. based on:
 // https://github.com/rhysd/tui-textarea/blob/main/examples/vim.rs
 use std::{env, fmt, fs, io, io::BufRead};
 
@@ -9,6 +9,7 @@ use crossterm::{
 use ratatui::{
   backend::CrosstermBackend,
   style::{Color, Modifier, Style},
+  text::Line,
   widgets::{Block, Borders},
   Terminal,
 };
@@ -26,13 +27,13 @@ pub enum Mode {
 impl Mode {
   pub fn block<'a>(&self) -> Block<'a> {
     let help = match self {
-      Self::Normal => "type q to quit, type i to enter insert mode",
+      Self::Normal => "type i to enter insert mode",
       Self::Insert => "type Esc to back to normal mode",
       Self::Visual => "type y to yank, type d to delete, type Esc to back to normal mode",
       Self::Operator(_) => "move cursor to apply operator",
     };
     let title = format!("{} MODE ({})", self, help);
-    Block::default().borders(Borders::ALL).title(title)
+    Block::default().borders(Borders::ALL).title_bottom(Line::from(title).right_aligned())
   }
 
   pub fn cursor_style(&self) -> Style {
@@ -42,7 +43,7 @@ impl Mode {
       Self::Visual => Color::LightYellow,
       Self::Operator(_) => Color::LightGreen,
     };
-    Style::default().fg(color).add_modifier(Modifier::REVERSED)
+    Style::default().add_modifier(Modifier::SLOW_BLINK)
   }
 }
 
@@ -93,6 +94,7 @@ impl Vim {
           Input { key: Key::Char('k'), .. } => textarea.move_cursor(CursorMove::Up),
           Input { key: Key::Char('l'), .. } => textarea.move_cursor(CursorMove::Forward),
           Input { key: Key::Char('w'), .. } => textarea.move_cursor(CursorMove::WordForward),
+          Input { key: Key::Char('e'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordForward),
           Input { key: Key::Char('b'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordBack),
           Input { key: Key::Char('^'), .. } => textarea.move_cursor(CursorMove::Head),
           Input { key: Key::Char('$'), .. } => textarea.move_cursor(CursorMove::End),
@@ -202,6 +204,10 @@ impl Vim {
           Input { key: Key::Char('c'), ctrl: false, .. } if self.mode == Mode::Visual => {
             textarea.cut();
             return Transition::Mode(Mode::Insert);
+          },
+          Input { key: Key::Esc, .. } => {
+            textarea.cancel_selection();
+            return Transition::Mode(Mode::Normal);
           },
           input => return Transition::Pending(input),
         }
