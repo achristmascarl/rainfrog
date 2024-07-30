@@ -40,6 +40,7 @@ pub struct Editor<'a> {
   selection: Option<Selection>,
   textarea: TextArea<'a>,
   vim_state: Vim,
+  cursor_style: Style,
 }
 
 impl<'a> Editor<'a> {
@@ -50,6 +51,7 @@ impl<'a> Editor<'a> {
       selection: None,
       textarea: TextArea::default(),
       vim_state: Vim::new(Mode::Normal),
+      cursor_style: Mode::Normal.cursor_style(),
     }
   }
 }
@@ -79,7 +81,7 @@ impl<'a> Component for Editor<'a> {
         let new_vim_state = self.vim_state.clone();
         self.vim_state = match new_vim_state.transition(Input::from(key), &mut self.textarea) {
           Transition::Mode(mode) if new_vim_state.mode != mode => {
-            self.textarea.set_cursor_style(mode.cursor_style());
+            self.cursor_style = mode.cursor_style();
             Vim::new(mode)
           },
           Transition::Nop | Transition::Mode(_) => new_vim_state,
@@ -114,6 +116,7 @@ impl<'a> Component for Editor<'a> {
       Style::new().dim()
     });
 
+    self.textarea.set_cursor_style(self.cursor_style);
     self.textarea.set_block(block);
     self.textarea.set_line_number_style(if focused { Style::default().fg(Color::Yellow) } else { Style::new().dim() });
     self.textarea.set_cursor_line_style(Style::default().not_underlined());

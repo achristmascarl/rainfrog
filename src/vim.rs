@@ -205,11 +205,11 @@ impl Vim {
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('d'), ctrl: false, .. } if self.mode == Mode::Visual => {
-            textarea.cut();
+            textarea.delete_str(1);
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('c'), ctrl: false, .. } if self.mode == Mode::Visual => {
-            textarea.cut();
+            textarea.delete_str(1);
             return Transition::Mode(Mode::Insert);
           },
           Input { key: Key::Esc, .. } => {
