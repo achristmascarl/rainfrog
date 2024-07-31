@@ -21,7 +21,9 @@ where `connection_url` includes the username:password for accessing the database
 - [x] menu list with tables and schemas (collapsable)
 - [x] tui-textarea for query editor
 - [x] basic tui-textarea vim keybindings
-= [ ] table footer
+- [x] handle custom types / enums
+- [ ] display rows affected
+- [ ] table footer
 - [ ] table selection and yanking
 - [ ] keybindings hints at bottom
 - [ ] handle mouse events

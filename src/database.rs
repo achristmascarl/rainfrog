@@ -187,14 +187,16 @@ pub fn parse_value(row: &PgRow, col: &PgColumn) -> Option<Value> {
           })
         },
         _ => {
-          log::error!("unsupported array type: {:?}", col_type);
-          None
+          // try to cast custom or other types to strings
+          let received: Vec<String> = row.try_get_unchecked(col.ordinal()).unwrap();
+          Some(Value { string: vec_to_string(received), is_null: false })
         },
       }
     },
     _ => {
-      log::error!("unsupported type: {:?}", col_type);
-      None
+      // try to cast custom or other types to strings
+      let received: String = row.try_get_unchecked(col.ordinal()).unwrap();
+      Some(Value { string: received, is_null: false })
     },
   }
 }
