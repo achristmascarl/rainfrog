@@ -166,11 +166,17 @@ impl<'a> Component for Data<'a> {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Data;
 
-    let block = Block::default().title("results").borders(Borders::ALL).border_style(if focused {
+    let mut block = Block::default().borders(Borders::ALL).border_style(if focused {
       Style::new().green()
     } else {
       Style::new().dim()
     });
+
+    if let DataState::HasResults(rows) = &self.data_state {
+      block = block.title(format!("results ({} rows)", rows.len()));
+    } else {
+      block = block.title("results");
+    }
 
     match &self.data_state {
       DataState::NoResults => {
