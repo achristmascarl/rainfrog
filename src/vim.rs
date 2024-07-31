@@ -134,6 +134,13 @@ impl Vim {
             textarea.cancel_selection();
             return Transition::Mode(Mode::Insert);
           },
+          Input { key: Key::Char('a'), ctrl: false, .. } if matches!(self.mode, Mode::Operator('d')) => {
+            textarea.cancel_selection();
+            textarea.move_cursor(CursorMove::Forward);
+            textarea.move_cursor(CursorMove::WordBack);
+            textarea.start_selection();
+            return Transition::Nop;
+          },
           Input { key: Key::Char('a'), .. } => {
             textarea.cancel_selection();
             textarea.move_cursor(CursorMove::Forward);
