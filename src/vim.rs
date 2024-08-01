@@ -97,6 +97,9 @@ impl Vim {
           Input { key: Key::Char('k'), .. } => textarea.move_cursor(CursorMove::Up),
           Input { key: Key::Char('l'), .. } => textarea.move_cursor(CursorMove::Forward),
           Input { key: Key::Char('w'), .. } => textarea.move_cursor(CursorMove::WordForward),
+          Input { key: Key::Char('e'), ctrl: false, .. } if matches!(self.mode, Mode::Operator(_)) => {
+            textarea.move_cursor(CursorMove::WordForward) // `e` behaves like `w` in operator-pending mode
+          },
           Input { key: Key::Char('e'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordEnd),
           Input { key: Key::Char('b'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordBack),
           Input { key: Key::Char('^'), .. } => textarea.move_cursor(CursorMove::Head),
@@ -208,15 +211,18 @@ impl Vim {
             return Transition::Mode(Mode::Operator(op));
           },
           Input { key: Key::Char('y'), ctrl: false, .. } if self.mode == Mode::Visual => {
+            textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
             textarea.copy();
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('d'), ctrl: false, .. } if self.mode == Mode::Visual => {
-            textarea.delete_str(1);
+            textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
+            textarea.cut();
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('c'), ctrl: false, .. } if self.mode == Mode::Visual => {
-            textarea.delete_str(1);
+            textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
+            textarea.cut();
             return Transition::Mode(Mode::Insert);
           },
           Input { key: Key::Esc, .. } => {
@@ -252,13 +258,15 @@ impl Vim {
           },
         }
       },
-      Mode::Replace => match input {
-        Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
-        input => {
-          textarea.delete_str(1);
-          textarea.input(input);
-          Transition::Mode(Mode::Normal)
-        },
+      Mode::Replace => {
+        match input {
+          Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
+          input => {
+            textarea.delete_str(1);
+            textarea.input(input);
+            Transition::Mode(Mode::Normal)
+          },
+        }
       },
     }
   }
