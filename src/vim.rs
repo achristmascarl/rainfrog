@@ -97,7 +97,7 @@ impl Vim {
           Input { key: Key::Char('k'), .. } => textarea.move_cursor(CursorMove::Up),
           Input { key: Key::Char('l'), .. } => textarea.move_cursor(CursorMove::Forward),
           Input { key: Key::Char('w'), .. } => textarea.move_cursor(CursorMove::WordForward),
-          Input { key: Key::Char('e'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordForward),
+          Input { key: Key::Char('e'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordEnd),
           Input { key: Key::Char('b'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordBack),
           Input { key: Key::Char('^'), .. } => textarea.move_cursor(CursorMove::Head),
           Input { key: Key::Char('0'), .. } => textarea.move_cursor(CursorMove::Head),
@@ -252,15 +252,13 @@ impl Vim {
           },
         }
       },
-      Mode::Replace => {
-        match input {
-          Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
-          input => {
-            textarea.delete_str(1);
-            textarea.input(input);
-            Transition::Mode(Mode::Normal)
-          },
-        }
+      Mode::Replace => match input {
+        Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
+        input => {
+          textarea.delete_str(1);
+          textarea.input(input);
+          Transition::Mode(Mode::Normal)
+        },
       },
     }
   }

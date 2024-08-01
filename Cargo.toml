@@ -40,7 +40,7 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter", "serde"] }
 chrono = { version = "0.4", default-features = false }
 chrono-tz = { version = "0.5", default-features = false }
 indexmap = "2.2.6"
-tui-textarea = "0.5.1"
+tui-textarea = "0.5.2"
 
 [build-dependencies]
 vergen = { version = "8.2.6", features = [ "build", "git", "gitoxide", "cargo" ]}
