@@ -186,7 +186,12 @@ impl<'a> Component for Data<'a> {
         f.render_widget(Paragraph::new("no results").wrap(Wrap { trim: false }).block(block), area);
       },
       DataState::RowsAffected(n) => {
-        f.render_widget(Paragraph::new(format!("{} rows affected", n)).wrap(Wrap { trim: false }).block(block), area);
+        f.render_widget(
+          Paragraph::new(format!("{} row{} affected", n, if *n == 1_u64 { "" } else { "s" }))
+            .wrap(Wrap { trim: false })
+            .block(block),
+          area,
+        );
       },
       DataState::Blank => {
         f.render_widget(Paragraph::new("").wrap(Wrap { trim: false }).block(block), area);
@@ -196,7 +201,7 @@ impl<'a> Component for Data<'a> {
         self.scrollable.draw(f, area, app_state)?;
       },
       DataState::Error(e) => {
-        f.render_widget(Paragraph::new(format!("{:?}", e.to_string())).wrap(Wrap { trim: false }).block(block), area);
+        f.render_widget(Paragraph::new(e.to_string()).wrap(Wrap { trim: false }).block(block), area);
       },
       DataState::Loading => {
         f.render_widget(Paragraph::new("loading...").wrap(Wrap { trim: false }).block(block), area);

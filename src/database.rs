@@ -1,6 +1,11 @@
 use std::{collections::HashMap, fmt::Write, string::String};
 
 use futures::stream::StreamExt;
+use sqlparser::{
+  ast::Statement,
+  dialect::PostgreSqlDialect,
+  parser::{Parser, ParserError},
+};
 use sqlx::{
   postgres::{PgColumn, PgPool, PgPoolOptions, PgQueryResult, PgRow, PgTypeInfo, PgTypeKind, PgValueRef, Postgres},
   types::Uuid,
@@ -20,7 +25,7 @@ pub struct Value {
 pub type Rows = (Vec<PgRow>, Option<u64>);
 pub type Headers = Vec<Header>;
 pub type DbPool = PgPool;
-pub type DbError = Error;
+pub type DbError = sqlx::Either<Error, ParserError>;
 
 pub async fn init_pool(url: String) -> Result<PgPool, Error> {
   PgPoolOptions::new().max_connections(5).connect(&url).await
@@ -28,10 +33,13 @@ pub async fn init_pool(url: String) -> Result<PgPool, Error> {
 
 // since it's possible for raw_sql to execute multiple queries in a single string,
 // we only execute the first one and then drop the rest.
-pub async fn query(query: String, pool: &PgPool) -> Result<Rows, Error> {
-  let queries = query.split(';').collect::<Vec<&str>>();
-  let first_query = queries[0];
-  let mut stream = sqlx::raw_sql(first_query).fetch_many(pool);
+pub async fn query(query: String, pool: &PgPool) -> Result<Rows, DbError> {
+  let first_query = get_first_query(query);
+  match should_use_tx(&first_query) {
+    Ok(b) => log::info!("Should use transaction: {}", b),
+    Err(e) => return Err(e),
+  }
+  let mut stream = sqlx::raw_sql(&first_query).fetch_many(pool);
   let mut first_query_finished = false;
   let mut first_query_rows = vec![];
   let mut first_query_rows_affected: Option<u64> = None;
@@ -45,11 +53,51 @@ pub async fn query(query: String, pool: &PgPool) -> Result<Rows, Error> {
       Some(Ok(Either::Right(row))) => {
         first_query_rows.push(row);
       },
-      Some(Err(e)) => return Err(e),
-      None => return Err(Error::Protocol("Results stream empty".to_owned())),
+      Some(Err(e)) => return Err(Either::Left(e)),
+      None => return Err(Either::Left(Error::Protocol("Results stream empty".to_owned()))),
     };
   }
   Ok((first_query_rows, first_query_rows_affected))
+}
+
+pub fn get_first_query(query: String) -> String {
+  let queries = query.split(';').collect::<Vec<&str>>();
+  queries[0].to_string()
+}
+
+pub fn is_select(query: String) -> Result<bool, DbError> {
+  let dialect = PostgreSqlDialect {};
+  let ast = Parser::parse_sql(&dialect, &query);
+  match ast {
+    Ok(ast) => {
+      if ast.len() > 1 {
+        return Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())));
+      }
+      match ast[0] {
+        Statement::Query(_) => Ok(true),
+        _ => Ok(false),
+      }
+    },
+    Err(e) => Err(Either::Right(e)),
+  }
+}
+
+pub fn should_use_tx(query: &str) -> Result<bool, DbError> {
+  let dialect = PostgreSqlDialect {};
+  let ast = Parser::parse_sql(&dialect, query);
+  match ast {
+    Ok(ast) => {
+      if ast.len() > 1 {
+        return Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())));
+      }
+      log::info!("{:?}", ast[0]);
+      match ast[0] {
+        Statement::Delete(_) | Statement::Drop { .. } => Ok(true),
+        _ => Ok(false),
+      }
+    },
+    Err(e) => Err(Either::Right(e)),
+  }
 }
 
 pub fn get_headers(rows: &Rows) -> Headers {

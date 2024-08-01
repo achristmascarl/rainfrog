@@ -2120,6 +2120,7 @@ dependencies = [
  "serde",
  "serde_json",
  "signal-hook",
+ "sqlparser",
  "sqlx",
  "strip-ansi-escapes",
  "strum",
@@ -2585,6 +2586,15 @@ dependencies = [
  "itertools 0.12.1",
  "nom",
  "unicode_categories",
+]
+
+[[package]]
+name = "sqlparser"
+version = "0.49.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4a404d0e14905361b918cb8afdb73605e25c1d5029312bd9785142dcb3aa49e"
+dependencies = [
+ "log",
 ]
 
 [[package]]

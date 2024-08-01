@@ -24,11 +24,11 @@ where `connection_url` includes the username:password for accessing the database
 - [x] basic tui-textarea vim keybindings
 - [x] handle custom types / enums
 - [x] display rows affected
+- [ ] confirm before delete/drop/update
 - [ ] table selection and yanking
 - [ ] keybindings hints at bottom
 - [ ] handle mouse events
 - [ ] handle explain / analyze output
-- [ ] confirm before delete (wrap in transactions)
 - [ ] editor syntax highlighting
 - [ ] view indexes, constraints, etc.
 - [ ] loading animation
