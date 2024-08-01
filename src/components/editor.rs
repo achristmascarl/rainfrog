@@ -78,15 +78,26 @@ impl<'a> Component for Editor<'a> {
     }
     if let Some(Event::Key(key)) = event {
       if app_state.query_task.is_none() {
-        let new_vim_state = self.vim_state.clone();
-        self.vim_state = match new_vim_state.transition(Input::from(key), &mut self.textarea) {
-          Transition::Mode(mode) if new_vim_state.mode != mode => {
-            self.cursor_style = mode.cursor_style();
-            Vim::new(mode)
+        let input = Input::from(key);
+        log::info!("{:?}", input);
+        match input {
+          Input { key: Key::Enter, ctrl: true, .. } | Input { key: Key::Enter, alt: true, .. } => {
+            if let Some(sender) = &self.command_tx {
+              sender.send(Action::Query(self.textarea.lines().join(" ")))?;
+            }
           },
-          Transition::Nop | Transition::Mode(_) => new_vim_state,
-          Transition::Pending(input) => new_vim_state.with_pending(input),
-        };
+          _ => {
+            let new_vim_state = self.vim_state.clone();
+            self.vim_state = match new_vim_state.transition(input, &mut self.textarea) {
+              Transition::Mode(mode) if new_vim_state.mode != mode => {
+                self.cursor_style = mode.cursor_style();
+                Vim::new(mode)
+              },
+              Transition::Nop | Transition::Mode(_) => new_vim_state,
+              Transition::Pending(input) => new_vim_state.with_pending(input),
+            };
+          },
+        }
       }
     };
     Ok(None)
