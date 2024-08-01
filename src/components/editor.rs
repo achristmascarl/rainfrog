@@ -79,9 +79,8 @@ impl<'a> Component for Editor<'a> {
     if let Some(Event::Key(key)) = event {
       if app_state.query_task.is_none() {
         let input = Input::from(key);
-        log::info!("{:?}", input);
         match input {
-          Input { key: Key::Enter, ctrl: true, .. } | Input { key: Key::Enter, alt: true, .. } => {
+          Input { key: Key::Enter, alt: true, .. } => {
             if let Some(sender) = &self.command_tx {
               sender.send(Action::Query(self.textarea.lines().join(" ")))?;
             }

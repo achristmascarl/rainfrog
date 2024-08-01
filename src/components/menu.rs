@@ -160,6 +160,7 @@ impl Menu {
 impl<'a> SettableTableList<'a> for Menu {
   fn set_table_list(&mut self, data: Option<Result<Rows, DbError>>) {
     log::info!("setting menu table list");
+    self.table_map = IndexMap::new();
     match data {
       Some(Ok(rows)) => {
         rows.0.iter().for_each(|row| {
