@@ -13,7 +13,8 @@ or
 where `connection_url` includes the username:password for accessing the database (ex. `postgres://username:password@localhost:5432/postgres`)
 
 ## known issues
-- for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535)
+- for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535). Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
+- in the query editor, if there's horizontal overflow, a few characters at the right edge will not be visible (https://github.com/rhysd/tui-textarea/issues/77) 
 
 ## TODO
 - [x] scrollable table 
