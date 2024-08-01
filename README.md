@@ -23,7 +23,7 @@ where `connection_url` includes the username:password for accessing the database
 - [x] tui-textarea for query editor
 - [x] basic tui-textarea vim keybindings
 - [x] handle custom types / enums
-- [ ] display rows affected
+- [x] display rows affected
 - [ ] table selection and yanking
 - [ ] keybindings hints at bottom
 - [ ] handle mouse events

@@ -29,6 +29,7 @@ pub enum DataState {
   HasResults(Rows),
   Error(DbError),
   Cancelled,
+  RowsAffected(u64),
 }
 
 pub trait SettableDataTable<'a> {
@@ -65,7 +66,9 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
   fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>) {
     match data {
       Some(Ok(rows)) => {
-        if rows.is_empty() {
+        if rows.0.is_empty() && rows.1.is_some_and(|n| n > 0) {
+          self.data_state = DataState::RowsAffected(rows.1.unwrap());
+        } else if rows.0.is_empty() {
           self.data_state = DataState::NoResults;
         } else {
           let headers = get_headers(&rows);
@@ -73,10 +76,10 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
             Row::new(headers.iter().map(|h| Cell::from(format!("{}\n{}", h.name, h.type_name))).collect::<Vec<Cell>>())
               .height(2)
               .bottom_margin(1);
-          let value_rows = rows.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
+          let value_rows = rows.0.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
           let buf_table =
             Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
-          self.scrollable.set_table(Box::new(buf_table), headers.len(), rows.len(), 36_u16);
+          self.scrollable.set_table(Box::new(buf_table), headers.len(), rows.0.len(), 36_u16);
           self.data_state = DataState::HasResults(rows);
         }
       },
@@ -173,7 +176,7 @@ impl<'a> Component for Data<'a> {
     });
 
     if let DataState::HasResults(rows) = &self.data_state {
-      block = block.title(format!("results ({} rows)", rows.len()));
+      block = block.title(format!("results ({} rows)", rows.0.len()));
     } else {
       block = block.title("results");
     }
@@ -181,6 +184,9 @@ impl<'a> Component for Data<'a> {
     match &self.data_state {
       DataState::NoResults => {
         f.render_widget(Paragraph::new("no results").wrap(Wrap { trim: false }).block(block), area);
+      },
+      DataState::RowsAffected(n) => {
+        f.render_widget(Paragraph::new(format!("{} rows affected", n)).wrap(Wrap { trim: false }).block(block), area);
       },
       DataState::Blank => {
         f.render_widget(Paragraph::new("").wrap(Wrap { trim: false }).block(block), area);

@@ -162,7 +162,7 @@ impl<'a> SettableTableList<'a> for Menu {
     log::info!("setting menu table list");
     match data {
       Some(Ok(rows)) => {
-        rows.iter().for_each(|row| {
+        rows.0.iter().for_each(|row| {
           let row_as_strings = row_to_vec(row);
           let schema = row_as_strings[0].clone();
           let table = row_as_strings[1].clone();

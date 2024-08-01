@@ -225,7 +225,7 @@ impl App {
                 let results = database::query(query, &pool).await;
                 match &results {
                   Ok(rows) => {
-                    log::info!("{:?}  rows", rows.len());
+                    log::info!("{:?}  rows", rows.0.len());
                   },
                   Err(e) => {
                     log::error!("{e:?}");
