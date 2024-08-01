@@ -92,10 +92,12 @@ impl Vim {
     match self.mode {
       Mode::Normal | Mode::Visual | Mode::Operator(_) => {
         match input {
-          Input { key: Key::Char('h'), .. } => textarea.move_cursor(CursorMove::Back),
-          Input { key: Key::Char('j'), .. } => textarea.move_cursor(CursorMove::Down),
-          Input { key: Key::Char('k'), .. } => textarea.move_cursor(CursorMove::Up),
-          Input { key: Key::Char('l'), .. } => textarea.move_cursor(CursorMove::Forward),
+          Input { key: Key::Char('h'), .. } | Input { key: Key::Left, .. } => textarea.move_cursor(CursorMove::Back),
+          Input { key: Key::Char('j'), .. } | Input { key: Key::Down, .. } => textarea.move_cursor(CursorMove::Down),
+          Input { key: Key::Char('k'), .. } | Input { key: Key::Up, .. } => textarea.move_cursor(CursorMove::Up),
+          Input { key: Key::Char('l'), .. } | Input { key: Key::Right, .. } => {
+            textarea.move_cursor(CursorMove::Forward)
+          },
           Input { key: Key::Char('w'), .. } => textarea.move_cursor(CursorMove::WordForward),
           Input { key: Key::Char('e'), ctrl: false, .. } if matches!(self.mode, Mode::Operator(_)) => {
             textarea.move_cursor(CursorMove::WordForward) // `e` behaves like `w` in operator-pending mode
