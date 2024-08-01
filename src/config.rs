@@ -444,7 +444,7 @@ mod tests {
     let c = Config::new()?;
     assert_eq!(
       c.keybindings.get(&Focus::Menu).unwrap().get(&parse_key_sequence("<q>").unwrap_or_default()).unwrap(),
-      &Action::Quit
+      &Action::AbortQuery
     );
     Ok(())
   }

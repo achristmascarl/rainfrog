@@ -22,10 +22,10 @@ use crate::{
 
 #[derive(Default)]
 pub enum DataState {
-  Loading,
-  NoResults,
   #[default]
   Blank,
+  Loading,
+  NoResults,
   HasResults(Rows),
   Error(DbError),
   Cancelled,
@@ -201,13 +201,22 @@ impl<'a> Component for Data<'a> {
         self.scrollable.draw(f, area, app_state)?;
       },
       DataState::Error(e) => {
-        f.render_widget(Paragraph::new(e.to_string()).wrap(Wrap { trim: false }).block(block), area);
+        f.render_widget(
+          Paragraph::new(e.to_string()).style(Style::default().fg(Color::Red)).wrap(Wrap { trim: false }).block(block),
+          area,
+        );
       },
       DataState::Loading => {
-        f.render_widget(Paragraph::new("loading...").wrap(Wrap { trim: false }).block(block), area);
+        f.render_widget(
+          Paragraph::new(Text::from("loading...").fg(Color::Green)).wrap(Wrap { trim: false }).block(block),
+          area,
+        );
       },
       DataState::Cancelled => {
-        f.render_widget(Paragraph::new("query cancelled.").wrap(Wrap { trim: false }).block(block), area);
+        f.render_widget(
+          Paragraph::new(Text::from("query cancelled.").fg(Color::Yellow)).wrap(Wrap { trim: false }).block(block),
+          area,
+        );
       },
     }
 
