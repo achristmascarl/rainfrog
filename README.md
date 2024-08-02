@@ -29,9 +29,8 @@ where `connection_url` includes the username:password for accessing the database
 - [ ] keybindings hints at bottom
 - [ ] handle mouse events
 - [ ] handle explain / analyze output
-- [ ] editor syntax highlighting
 - [ ] view indexes, constraints, etc.
 - [ ] loading animation
 - [ ] table styling
+- [ ] editor syntax highlighting
 - [ ] perf (limit rendering)
-- [ ] improved tui-textarea vim keybindings

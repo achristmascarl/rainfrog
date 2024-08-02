@@ -83,6 +83,8 @@ impl<'a> Component for Editor<'a> {
           Input { key: Key::Enter, alt: true, .. } => {
             if let Some(sender) = &self.command_tx {
               sender.send(Action::Query(self.textarea.lines().join(" ")))?;
+              self.vim_state = Vim::new(Mode::Normal);
+              self.cursor_style = Mode::Normal.cursor_style();
             }
           },
           _ => {
