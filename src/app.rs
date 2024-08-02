@@ -34,10 +34,15 @@ use crate::{
   tui,
 };
 
+pub enum QueryTask {
+  Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
+  Tx(tokio::task::JoinHandle<QueryResultsWithMetadata>),
+}
+
 pub struct AppState {
   pub connection_string: String,
   pub focus: Focus,
-  pub query_task: Option<tokio::task::JoinHandle<QueryResultsWithMetadata>>,
+  pub query_task: Option<QueryTask>,
 }
 
 pub struct Components<'a> {
@@ -119,7 +124,7 @@ impl App {
         if query_task.is_finished() {
           let results = query_task.await?;
           self.state.query_task = None;
-          self.components.data.set_data_state(Some(results.results), results.statement_type);
+          self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
         }
       }
       if let Some(e) = tui.next().await {
@@ -225,23 +230,32 @@ impl App {
             let should_use_tx = database::should_use_tx(&query);
             let action_tx = action_tx.clone();
             if let Some(pool) = &self.pool {
-              let pool = pool.clone();
-              self.components.data.set_loading();
-              self.state.query_task = Some(tokio::spawn(async move {
-                log::info!("Query: {}", query);
-                let results = database::query(query.clone(), &pool).await;
-                match &results {
-                  Ok(rows) => {
-                    log::info!("{:?} rows, {:?} affected", rows.0.len(), rows.1);
-                  },
-                  Err(e) => {
-                    log::error!("{e:?}");
-                  },
-                };
-                let statement_type = database::get_statement_type(&query).unwrap();
+              match should_use_tx {
+                Ok(true) => {},
+                Ok(false) => {
+                  let pool = pool.clone();
+                  self.components.data.set_loading();
+                  self.state.query_task = Some(tokio::spawn(async move {
+                    log::info!("Query: {}", query);
+                    let results = database::query(query.clone(), &pool).await;
+                    match &results {
+                      Ok(rows) => {
+                        log::info!("{:?} rows, {:?} affected", rows.0.len(), rows.1);
+                      },
+                      Err(e) => {
+                        log::error!("{e:?}");
+                      },
+                    };
+                    let statement_type = database::get_statement_type(&query).unwrap();
 
-                QueryResultsWithMetadata { results, statement_type }
-              }));
+                    QueryResultsWithMetadata { results, statement_type }
+                  }));
+                },
+                Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
+              }
+            } else {
+              log::error!("No connection pool");
+              self.components.data.set_data_state(Some(Err(DbError::Left(sqlx::Error::PoolTimedOut))), None)
             }
           },
           Action::AbortQuery => {

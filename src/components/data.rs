@@ -35,7 +35,7 @@ pub enum DataState {
 }
 
 pub trait SettableDataTable<'a> {
-  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>, statement_type: Statement);
+  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>, statement_type: Option<Statement>);
   fn set_loading(&mut self);
   fn set_cancelled(&mut self);
 }
@@ -65,13 +65,14 @@ impl<'a> Data<'a> {
 }
 
 impl<'a> SettableDataTable<'a> for Data<'a> {
-  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>, statement_type: Statement) {
+  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>, statement_type: Option<Statement>) {
     match data {
       Some(Ok(rows)) => {
         if rows.0.is_empty() && rows.1.is_some_and(|n| n > 0) {
           self.data_state = DataState::RowsAffected(rows.1.unwrap());
-        } else if rows.0.is_empty() && !matches!(statement_type, Statement::Query(_)) {
-          self.data_state = DataState::StatementCompleted(statement_type);
+        } else if rows.0.is_empty() && statement_type.is_some() && !matches!(statement_type, Some(Statement::Query(_)))
+        {
+          self.data_state = DataState::StatementCompleted(statement_type.unwrap());
         } else if rows.0.is_empty() {
           self.data_state = DataState::NoResults;
         } else {
