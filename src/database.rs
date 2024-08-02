@@ -9,7 +9,7 @@ use sqlparser::{
 use sqlx::{
   postgres::{PgColumn, PgPool, PgPoolOptions, PgQueryResult, PgRow, PgTypeInfo, PgTypeKind, PgValueRef, Postgres},
   types::Uuid,
-  Column, Database, Either, Error, Pool, Row, ValueRef,
+  Column, Database, Either, Error, Pool, Row, Transaction, ValueRef,
 };
 
 pub struct Header {
@@ -34,6 +34,33 @@ pub async fn init_pool(url: String) -> Result<PgPool, Error> {
 // since it's possible for raw_sql to execute multiple queries in a single string,
 // we only execute the first one and then drop the rest.
 pub async fn query(query: String, pool: &PgPool) -> Result<Rows, DbError> {
+  let first_query = get_first_query(query);
+  match should_use_tx(&first_query) {
+    Ok(b) => log::info!("Should use transaction: {}", b),
+    Err(e) => return Err(e),
+  }
+  let mut stream = sqlx::raw_sql(&first_query).fetch_many(pool);
+  let mut first_query_finished = false;
+  let mut first_query_rows = vec![];
+  let mut first_query_rows_affected: Option<u64> = None;
+  while !first_query_finished {
+    let next = stream.next().await;
+    match next {
+      Some(Ok(Either::Left(result))) => {
+        first_query_rows_affected = Some(result.rows_affected());
+        first_query_finished = true;
+      },
+      Some(Ok(Either::Right(row))) => {
+        first_query_rows.push(row);
+      },
+      Some(Err(e)) => return Err(Either::Left(e)),
+      None => return Err(Either::Left(Error::Protocol("Results stream empty".to_owned()))),
+    };
+  }
+  Ok((first_query_rows, first_query_rows_affected))
+}
+
+pub async fn query_with_tx<'a>(query: String, pool: &PgPool, tx: Transaction<'_, Postgres>) -> Result<Rows, DbError> {
   let first_query = get_first_query(query);
   match should_use_tx(&first_query) {
     Ok(b) => log::info!("Should use transaction: {}", b),
@@ -100,13 +127,11 @@ pub fn should_use_tx(query: &str) -> Result<bool, DbError> {
 pub fn get_headers(rows: &Rows) -> Headers {
   match rows.0.len() {
     0 => vec![],
-    _ => {
-      rows.0[0]
-        .columns()
-        .iter()
-        .map(|col| Header { name: col.name().to_string(), type_name: col.type_info().to_string() })
-        .collect()
-    },
+    _ => rows.0[0]
+      .columns()
+      .iter()
+      .map(|col| Header { name: col.name().to_string(), type_name: col.type_info().to_string() })
+      .collect(),
   }
 }
 

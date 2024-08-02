@@ -34,7 +34,7 @@ use crate::{
   tui,
 };
 
-pub enum QueryTask {
+pub enum DbTask {
   Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
   Tx(tokio::task::JoinHandle<QueryResultsWithMetadata>),
 }
@@ -42,7 +42,7 @@ pub enum QueryTask {
 pub struct AppState {
   pub connection_string: String,
   pub focus: Focus,
-  pub query_task: Option<QueryTask>,
+  pub query_task: Option<DbTask>,
 }
 
 pub struct Components<'a> {
@@ -120,12 +120,16 @@ impl App {
     action_tx.send(Action::LoadMenu)?;
 
     loop {
-      if let Some(query_task) = &mut self.state.query_task {
-        if query_task.is_finished() {
-          let results = query_task.await?;
-          self.state.query_task = None;
-          self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
-        }
+      match &mut self.state.query_task {
+        Some(DbTask::Query(task)) => {
+          if task.is_finished() {
+            let results = task.await?;
+            self.state.query_task = None;
+            self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
+          }
+        },
+        Some(DbTask::Tx(task)) => {},
+        None => {},
       }
       if let Some(e) = tui.next().await {
         let mut event_consumed = false;
@@ -231,11 +235,13 @@ impl App {
             let action_tx = action_tx.clone();
             if let Some(pool) = &self.pool {
               match should_use_tx {
-                Ok(true) => {},
+                Ok(true) => {
+                  let mut tx = pool.begin().await?;
+                },
                 Ok(false) => {
                   let pool = pool.clone();
                   self.components.data.set_loading();
-                  self.state.query_task = Some(tokio::spawn(async move {
+                  self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
                     log::info!("Query: {}", query);
                     let results = database::query(query.clone(), &pool).await;
                     match &results {
@@ -249,7 +255,7 @@ impl App {
                     let statement_type = database::get_statement_type(&query).unwrap();
 
                     QueryResultsWithMetadata { results, statement_type }
-                  }));
+                  })));
                 },
                 Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
               }
@@ -258,12 +264,14 @@ impl App {
               self.components.data.set_data_state(Some(Err(DbError::Left(sqlx::Error::PoolTimedOut))), None)
             }
           },
-          Action::AbortQuery => {
-            if let Some(query_task) = &self.state.query_task {
-              query_task.abort();
+          Action::AbortQuery => match &self.state.query_task {
+            Some(DbTask::Query(task)) => {
+              task.abort();
               self.state.query_task = None;
               self.components.data.set_cancelled();
-            }
+            },
+            Some(DbTask::Tx(task)) => {},
+            None => {},
           },
           _ => {},
         }
