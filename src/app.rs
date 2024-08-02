@@ -11,6 +11,7 @@ use ratatui::{
   Frame,
 };
 use serde::{Deserialize, Serialize};
+use sqlparser::ast::Statement;
 use tokio::{
   sync::{
     mpsc::{self},
@@ -36,13 +37,18 @@ use crate::{
 pub struct AppState {
   pub connection_string: String,
   pub focus: Focus,
-  pub query_task: Option<tokio::task::JoinHandle<Result<Rows, DbError>>>,
+  pub query_task: Option<tokio::task::JoinHandle<QueryResultsWithMetadata>>,
 }
 
 pub struct Components<'a> {
   pub menu: Box<dyn MenuComponent<'a>>,
   pub editor: Box<dyn Component>,
   pub data: Box<dyn DataComponent<'a>>,
+}
+
+pub struct QueryResultsWithMetadata {
+  pub results: Result<Rows, DbError>,
+  pub statement_type: Statement,
 }
 
 // // TODO: see if the into_super_ref_mut fn can be fixed
@@ -113,7 +119,7 @@ impl App {
         if query_task.is_finished() {
           let results = query_task.await?;
           self.state.query_task = None;
-          self.components.data.set_data_state(Some(results));
+          self.components.data.set_data_state(Some(results.results), results.statement_type);
         }
       }
       if let Some(e) = tui.next().await {
@@ -216,13 +222,14 @@ impl App {
           },
           Action::Query(query) => {
             let query = query.to_owned();
+            let should_use_tx = database::should_use_tx(&query);
             let action_tx = action_tx.clone();
             if let Some(pool) = &self.pool {
               let pool = pool.clone();
               self.components.data.set_loading();
               self.state.query_task = Some(tokio::spawn(async move {
                 log::info!("Query: {}", query);
-                let results = database::query(query, &pool).await;
+                let results = database::query(query.clone(), &pool).await;
                 match &results {
                   Ok(rows) => {
                     log::info!("{:?} rows, {:?} affected", rows.0.len(), rows.1);
@@ -231,7 +238,9 @@ impl App {
                     log::error!("{e:?}");
                   },
                 };
-                results
+                let statement_type = database::get_statement_type(&query).unwrap();
+
+                QueryResultsWithMetadata { results, statement_type }
               }));
             }
           },

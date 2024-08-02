@@ -65,18 +65,15 @@ pub fn get_first_query(query: String) -> String {
   queries[0].to_string()
 }
 
-pub fn is_select(query: String) -> Result<bool, DbError> {
+pub fn get_statement_type(query: &str) -> Result<Statement, DbError> {
   let dialect = PostgreSqlDialect {};
-  let ast = Parser::parse_sql(&dialect, &query);
+  let ast = Parser::parse_sql(&dialect, query);
   match ast {
     Ok(ast) => {
       if ast.len() > 1 {
         return Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())));
       }
-      match ast[0] {
-        Statement::Query(_) => Ok(true),
-        _ => Ok(false),
-      }
+      Ok(ast[0].clone())
     },
     Err(e) => Err(Either::Right(e)),
   }

@@ -4,6 +4,7 @@ use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
+use sqlparser::ast::Statement;
 use tokio::sync::{mpsc::UnboundedSender, Mutex};
 
 use super::Frame;
@@ -30,10 +31,11 @@ pub enum DataState {
   Error(DbError),
   Cancelled,
   RowsAffected(u64),
+  StatementCompleted(Statement),
 }
 
 pub trait SettableDataTable<'a> {
-  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>);
+  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>, statement_type: Statement);
   fn set_loading(&mut self);
   fn set_cancelled(&mut self);
 }
@@ -63,11 +65,13 @@ impl<'a> Data<'a> {
 }
 
 impl<'a> SettableDataTable<'a> for Data<'a> {
-  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>) {
+  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>, statement_type: Statement) {
     match data {
       Some(Ok(rows)) => {
         if rows.0.is_empty() && rows.1.is_some_and(|n| n > 0) {
           self.data_state = DataState::RowsAffected(rows.1.unwrap());
+        } else if rows.0.is_empty() && !matches!(statement_type, Statement::Query(_)) {
+          self.data_state = DataState::StatementCompleted(statement_type);
         } else if rows.0.is_empty() {
           self.data_state = DataState::NoResults;
         } else {
@@ -184,6 +188,20 @@ impl<'a> Component for Data<'a> {
     match &self.data_state {
       DataState::NoResults => {
         f.render_widget(Paragraph::new("no results").wrap(Wrap { trim: false }).block(block), area);
+      },
+      DataState::StatementCompleted(statement) => {
+        f.render_widget(
+          Paragraph::new(format!(
+            "{} statement completed",
+            format!("{:?}", statement).split('(').collect::<Vec<&str>>()[0].split('{').collect::<Vec<&str>>()[0]
+              .split('[')
+              .collect::<Vec<&str>>()[0]
+              .trim()
+          ))
+          .wrap(Wrap { trim: false })
+          .block(block),
+          area,
+        );
       },
       DataState::RowsAffected(n) => {
         f.render_widget(
