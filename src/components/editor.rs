@@ -134,7 +134,7 @@ impl<'a> Component for Editor<'a> {
     self.textarea.set_cursor_line_style(Style::default().not_underlined());
     self.textarea.set_hard_tab_indent(false);
     self.textarea.set_tab_length(2);
-    f.render_widget(self.textarea.widget(), area);
+    f.render_widget(&self.textarea, area);
     Ok(())
   }
 }

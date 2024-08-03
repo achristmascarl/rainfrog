@@ -40,7 +40,7 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter", "serde"] }
 chrono = { version = "0.4", default-features = false }
 chrono-tz = { version = "0.5", default-features = false }
 indexmap = "2.2.6"
-tui-textarea = "0.5.2"
+tui-textarea = "0.5.3"
 sqlparser = "0.49.0"
 
 [build-dependencies]
