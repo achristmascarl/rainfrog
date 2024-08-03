@@ -12,6 +12,7 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::Statement;
+use sqlx::{postgres::Postgres, Transaction};
 use tokio::{
   sync::{
     mpsc::{self},
@@ -34,15 +35,17 @@ use crate::{
   tui,
 };
 
-pub enum DbTask {
+pub enum DbTask<'a> {
   Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
-  Tx(tokio::task::JoinHandle<QueryResultsWithMetadata>),
+  TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, Postgres>)>),
+  TxPending(Transaction<'a, Postgres>),
+  TxCommit(tokio::task::JoinHandle<QueryResultsWithMetadata>),
 }
 
-pub struct AppState {
+pub struct AppState<'a> {
   pub connection_string: String,
   pub focus: Focus,
-  pub query_task: Option<DbTask>,
+  pub query_task: Option<DbTask<'a>>,
 }
 
 pub struct Components<'a> {
@@ -64,7 +67,7 @@ pub struct QueryResultsWithMetadata {
 //   }
 // }
 
-pub struct App {
+pub struct App<'a> {
   pub config: Config,
   pub tick_rate: Option<f64>,
   pub frame_rate: Option<f64>,
@@ -72,10 +75,10 @@ pub struct App {
   pub should_quit: bool,
   pub last_tick_key_events: Vec<KeyEvent>,
   pub pool: Option<DbPool>,
-  pub state: AppState,
+  pub state: AppState<'a>,
 }
 
-impl App {
+impl<'a> App<'a> {
   pub fn new(connection_string: String, tick_rate: Option<f64>, frame_rate: Option<f64>) -> Result<Self> {
     let focus = Focus::Menu;
     let menu = Menu::new();
@@ -128,8 +131,14 @@ impl App {
             self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
           }
         },
-        Some(DbTask::Tx(task)) => {},
-        None => {},
+        Some(DbTask::TxStart(task)) => {
+          if task.is_finished() {
+            let (results, tx) = task.await?;
+            self.state.query_task = Some(DbTask::TxPending(tx));
+          }
+        },
+        Some(DbTask::TxCommit(task)) => {},
+        _ => {},
       }
       if let Some(e) = tui.next().await {
         let mut event_consumed = false;
@@ -234,12 +243,28 @@ impl App {
             let should_use_tx = database::should_use_tx(&query);
             let action_tx = action_tx.clone();
             if let Some(pool) = &self.pool {
+              let pool = pool.clone();
               match should_use_tx {
                 Ok(true) => {
-                  let mut tx = pool.begin().await?;
+                  let tx = pool.begin().await?;
+                  self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
+                    log::info!("Tx Query: {}", query);
+                    let (results, tx) = database::query_with_tx(tx, query.clone()).await;
+                    match results {
+                      Ok(rows_affected) => {
+                        log::info!("{:?} rows affected", rows_affected);
+                        let statement_type = database::get_statement_type(query.clone().as_str()).unwrap();
+                        (QueryResultsWithMetadata { results: Ok((vec![], Some(rows_affected))), statement_type }, tx)
+                      },
+                      Err(e) => {
+                        log::error!("{e:?}");
+                        let statement_type = database::get_statement_type(&query).unwrap();
+                        (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
+                      },
+                    }
+                  })));
                 },
                 Ok(false) => {
-                  let pool = pool.clone();
                   self.components.data.set_loading();
                   self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
                     log::info!("Query: {}", query);
@@ -270,8 +295,12 @@ impl App {
               self.state.query_task = None;
               self.components.data.set_cancelled();
             },
-            Some(DbTask::Tx(task)) => {},
-            None => {},
+            Some(DbTask::TxStart(task)) => {
+              task.abort();
+              self.state.query_task = None;
+              self.components.data.set_cancelled();
+            },
+            _ => {},
           },
           _ => {},
         }

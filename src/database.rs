@@ -60,31 +60,16 @@ pub async fn query(query: String, pool: &PgPool) -> Result<Rows, DbError> {
   Ok((first_query_rows, first_query_rows_affected))
 }
 
-pub async fn query_with_tx<'a>(query: String, pool: &PgPool, tx: Transaction<'_, Postgres>) -> Result<Rows, DbError> {
+pub async fn query_with_tx<'a>(
+  mut tx: Transaction<'_, Postgres>,
+  query: String,
+) -> (Result<u64, DbError>, Transaction<'_, Postgres>) {
   let first_query = get_first_query(query);
-  match should_use_tx(&first_query) {
-    Ok(b) => log::info!("Should use transaction: {}", b),
-    Err(e) => return Err(e),
+  let result = sqlx::query(&first_query).execute(&mut *tx).await;
+  match result {
+    Ok(result) => (Ok(result.rows_affected()), tx),
+    Err(e) => (Err(DbError::Left(e)), tx),
   }
-  let mut stream = sqlx::raw_sql(&first_query).fetch_many(pool);
-  let mut first_query_finished = false;
-  let mut first_query_rows = vec![];
-  let mut first_query_rows_affected: Option<u64> = None;
-  while !first_query_finished {
-    let next = stream.next().await;
-    match next {
-      Some(Ok(Either::Left(result))) => {
-        first_query_rows_affected = Some(result.rows_affected());
-        first_query_finished = true;
-      },
-      Some(Ok(Either::Right(row))) => {
-        first_query_rows.push(row);
-      },
-      Some(Err(e)) => return Err(Either::Left(e)),
-      None => return Err(Either::Left(Error::Protocol("Results stream empty".to_owned()))),
-    };
-  }
-  Ok((first_query_rows, first_query_rows_affected))
 }
 
 pub fn get_first_query(query: String) -> String {
