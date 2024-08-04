@@ -18,7 +18,8 @@ where `connection_url` includes the username:password for accessing the database
 ## known issues
 - for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535). Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
 
-## TODO
+## roadmap
+### v0.1.0
 - [x] scrollable table 
 - [x] cancellable async querying (spawn tokio task)
 - [x] menu list with tables and schemas (collapsable)
@@ -31,12 +32,15 @@ where `connection_url` includes the username:password for accessing the database
 - [ ] os clipboard support
 - [ ] keybindings hints at bottom
 - [ ] handle mouse events
+- [ ] e2e tests
+### v0.1.1
 - [ ] handle explain / analyze output
-- [ ] view indexes, constraints, etc.
+- [ ] shortcut to view indexes, constraints, etc.
 - [ ] loading animation
 - [ ] table styling
-- [ ] editor syntax highlighting
-- [ ] perf (limit rendering)
+- [ ] editor auto-complete
+### backburner 
+- [ ] syntax highlighting
 
 ## acknowledgements
 - ratatui
