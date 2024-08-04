@@ -390,10 +390,11 @@ impl<'a> App<'a> {
   }
 
   fn render_popup(&self, frame: &mut Frame, results: &QueryResultsWithMetadata) {
-    let area = center(frame.size(), Constraint::Percentage(50), Constraint::Length(8));
-    let block = Block::bordered()
+    let area = center(frame.size(), Constraint::Percentage(60), Constraint::Percentage(60));
+    let block = Block::default()
+      .borders(Borders::ALL)
       .border_style(Style::default().fg(Color::Green))
-      .title("Confirm Action")
+      .title(Line::from("Confirm Action").centered())
       .padding(Padding::uniform(1));
     let layout = Layout::default()
       .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -422,7 +423,8 @@ impl<'a> App<'a> {
     let popup_cta = Paragraph::new(Line::from(cta).centered());
     let popup_actions = Paragraph::new(Line::from("(Y)es to confirm | (N)o to cancel").centered());
     frame.render_widget(Clear, area);
-    frame.render_widget(popup_cta, layout[0]);
-    frame.render_widget(popup_actions, layout[1]);
+    frame.render_widget(block, area);
+    frame.render_widget(popup_cta, center(layout[0], Constraint::Fill(1), Constraint::Percentage(50)));
+    frame.render_widget(popup_actions, center(layout[1], Constraint::Fill(1), Constraint::Percentage(50)));
   }
 }
