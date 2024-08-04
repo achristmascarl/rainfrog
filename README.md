@@ -3,6 +3,9 @@ a database management tui for postgres
 
 > [frogs find refuge in elephant tracks](https://www.sciencedaily.com/releases/2019/06/190604131157.htm) 
 
+## disclaimer
+this software is currently under active development; expect breaking changes, and use at your own risk.
+
 ## usage
 `make dev url=$(connection_url)`
 
@@ -14,7 +17,6 @@ where `connection_url` includes the username:password for accessing the database
 
 ## known issues
 - for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535). Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
-- in the query editor, if there's horizontal overflow, a few characters at the right edge will not be visible (https://github.com/rhysd/tui-textarea/issues/77) 
 
 ## TODO
 - [x] scrollable table 
@@ -26,6 +28,7 @@ where `connection_url` includes the username:password for accessing the database
 - [x] display rows affected
 - [x] confirm before delete/drop
 - [ ] table selection and yanking
+- [ ] os clipboard support
 - [ ] keybindings hints at bottom
 - [ ] handle mouse events
 - [ ] handle explain / analyze output
@@ -34,3 +37,8 @@ where `connection_url` includes the username:password for accessing the database
 - [ ] table styling
 - [ ] editor syntax highlighting
 - [ ] perf (limit rendering)
+
+## acknowledgements
+- ratatui
+- tui-textarea
+- gobang
