@@ -16,7 +16,7 @@ use crate::{
     Component,
   },
   config::{Config, KeyBindings},
-  database::{get_headers, parse_value, row_to_json, row_to_vec, DbError, Rows},
+  database::{get_headers, parse_value, row_to_json, row_to_vec, statement_type_string, DbError, Rows},
   focus::Focus,
   tui::Event,
 };
@@ -192,15 +192,9 @@ impl<'a> Component for Data<'a> {
       },
       DataState::StatementCompleted(statement) => {
         f.render_widget(
-          Paragraph::new(format!(
-            "{} statement completed",
-            format!("{:?}", statement).split('(').collect::<Vec<&str>>()[0].split('{').collect::<Vec<&str>>()[0]
-              .split('[')
-              .collect::<Vec<&str>>()[0]
-              .trim()
-          ))
-          .wrap(Wrap { trim: false })
-          .block(block),
+          Paragraph::new(format!("{} statement completed", statement_type_string(statement)))
+            .wrap(Wrap { trim: false })
+            .block(block),
           area,
         );
       },

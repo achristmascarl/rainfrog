@@ -31,6 +31,9 @@
       "<Ctrl-1>": "FocusMenu",
       "<Ctrl-2>": "FocusEditor",
       "<Ctrl-3>": "FocusData"
+    },
+    "PopUp": {
+      "<Ctrl-c>": "Quit",
     }
   }
 }

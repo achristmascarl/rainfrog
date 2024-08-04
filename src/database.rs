@@ -91,6 +91,14 @@ pub fn get_statement_type(query: &str) -> Result<Statement, DbError> {
   }
 }
 
+pub fn statement_type_string(statement: &Statement) -> String {
+  format!("{:?}", statement).split('(').collect::<Vec<&str>>()[0].split('{').collect::<Vec<&str>>()[0]
+    .split('[')
+    .collect::<Vec<&str>>()[0]
+    .trim()
+    .to_string()
+}
+
 pub fn should_use_tx(query: &str) -> Result<bool, DbError> {
   let dialect = PostgreSqlDialect {};
   let ast = Parser::parse_sql(&dialect, query);
@@ -112,11 +120,13 @@ pub fn should_use_tx(query: &str) -> Result<bool, DbError> {
 pub fn get_headers(rows: &Rows) -> Headers {
   match rows.0.len() {
     0 => vec![],
-    _ => rows.0[0]
-      .columns()
-      .iter()
-      .map(|col| Header { name: col.name().to_string(), type_name: col.type_info().to_string() })
-      .collect(),
+    _ => {
+      rows.0[0]
+        .columns()
+        .iter()
+        .map(|col| Header { name: col.name().to_string(), type_name: col.type_info().to_string() })
+        .collect()
+    },
   }
 }
 

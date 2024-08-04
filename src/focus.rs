@@ -6,4 +6,5 @@ pub enum Focus {
   Menu,
   Editor,
   Data,
+  PopUp,
 }

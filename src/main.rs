@@ -10,6 +10,7 @@ pub mod config;
 pub mod database;
 pub mod focus;
 pub mod tui;
+pub mod ui;
 pub mod utils;
 pub mod vim;
 

@@ -1,18 +1,20 @@
 use std::{borrow::Borrow, fmt::format, sync::Arc};
 
 use color_eyre::eyre::Result;
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use futures::{task::Poll, FutureExt};
 use log::log;
 use ratatui::{
   layout::{Constraint, Direction, Layout},
   prelude::Rect,
-  widgets::{Block, Borders, Paragraph},
+  style::{Color, Style},
+  text::Line,
+  widgets::{Block, Borders, Clear, Padding, Paragraph},
   Frame,
 };
 use serde::{Deserialize, Serialize};
-use sqlparser::ast::Statement;
-use sqlx::{postgres::Postgres, Transaction};
+use sqlparser::{ast::Statement, keywords::DELETE};
+use sqlx::{postgres::Postgres, Either, Transaction};
 use tokio::{
   sync::{
     mpsc::{self},
@@ -30,15 +32,16 @@ use crate::{
     Component,
   },
   config::Config,
-  database::{self, DbError, DbPool, Rows},
+  database::{self, statement_type_string, DbError, DbPool, Rows},
   focus::Focus,
   tui,
+  ui::center,
 };
 
 pub enum DbTask<'a> {
   Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
   TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, Postgres>)>),
-  TxPending(Transaction<'a, Postgres>),
+  TxPending(Transaction<'a, Postgres>, QueryResultsWithMetadata),
   TxCommit(tokio::task::JoinHandle<QueryResultsWithMetadata>),
 }
 
@@ -134,7 +137,16 @@ impl<'a> App<'a> {
         Some(DbTask::TxStart(task)) => {
           if task.is_finished() {
             let (results, tx) = task.await?;
-            self.state.query_task = Some(DbTask::TxPending(tx));
+            match results.results {
+              Ok(_) => {
+                self.state.query_task = Some(DbTask::TxPending(tx, results));
+                self.state.focus = Focus::PopUp;
+              },
+              Err(_) => {
+                self.state.query_task = None;
+                self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
+              },
+            }
           }
         },
         Some(DbTask::TxCommit(task)) => {},
@@ -149,9 +161,38 @@ impl<'a> App<'a> {
           tui::Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
           tui::Event::Key(key) => {
             if let Some(keymap) = self.config.keybindings.get(&self.state.focus) {
+              log::info!("keymap found: {:?}", keymap);
               if let Some(action) = keymap.get(&vec![key]) {
                 log::info!("Got action: {action:?}");
                 action_tx.send(action.clone())?;
+                event_consumed = true;
+              } else if self.state.focus == Focus::PopUp {
+                log::info!("PopUp focused, key pressed: {:?}", key);
+                match key.code {
+                  KeyCode::Char('Y') | KeyCode::Char('N') | KeyCode::Esc => {
+                    let task = self.state.query_task.take();
+                    if let Some(DbTask::TxPending(tx, results)) = task {
+                      let result = match key.code {
+                        KeyCode::Char('Y') => tx.commit().await,
+                        KeyCode::Char('N') | KeyCode::Esc => tx.rollback().await,
+                        _ => panic!("inconsistent key codes"),
+                      };
+                      self.components.data.set_data_state(
+                        match result {
+                          Ok(_) => Some(Ok((vec![], None))),
+                          Err(e) => Some(Err(Either::Left(e))),
+                        },
+                        Some(match key.code {
+                          KeyCode::Char('Y') => Statement::Commit { chain: false },
+                          KeyCode::Char('N') | KeyCode::Esc => Statement::Rollback { chain: false, savepoint: None },
+                          _ => panic!("inconsistent key codes"),
+                        }),
+                      );
+                    }
+                    self.state.focus = Focus::Editor;
+                  },
+                  _ => {},
+                }
                 event_consumed = true;
               } else {
                 // If the key was not handled as a single key action,
@@ -165,7 +206,7 @@ impl<'a> App<'a> {
                   event_consumed = true;
                 }
               }
-            };
+            }
           },
           _ => {},
         }
@@ -246,6 +287,7 @@ impl<'a> App<'a> {
               let pool = pool.clone();
               match should_use_tx {
                 Ok(true) => {
+                  self.components.data.set_loading();
                   let tx = pool.begin().await?;
                   self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
                     log::info!("Tx Query: {}", query);
@@ -289,18 +331,20 @@ impl<'a> App<'a> {
               self.components.data.set_data_state(Some(Err(DbError::Left(sqlx::Error::PoolTimedOut))), None)
             }
           },
-          Action::AbortQuery => match &self.state.query_task {
-            Some(DbTask::Query(task)) => {
-              task.abort();
-              self.state.query_task = None;
-              self.components.data.set_cancelled();
-            },
-            Some(DbTask::TxStart(task)) => {
-              task.abort();
-              self.state.query_task = None;
-              self.components.data.set_cancelled();
-            },
-            _ => {},
+          Action::AbortQuery => {
+            match &self.state.query_task {
+              Some(DbTask::Query(task)) => {
+                task.abort();
+                self.state.query_task = None;
+                self.components.data.set_cancelled();
+              },
+              Some(DbTask::TxStart(task)) => {
+                task.abort();
+                self.state.query_task = None;
+                self.components.data.set_cancelled();
+              },
+              _ => {},
+            }
           },
           _ => {},
         }
@@ -339,5 +383,46 @@ impl<'a> App<'a> {
     self.components.menu.draw(f, root_layout[0], state).unwrap();
     self.components.editor.draw(f, right_layout[0], state).unwrap();
     self.components.data.draw(f, right_layout[1], state).unwrap();
+
+    if let Some(DbTask::TxPending(tx, results)) = &self.state.query_task {
+      self.render_popup(f, results);
+    }
+  }
+
+  fn render_popup(&self, frame: &mut Frame, results: &QueryResultsWithMetadata) {
+    let area = center(frame.size(), Constraint::Percentage(50), Constraint::Length(8));
+    let block = Block::bordered()
+      .border_style(Style::default().fg(Color::Green))
+      .title("Confirm Action")
+      .padding(Padding::uniform(1));
+    let layout = Layout::default()
+      .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+      .direction(Direction::Vertical)
+      .split(block.inner(area));
+
+    let rows_affected = match results.results {
+      Ok((_, Some(n))) => n,
+      _ => 0,
+    };
+    let cta = match results.statement_type {
+      Statement::Delete(_) | Statement::Insert(_) | Statement::Update { .. } => {
+        format!(
+          "Are you sure you want to {} {} rows?",
+          statement_type_string(&results.statement_type).to_uppercase(),
+          rows_affected
+        )
+      },
+      _ => {
+        format!(
+          "Are you sure you want to use a {} statement?",
+          statement_type_string(&results.statement_type).to_uppercase()
+        )
+      },
+    };
+    let popup_cta = Paragraph::new(Line::from(cta).centered());
+    let popup_actions = Paragraph::new(Line::from("(Y)es to confirm | (N)o to cancel").centered());
+    frame.render_widget(Clear, area);
+    frame.render_widget(popup_cta, layout[0]);
+    frame.render_widget(popup_actions, layout[1]);
   }
 }
