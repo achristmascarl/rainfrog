@@ -37,6 +37,7 @@ where `connection_url` includes the username:password for accessing the database
 - [ ] handle explain / analyze output
 - [ ] shortcut to view indexes, constraints, etc.
 - [ ] loading animation
+- [ ] session history
 - [ ] table styling
 - [ ] editor auto-complete
 ### backburner 
