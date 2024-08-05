@@ -1,4 +1,5 @@
-url ?= postgres://root:password@localhost:5432/rainfrog
+port ?= 5432
+url ?= postgres://root:password@localhost:$(port)/rainfrog?sslmode=disable
 
 .DEFAULT_GOAL := restart
 
@@ -9,13 +10,11 @@ profile:
 	cargo flamegraph --post-process flamelens --root -- -u $(url)
 
 db-up:
-	docker compose up -d --wait
+	PORT=$(port) docker compose up -d --wait
+	sleep .25
 
 db-down:
-	docker compose kill
-	docker compose rm -f -v
+	PORT=$(port) docker compose kill
+	PORT=$(port) docker compose rm -f -v
 
-dev-db:
-	cargo run -- -u "postgres://root:password@localhost:5432/rainfrog" 
-
-restart: db-down db-up dev-db
+restart: db-down db-up dev
