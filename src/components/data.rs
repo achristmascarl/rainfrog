@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sqlparser::ast::Statement;
 use tokio::sync::{mpsc::UnboundedSender, Mutex};
 
-use super::Frame;
+use super::{scroll_table::SelectionMode, Frame};
 use crate::{
   action::Action,
   app::{App, AppState},
@@ -82,8 +82,12 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
               .height(2)
               .bottom_margin(1);
           let value_rows = rows.0.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
-          let buf_table =
-            Table::default().rows(value_rows).header(header_row).style(Style::default()).column_spacing(1);
+          let buf_table = Table::default()
+            .rows(value_rows)
+            .header(header_row)
+            .style(Style::default())
+            .column_spacing(1)
+            .highlight_style(Style::default().bg(Color::LightBlue).fg(Color::Black).bold());
           self.scrollable.set_table(Box::new(buf_table), headers.len(), rows.0.len(), 36_u16);
           self.data_state = DataState::HasResults(rows);
         }
@@ -157,6 +161,15 @@ impl<'a> Component for Data<'a> {
         },
         KeyCode::Char('$') => {
           self.scrollable.last_column();
+        },
+        KeyCode::Char('v') => {
+          self.scrollable.transition_selection_mode(Some(SelectionMode::Cell));
+        },
+        KeyCode::Char('V') => {
+          self.scrollable.transition_selection_mode(Some(SelectionMode::Row));
+        },
+        KeyCode::Esc => {
+          self.scrollable.transition_selection_mode(None);
         },
         _ => {},
       }

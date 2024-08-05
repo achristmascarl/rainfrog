@@ -21,6 +21,12 @@ pub enum ScrollDirection {
   Down,
 }
 
+#[derive(Debug, Clone)]
+pub enum SelectionMode {
+  Row,
+  Cell,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ScrollTable<'a> {
   viewport_buffer: Buffer,
@@ -34,6 +40,7 @@ pub struct ScrollTable<'a> {
   y_offset: usize,
   max_x_offset: u16,
   max_y_offset: usize,
+  selection_mode: Option<SelectionMode>,
 }
 
 impl<'a> ScrollTable<'a> {
@@ -50,6 +57,7 @@ impl<'a> ScrollTable<'a> {
       y_offset: 0,
       max_x_offset: 0,
       max_y_offset: 0,
+      selection_mode: None,
     }
   }
 
@@ -130,6 +138,25 @@ impl<'a> ScrollTable<'a> {
     self
   }
 
+  pub fn get_cell_offsets(&self) -> (u16, usize) {
+    // TODO: calc cell
+    (self.x_offset, self.y_offset)
+  }
+
+  pub fn transition_selection_mode(&mut self, new_mode: Option<SelectionMode>) -> &mut Self {
+    self.selection_mode = new_mode;
+    self
+  }
+
+  fn get_max_x_offset(&self, requested_width: u16, parent_area: &Rect, parent_block: &Option<Block>) -> u16 {
+    let render_area = parent_block.inner_if_some(*parent_area);
+    if render_area.is_empty() {
+      return 0_u16;
+    }
+    let parent_width = render_area.width;
+    requested_width.saturating_sub(self.column_width)
+  }
+
   fn widget(&'a self) -> Renderer<'a> {
     Renderer::new(self, self.y_offset)
   }
@@ -138,7 +165,7 @@ impl<'a> ScrollTable<'a> {
 impl<'a> Component for ScrollTable<'a> {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     self.parent_area = area;
-    self.max_x_offset = get_max_x_offset(self.requested_width, &self.parent_area, &self.block);
+    self.max_x_offset = self.get_max_x_offset(self.requested_width, &self.parent_area, &self.block);
     let max_x_offset = self.max_x_offset;
     let x_offset = self.x_offset;
     f.render_widget(self.widget(), area);
@@ -180,15 +207,6 @@ impl<'a> Component for ScrollTable<'a> {
   }
 }
 
-fn get_max_x_offset(requested_width: u16, parent_area: &Rect, parent_block: &Option<Block>) -> u16 {
-  let render_area = parent_block.inner_if_some(*parent_area);
-  if render_area.is_empty() {
-    return 0_u16;
-  }
-  let parent_width = render_area.width;
-  requested_width.saturating_sub(parent_width)
-}
-
 // based on scrolling approach from tui-textarea:
 // https://github.com/rhysd/tui-textarea/blob/main/src/widget.rs
 pub struct Renderer<'a>(&'a ScrollTable<'a>, TableState);
@@ -208,6 +226,10 @@ impl<'a> Widget for Renderer<'a> {
     let scrollable = self.0;
     let table = &scrollable.table;
     let mut table_state = self.1;
+    let current_offset = table_state.offset();
+    if let Some(SelectionMode::Row) = scrollable.selection_mode {
+      table_state = table_state.with_selected(current_offset);
+    }
     scrollable.block.render_ref(area, buf);
     let render_area = scrollable.block.inner_if_some(area);
     if render_area.is_empty() {
@@ -230,8 +252,28 @@ impl<'a> Widget for Renderer<'a> {
       let row = get_row(&content_buf.content, content_y, content_width);
       for x in area.x..max_x {
         let content_x = x + scrollable.x_offset - area.x;
-        let cell = &row[content_x as usize];
-        buf.get_mut(x, y).set_symbol(cell.symbol()).set_fg(cell.fg).set_bg(cell.bg).set_skip(cell.skip);
+        let cell = match &row.len().saturating_sub(1).saturating_sub(content_x as usize) {
+          0 => &Cell::default(),
+          _ => &row[content_x as usize],
+        };
+        let right_edge = scrollable
+          .column_width
+          .saturating_sub(1) // account for column spacing
+          .saturating_add(scrollable.x_offset)
+          .saturating_sub(scrollable.x_offset % scrollable.column_width);
+        let style = match (scrollable.selection_mode.as_ref(), content_x, content_y) {
+          (Some(SelectionMode::Cell), x, y) if y == 3 && x < right_edge => {
+            Style::default().bg(Color::LightBlue).fg(Color::Black).bold().italic()
+          },
+          _ => Style::default(),
+        };
+        buf
+          .get_mut(x, y)
+          .set_symbol(cell.symbol())
+          .set_fg(cell.fg)
+          .set_bg(cell.bg)
+          .set_skip(cell.skip)
+          .set_style(style);
       }
     }
   }

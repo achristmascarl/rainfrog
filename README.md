@@ -30,8 +30,9 @@ where `connection_url` includes the username:password for accessing the database
 - [x] confirm before delete/drop
 - [ ] table selection and yanking
 - [ ] os clipboard support
-- [ ] keybindings hints at bottom
+- [ ] multi-line pasting
 - [ ] handle mouse events
+- [ ] keybindings hints at bottom
 - [ ] e2e tests
 ### v0.1.1
 - [ ] handle explain / analyze output
