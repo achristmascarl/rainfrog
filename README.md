@@ -6,7 +6,14 @@ a database management tui for postgres
 ## disclaimer
 this software is currently under active development; expect breaking changes, and use at your own risk.
 
+## installation
+`git clone https://github.com/achristmascarl/rainfrog.git`
+
 ## usage
+`cd rainfrog`
+
+and 
+
 `make dev url=$(connection_url)`
 
 or
@@ -39,14 +46,15 @@ where `connection_url` includes the username:password for accessing the database
 ### v0.1.1
 - [ ] handle explain / analyze output
 - [ ] shortcuts to view indexes, keys, etc.
-- [ ] loading animation
 - [ ] session history
-- [ ] table styling
-- [ ] editor auto-complete
+- [ ] loading animation
 ### backburner 
+- [ ] editor auto-complete
 - [ ] syntax highlighting
+- [ ] live graphs / metrics (a la pgadmin)
+- [ ] customization (keybindings, colors)
 
 ## acknowledgements
-- [ratatui](https://github.com/ratatui-org/ratatui)
-- [tui-textarea](https://github.com/rhysd/tui-textarea) 
-- [gobang](https://github.com/TaKO8Ki/gobang)
+- [ratatui](https://github.com/ratatui-org/ratatui) (this project used ratatui's [component template](https://github.com/ratatui-org/templates/tree/983aa3cb3b8dd743200e8e2a1faa6e7c06aad85e/component/template) as a starting point)
+- [tui-textarea](https://github.com/rhysd/tui-textarea) (used in the query editor)
+- [gobang](https://github.com/TaKO8Ki/gobang) (a rust db tui i drew inspiration from)
