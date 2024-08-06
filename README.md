@@ -52,6 +52,7 @@ where `connection_url` includes the username:password for accessing the database
 <details>
   <summary><b>v0.1.1</b></summary>
 
+  - [ ] vhs explainer gifs
   - [ ] unit / e2e tests
   - [ ] handle explain / analyze output
   - [ ] shortcuts to view indexes, keys, etc.
