@@ -1,7 +1,7 @@
 use std::{borrow::Borrow, fmt::format, sync::Arc};
 
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{Event, KeyCode, KeyEvent};
 use futures::{task::Poll, FutureExt};
 use log::log;
 use ratatui::{
@@ -153,13 +153,11 @@ impl<'a> App<'a> {
           tui::Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
           tui::Event::Key(key) => {
             if let Some(keymap) = self.config.keybindings.get(&self.state.focus) {
-              log::info!("keymap found: {:?}", keymap);
               if let Some(action) = keymap.get(&vec![key]) {
                 log::info!("Got action: {action:?}");
                 action_tx.send(action.clone())?;
                 event_consumed = true;
               } else if self.state.focus == Focus::PopUp {
-                log::info!("PopUp focused, key pressed: {:?}", key);
                 match key.code {
                   KeyCode::Char('Y') | KeyCode::Char('N') | KeyCode::Esc => {
                     let task = self.state.query_task.take();

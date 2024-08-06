@@ -39,8 +39,8 @@ where `connection_url` includes the username:password for accessing the database
   - [x] display rows affected
   - [x] confirm before delete/drop
   - [x] table selection and yanking
+  - [x] multi-line pasting
   - [ ] editor os clipboard support
-  - [ ] multi-line pasting
   - [ ] handle mouse events
   - [ ] keybindings hints at bottom
   - [ ] unit / e2e tests

@@ -15,7 +15,7 @@ better-panic = "0.3.0"
 clap = { version = "4.4.5", features = ["derive", "cargo", "wrap_help", "unicode", "string", "unstable-styles"] }
 color-eyre = "0.6.2"
 config = "0.14.0"
-crossterm = { version = "0.27.0", features = ["serde", "event-stream"] }
+crossterm = { version = "0.27.0", features = ["serde", "event-stream", "bracketed-paste"] }
 derive_deref = "1.1.1"
 directories = "5.0.1"
 futures = "0.3.28"

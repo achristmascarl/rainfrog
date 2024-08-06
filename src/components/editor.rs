@@ -76,7 +76,9 @@ impl<'a> Component for Editor<'a> {
     if app_state.focus != Focus::Editor {
       return Ok(None);
     }
-    if let Some(Event::Key(key)) = event {
+    if let Some(Event::Paste(text)) = event {
+      self.textarea.insert_str(text);
+    } else if let Some(Event::Key(key)) = event {
       if app_state.query_task.is_none() {
         let input = Input::from(key);
         match input {

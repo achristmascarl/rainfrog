@@ -2,6 +2,7 @@
 // https://github.com/rhysd/tui-textarea/blob/main/examples/vim.rs
 use std::{env, fmt, fs, io, io::BufRead};
 
+use arboard::Clipboard;
 use crossterm::{
   event::{DisableMouseCapture, EnableMouseCapture},
   terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -117,6 +118,9 @@ impl Vim {
             return Transition::Mode(Mode::Insert);
           },
           Input { key: Key::Char('p'), .. } => {
+            let mut clipboard = Clipboard::new().unwrap();
+            let text = clipboard.get_text().unwrap();
+            textarea.set_yank_text(text);
             textarea.paste();
             return Transition::Mode(Mode::Normal);
           },
@@ -132,14 +136,23 @@ impl Vim {
             return Transition::Mode(Mode::Replace);
           },
           Input { key: Key::Char('x'), .. } => {
-            textarea.delete_next_char();
+            if !textarea.is_selecting() {
+              textarea.start_selection();
+            }
+            textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
+            textarea.cut();
+            let mut clipboard = Clipboard::new().unwrap();
+            let text = textarea.yank_text();
+            clipboard.set_text(text).unwrap();
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('i'), .. } => {
             textarea.cancel_selection();
             return Transition::Mode(Mode::Insert);
           },
-          Input { key: Key::Char('a'), ctrl: false, .. } if matches!(self.mode, Mode::Operator('d')) => {
+          Input { key: Key::Char('a'), ctrl: false, .. }
+            if matches!(self.mode, Mode::Operator('d')) || matches!(self.mode, Mode::Operator('y')) =>
+          {
             textarea.cancel_selection();
             textarea.move_cursor(CursorMove::Forward);
             textarea.move_cursor(CursorMove::WordBack);
@@ -215,16 +228,25 @@ impl Vim {
           Input { key: Key::Char('y'), ctrl: false, .. } if self.mode == Mode::Visual => {
             textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
             textarea.copy();
+            let mut clipboard = Clipboard::new().unwrap();
+            let text = textarea.yank_text();
+            clipboard.set_text(text).unwrap();
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('d'), ctrl: false, .. } if self.mode == Mode::Visual => {
             textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
             textarea.cut();
+            let mut clipboard = Clipboard::new().unwrap();
+            let text = textarea.yank_text();
+            clipboard.set_text(text).unwrap();
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('c'), ctrl: false, .. } if self.mode == Mode::Visual => {
             textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
             textarea.cut();
+            let mut clipboard = Clipboard::new().unwrap();
+            let text = textarea.yank_text();
+            clipboard.set_text(text).unwrap();
             return Transition::Mode(Mode::Insert);
           },
           Input { key: Key::Esc, .. } => {
@@ -238,6 +260,9 @@ impl Vim {
         match self.mode {
           Mode::Operator('y') => {
             textarea.copy();
+            let mut clipboard = Clipboard::new().unwrap();
+            let text = textarea.yank_text();
+            clipboard.set_text(text).unwrap();
             Transition::Mode(Mode::Normal)
           },
           Mode::Operator('d') => {
@@ -246,6 +271,9 @@ impl Vim {
           },
           Mode::Operator('c') => {
             textarea.cut();
+            let mut clipboard = Clipboard::new().unwrap();
+            let text = textarea.yank_text();
+            clipboard.set_text(text).unwrap();
             Transition::Mode(Mode::Insert)
           },
           _ => Transition::Nop,

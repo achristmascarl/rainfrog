@@ -64,7 +64,7 @@ impl Tui {
     let cancellation_token = CancellationToken::new();
     let task = tokio::spawn(async {});
     let mouse = false;
-    let paste = false;
+    let paste = true;
     Ok(Self { terminal, task, cancellation_token, event_rx, event_tx, frame_rate, tick_rate, mouse, paste })
   }
 
