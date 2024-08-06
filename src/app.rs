@@ -9,7 +9,7 @@ use ratatui::{
   prelude::Rect,
   style::{Color, Style, Stylize},
   text::Line,
-  widgets::{Block, Borders, Clear, Padding, Paragraph},
+  widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap},
   Frame,
 };
 use serde::{Deserialize, Serialize};
@@ -371,7 +371,10 @@ impl<'a> App<'a> {
   fn draw_layout(&mut self, f: &mut Frame) {
     let hints_layout = Layout::default()
       .direction(Direction::Vertical)
-      .constraints([Constraint::Fill(1), Constraint::Length(1)])
+      .constraints(match f.size().width {
+        x if x < 135 => [Constraint::Fill(1), Constraint::Length(2)],
+        _ => [Constraint::Fill(1), Constraint::Length(1)],
+      })
       .split(f.size());
     let root_layout = Layout::default()
       .direction(Direction::Horizontal)
@@ -383,7 +386,7 @@ impl<'a> App<'a> {
       .split(root_layout[1]);
 
     if let Some(event) = &self.last_frame_mouse_event {
-      if self.state.query_task.is_none() {
+      if self.state.query_task.is_none() && event.kind != MouseEventKind::Moved {
         let position = Position::new(event.column, event.row);
         let menu_target = root_layout[0];
         let editor_target = right_layout[0];
@@ -421,7 +424,7 @@ impl<'a> App<'a> {
       })
       .centered(),
     )
-    .block(block);
+    .block(block).wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
   }
 
