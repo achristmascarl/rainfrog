@@ -34,10 +34,11 @@ where `connection_url` includes the username:password for accessing the database
 - [ ] multi-line pasting
 - [ ] handle mouse events
 - [ ] keybindings hints at bottom
-- [ ] e2e tests
+- [ ] unit / e2e tests
+- [ ] branch protection
 ### v0.1.1
 - [ ] handle explain / analyze output
-- [ ] shortcut to view indexes, constraints, etc.
+- [ ] shortcuts to view indexes, keys, etc.
 - [ ] loading animation
 - [ ] session history
 - [ ] table styling
@@ -46,6 +47,6 @@ where `connection_url` includes the username:password for accessing the database
 - [ ] syntax highlighting
 
 ## acknowledgements
-- ratatui
-- tui-textarea
-- gobang
+- [ratatui](https://github.com/ratatui-org/ratatui)
+- [tui-textarea](https://github.com/rhysd/tui-textarea) 
+- [gobang](https://github.com/TaKO8Ki/gobang)
