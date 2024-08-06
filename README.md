@@ -46,7 +46,7 @@ where `connection_url` includes the username:password for accessing the database
   - [x] editor os clipboard support
   - [x] handle mouse events
   - [x] keybindings hints at bottom
-  - [ ] branch protection
+  - [x] branch protection
 </details>
 
 <details>
