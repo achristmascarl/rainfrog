@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use arboard::Clipboard;
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
@@ -87,7 +88,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
             .header(header_row)
             .style(Style::default())
             .column_spacing(1)
-            .highlight_style(Style::default().bg(Color::LightBlue).fg(Color::Black).bold());
+            .highlight_style(Style::default().fg(Color::LightBlue).reversed().bold());
           self.scrollable.set_table(Box::new(buf_table), headers.len(), rows.0.len(), 36_u16);
           self.data_state = DataState::HasResults(rows);
         }
@@ -168,6 +169,25 @@ impl<'a> Component for Data<'a> {
         KeyCode::Char('V') => {
           self.scrollable.transition_selection_mode(Some(SelectionMode::Row));
         },
+        KeyCode::Char('y') => {
+          if let DataState::HasResults((rows, _)) = &self.data_state {
+            let (x, y) = self.scrollable.get_cell_offsets();
+            let row = row_to_vec(&rows[y]);
+            let mut clipboard = Clipboard::new().unwrap();
+            match self.scrollable.get_selection_mode() {
+              Some(SelectionMode::Row) => {
+                let row_string = row.join(", ");
+                clipboard.set_text(row_string).unwrap();
+              },
+              Some(SelectionMode::Cell) => {
+                let cell = row[x as usize].clone();
+                clipboard.set_text(cell).unwrap();
+              },
+              _ => {},
+            }
+            self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
+          }
+        },
         KeyCode::Esc => {
           self.scrollable.transition_selection_mode(None);
         },
@@ -193,8 +213,22 @@ impl<'a> Component for Data<'a> {
       Style::new().dim()
     });
 
-    if let DataState::HasResults(rows) = &self.data_state {
-      block = block.title(format!("results ({} rows)", rows.0.len()));
+    if let DataState::HasResults((rows, _)) = &self.data_state {
+      let (x, y) = self.scrollable.get_cell_offsets();
+      let row = row_to_vec(&rows[y]);
+      let title_string = match self.scrollable.get_selection_mode() {
+        Some(SelectionMode::Row) => {
+          format!("results (row {} of {})", y.saturating_add(1), rows.len())
+        },
+        Some(SelectionMode::Cell) => {
+          format!("results (row {} of {}) - {} ", y.saturating_add(1), rows.len(), row[x as usize].clone())
+        },
+        Some(SelectionMode::Copied) => {
+          format!("results ({} rows) - copied! ", rows.len())
+        },
+        _ => format!("results ({} rows)", rows.len()),
+      };
+      block = block.title(title_string);
     } else {
       block = block.title("results");
     }
@@ -222,7 +256,7 @@ impl<'a> Component for Data<'a> {
       DataState::Blank => {
         f.render_widget(Paragraph::new("").wrap(Wrap { trim: false }).block(block), area);
       },
-      DataState::HasResults(rows) => {
+      DataState::HasResults(_) => {
         self.scrollable.block(block);
         self.scrollable.draw(f, area, app_state)?;
       },
@@ -249,35 +283,3 @@ impl<'a> Component for Data<'a> {
     Ok(())
   }
 }
-
-// // TODO: see if this trait can be fixed and used
-//
-// // based on: https://users.rust-lang.org/t/casting-traitobject-to-super-trait/33524/9
-// pub trait IntoComponent<'a, Super: ?Sized> {
-//   fn as_super(&self) -> &Super;
-//   fn as_super_mut(&mut self) -> &mut Super;
-//   fn into_super(self: Box<Self>) -> Box<Super>;
-//   fn into_super_ref_mut(self: &'a mut Box<Self>) -> &'a mut Box<Super>;
-// }
-//
-// impl<'a, T: 'a + Component> IntoComponent<'a, dyn Component + 'a> for T
-// where
-//   T: Component + 'a,
-// {
-//   fn as_super(&self) -> &(dyn Component + 'a) {
-//     self
-//   }
-//
-//   fn as_super_mut(&mut self) -> &mut (dyn Component + 'a) {
-//     self
-//   }
-//
-//   fn into_super(self: Box<Self>) -> Box<dyn Component + 'a> {
-//     self
-//   }
-//
-//   fn into_super_ref_mut(self: &'a mut Box<Self>) -> &'a mut Box<dyn Component + 'a> {
-//     self
-//   }
-// }
-//

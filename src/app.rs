@@ -62,14 +62,6 @@ pub struct QueryResultsWithMetadata {
   pub statement_type: Statement,
 }
 
-// // TODO: see if the into_super_ref_mut fn can be fixed
-//
-// impl Components {
-//   pub fn to_array(&mut self) -> [&mut Box<dyn Component>; 3] {
-//     [&mut self.menu, &mut self.editor, self.data.into_super_ref_mut()]
-//   }
-// }
-
 pub struct App<'a> {
   pub config: Config,
   pub tick_rate: Option<f64>,

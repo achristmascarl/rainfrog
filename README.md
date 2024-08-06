@@ -17,6 +17,7 @@ where `connection_url` includes the username:password for accessing the database
 
 ## known issues
 - for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535). Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
+- on mac, for VS Code and terminal (and perhaps other editors), a setting for "use option as meta key" needs to be turned on for Alt/Opt keybindings to work. (In VS Code, it's `"terminal.integrated.macOptionIsMeta": true`.)
 
 ## roadmap
 ### v0.1.0
@@ -28,8 +29,8 @@ where `connection_url` includes the username:password for accessing the database
 - [x] handle custom types / enums
 - [x] display rows affected
 - [x] confirm before delete/drop
-- [ ] table selection and yanking
-- [ ] os clipboard support
+- [x] table selection and yanking
+- [ ] editor os clipboard support
 - [ ] multi-line pasting
 - [ ] handle mouse events
 - [ ] keybindings hints at bottom

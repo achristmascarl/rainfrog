@@ -42,6 +42,7 @@ chrono-tz = { version = "0.5", default-features = false }
 indexmap = "2.2.6"
 tui-textarea = "0.5.3"
 sqlparser = "0.49.0"
+arboard = "3.4.0"
 
 [build-dependencies]
 vergen = { version = "8.2.6", features = [ "build", "git", "gitoxide", "cargo" ]}

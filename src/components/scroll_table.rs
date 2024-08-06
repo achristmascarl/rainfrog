@@ -25,6 +25,7 @@ pub enum ScrollDirection {
 pub enum SelectionMode {
   Row,
   Cell,
+  Copied,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -139,8 +140,13 @@ impl<'a> ScrollTable<'a> {
   }
 
   pub fn get_cell_offsets(&self) -> (u16, usize) {
-    // TODO: calc cell
-    (self.x_offset, self.y_offset)
+    let column_count = self.requested_width.saturating_div(self.column_width);
+    let col_index = (self.x_offset.saturating_sub(self.x_offset % self.column_width)).saturating_div(self.column_width);
+    (col_index, self.y_offset)
+  }
+
+  pub fn get_selection_mode(&self) -> Option<SelectionMode> {
+    self.selection_mode.clone()
   }
 
   pub fn transition_selection_mode(&mut self, new_mode: Option<SelectionMode>) -> &mut Self {
@@ -148,13 +154,13 @@ impl<'a> ScrollTable<'a> {
     self
   }
 
-  fn get_max_x_offset(&self, requested_width: u16, parent_area: &Rect, parent_block: &Option<Block>) -> u16 {
+  fn get_max_x_offset(&self, parent_area: &Rect, parent_block: &Option<Block>) -> u16 {
     let render_area = parent_block.inner_if_some(*parent_area);
     if render_area.is_empty() {
       return 0_u16;
     }
     let parent_width = render_area.width;
-    requested_width.saturating_sub(self.column_width)
+    self.requested_width.saturating_sub(self.column_width)
   }
 
   fn widget(&'a self) -> Renderer<'a> {
@@ -165,7 +171,7 @@ impl<'a> ScrollTable<'a> {
 impl<'a> Component for ScrollTable<'a> {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     self.parent_area = area;
-    self.max_x_offset = self.get_max_x_offset(self.requested_width, &self.parent_area, &self.block);
+    self.max_x_offset = self.get_max_x_offset(&self.parent_area, &self.block);
     let max_x_offset = self.max_x_offset;
     let x_offset = self.x_offset;
     f.render_widget(self.widget(), area);
@@ -263,9 +269,9 @@ impl<'a> Widget for Renderer<'a> {
           .saturating_sub(scrollable.x_offset % scrollable.column_width);
         let style = match (scrollable.selection_mode.as_ref(), content_x, content_y) {
           (Some(SelectionMode::Cell), x, y) if y == 3 && x < right_edge => {
-            Style::default().bg(Color::LightBlue).fg(Color::Black).bold().italic()
+            Style::default().fg(Color::LightBlue).reversed().bold().italic()
           },
-          _ => Style::default(),
+          _ => cell.style(),
         };
         buf
           .get_mut(x, y)
