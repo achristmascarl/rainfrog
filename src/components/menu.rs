@@ -6,7 +6,7 @@ use std::{
 };
 
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, MouseEventKind};
 use indexmap::IndexMap;
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
@@ -200,89 +200,98 @@ impl Component for Menu {
     Ok(())
   }
 
-  fn handle_events(
+  fn handle_mouse_events(
     &mut self,
-    event: Option<Event>,
-    last_tick_key_events: Vec<KeyEvent>,
+    mouse: crossterm::event::MouseEvent,
     app_state: &AppState,
   ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Menu {
       return Ok(None);
     }
-    if let Some(Event::Key(key)) = event {
-      match key.code {
-        KeyCode::Right => self.change_focus(MenuFocus::Tables),
-        KeyCode::Left => self.change_focus(MenuFocus::Schema),
-        KeyCode::Down => self.scroll_down(),
-        KeyCode::Up => self.scroll_up(),
-        KeyCode::Char(c) => {
-          if self.search.is_some() && self.search_focused {
-            if let Some(search) = self.search.as_mut() {
-              search.push(c);
-              self.list_state = ListState::default().with_selected(Some(0));
-            }
-          } else {
-            match key.code {
-              KeyCode::Char('/') => {
-                self.search_focused = true;
-                if self.search.is_none() {
-                  self.search = Some("".to_owned())
-                }
-              },
-              KeyCode::Char('l') => self.change_focus(MenuFocus::Tables),
-              KeyCode::Char('h') => self.change_focus(MenuFocus::Schema),
-              KeyCode::Char('j') => self.scroll_down(),
-              KeyCode::Char('k') => self.scroll_up(),
-              KeyCode::Char('g') => self.scroll_top(),
-              KeyCode::Char('G') => self.scroll_bottom(),
-              KeyCode::Char('R') => self.command_tx.as_ref().unwrap().send(Action::LoadMenu)?,
-              _ => {},
-            }
-          }
-        },
-        KeyCode::Enter => {
-          if self.search.is_some() && self.search_focused {
-            self.search_focused = false;
-          } else if self.menu_focus == MenuFocus::Schema {
-            self.change_focus(MenuFocus::Tables);
-          } else if let Some(selected) = self.list_state.selected() {
-            let (schema, tables) = self.table_map.get_index(self.schema_index).unwrap();
-            let filtered_tables: Vec<String> = tables
-              .iter()
-              .filter(|t| {
-                if let Some(search) = self.search.as_ref() {
-                  t.to_lowercase().contains(search.to_lowercase().trim())
-                } else {
-                  true
-                }
-              })
-              .cloned()
-              .collect();
-            self
-              .command_tx
-              .as_ref()
-              .unwrap()
-              .send(Action::MenuSelect(schema.clone(), filtered_tables[selected].clone()))?;
-          }
-        },
-        KeyCode::Esc => self.reset_search(),
-        KeyCode::Backspace => {
-          if self.search.is_some() && self.search_focused {
-            if let Some(search) = self.search.as_mut() {
-              if !search.is_empty() {
-                search.pop();
-                self.list_state = ListState::default().with_selected(Some(0));
-              } else {
-                self.reset_search();
-              }
-            }
-          } else if self.menu_focus == MenuFocus::Tables {
-            self.change_focus(MenuFocus::Schema);
-          }
-        },
-        _ => {},
-      }
+    match mouse.kind {
+      MouseEventKind::ScrollDown => self.scroll_down(),
+      MouseEventKind::ScrollUp => self.scroll_up(),
+      _ => {},
     };
+    Ok(None)
+  }
+
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
+    if app_state.focus != Focus::Menu {
+      return Ok(None);
+    }
+    match key.code {
+      KeyCode::Right => self.change_focus(MenuFocus::Tables),
+      KeyCode::Left => self.change_focus(MenuFocus::Schema),
+      KeyCode::Down => self.scroll_down(),
+      KeyCode::Up => self.scroll_up(),
+      KeyCode::Char(c) => {
+        if self.search.is_some() && self.search_focused {
+          if let Some(search) = self.search.as_mut() {
+            search.push(c);
+            self.list_state = ListState::default().with_selected(Some(0));
+          }
+        } else {
+          match key.code {
+            KeyCode::Char('/') => {
+              self.search_focused = true;
+              if self.search.is_none() {
+                self.search = Some("".to_owned())
+              }
+            },
+            KeyCode::Char('l') => self.change_focus(MenuFocus::Tables),
+            KeyCode::Char('h') => self.change_focus(MenuFocus::Schema),
+            KeyCode::Char('j') => self.scroll_down(),
+            KeyCode::Char('k') => self.scroll_up(),
+            KeyCode::Char('g') => self.scroll_top(),
+            KeyCode::Char('G') => self.scroll_bottom(),
+            KeyCode::Char('R') => self.command_tx.as_ref().unwrap().send(Action::LoadMenu)?,
+            _ => {},
+          }
+        }
+      },
+      KeyCode::Enter => {
+        if self.search.is_some() && self.search_focused {
+          self.search_focused = false;
+        } else if self.menu_focus == MenuFocus::Schema {
+          self.change_focus(MenuFocus::Tables);
+        } else if let Some(selected) = self.list_state.selected() {
+          let (schema, tables) = self.table_map.get_index(self.schema_index).unwrap();
+          let filtered_tables: Vec<String> = tables
+            .iter()
+            .filter(|t| {
+              if let Some(search) = self.search.as_ref() {
+                t.to_lowercase().contains(search.to_lowercase().trim())
+              } else {
+                true
+              }
+            })
+            .cloned()
+            .collect();
+          self
+            .command_tx
+            .as_ref()
+            .unwrap()
+            .send(Action::MenuSelect(schema.clone(), filtered_tables[selected].clone()))?;
+        }
+      },
+      KeyCode::Esc => self.reset_search(),
+      KeyCode::Backspace => {
+        if self.search.is_some() && self.search_focused {
+          if let Some(search) = self.search.as_mut() {
+            if !search.is_empty() {
+              search.pop();
+              self.list_state = ListState::default().with_selected(Some(0));
+            } else {
+              self.reset_search();
+            }
+          }
+        } else if self.menu_focus == MenuFocus::Tables {
+          self.change_focus(MenuFocus::Schema);
+        }
+      },
+      _ => {},
+    }
     Ok(None)
   }
 

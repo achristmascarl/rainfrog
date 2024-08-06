@@ -5,11 +5,11 @@ use std::{
 };
 
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
-use tui_textarea::{Input, Key, TextArea};
+use tui_textarea::{Input, Key, Scrolling, TextArea};
 
 use super::{Component, Frame};
 use crate::{
@@ -54,6 +54,30 @@ impl<'a> Editor<'a> {
       cursor_style: Mode::Normal.cursor_style(),
     }
   }
+
+  pub fn transition_vim_state(&mut self, input: Input) -> Result<()> {
+    match input {
+      Input { key: Key::Enter, alt: true, .. } => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::Query(self.textarea.lines().join(" ")))?;
+          self.vim_state = Vim::new(Mode::Normal);
+          self.cursor_style = Mode::Normal.cursor_style();
+        }
+      },
+      _ => {
+        let new_vim_state = self.vim_state.clone();
+        self.vim_state = match new_vim_state.transition(input, &mut self.textarea) {
+          Transition::Mode(mode) if new_vim_state.mode != mode => {
+            self.cursor_style = mode.cursor_style();
+            Vim::new(mode)
+          },
+          Transition::Nop | Transition::Mode(_) => new_vim_state,
+          Transition::Pending(input) => new_vim_state.with_pending(input),
+        };
+      },
+    };
+    Ok(())
+  }
 }
 
 impl<'a> Component for Editor<'a> {
@@ -67,6 +91,28 @@ impl<'a> Component for Editor<'a> {
     Ok(())
   }
 
+  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
+    if app_state.focus != Focus::Editor {
+      return Ok(None);
+    }
+    match mouse.kind {
+      MouseEventKind::ScrollDown => {
+        self.textarea.scroll((1, 0));
+      },
+      MouseEventKind::ScrollUp => {
+        self.textarea.scroll((-1, 0));
+      },
+      MouseEventKind::ScrollLeft => {
+        self.transition_vim_state(Input { key: Key::Char('h'), ctrl: false, alt: false, shift: false })?;
+      },
+      MouseEventKind::ScrollRight => {
+        self.transition_vim_state(Input { key: Key::Char('j'), ctrl: false, alt: false, shift: false })?;
+      },
+      _ => {},
+    };
+    Ok(None)
+  }
+
   fn handle_events(
     &mut self,
     event: Option<Event>,
@@ -78,29 +124,12 @@ impl<'a> Component for Editor<'a> {
     }
     if let Some(Event::Paste(text)) = event {
       self.textarea.insert_str(text);
+    } else if let Some(Event::Mouse(event)) = event {
+      self.handle_mouse_events(event, app_state).unwrap();
     } else if let Some(Event::Key(key)) = event {
       if app_state.query_task.is_none() {
         let input = Input::from(key);
-        match input {
-          Input { key: Key::Enter, alt: true, .. } => {
-            if let Some(sender) = &self.command_tx {
-              sender.send(Action::Query(self.textarea.lines().join(" ")))?;
-              self.vim_state = Vim::new(Mode::Normal);
-              self.cursor_style = Mode::Normal.cursor_style();
-            }
-          },
-          _ => {
-            let new_vim_state = self.vim_state.clone();
-            self.vim_state = match new_vim_state.transition(input, &mut self.textarea) {
-              Transition::Mode(mode) if new_vim_state.mode != mode => {
-                self.cursor_style = mode.cursor_style();
-                Vim::new(mode)
-              },
-              Transition::Nop | Transition::Mode(_) => new_vim_state,
-              Transition::Pending(input) => new_vim_state.with_pending(input),
-            };
-          },
-        }
+        self.transition_vim_state(input)?;
       }
     };
     Ok(None)

@@ -1,11 +1,11 @@
 use std::{borrow::Borrow, fmt::format, sync::Arc};
 
 use color_eyre::eyre::Result;
-use crossterm::event::{Event, KeyCode, KeyEvent};
+use crossterm::event::{Event, KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use futures::{task::Poll, FutureExt};
 use log::log;
 use ratatui::{
-  layout::{Constraint, Direction, Layout},
+  layout::{Constraint, Direction, Layout, Position},
   prelude::Rect,
   style::{Color, Style},
   text::Line,
@@ -69,6 +69,7 @@ pub struct App<'a> {
   pub components: Components<'static>,
   pub should_quit: bool,
   pub last_tick_key_events: Vec<KeyEvent>,
+  pub last_frame_mouse_event: Option<MouseEvent>,
   pub pool: Option<DbPool>,
   pub state: AppState<'a>,
 }
@@ -87,6 +88,7 @@ impl<'a> App<'a> {
       should_quit: false,
       config,
       last_tick_key_events: Vec::new(),
+      last_frame_mouse_event: None,
       pool: None,
       state: AppState { connection_string, focus, query_task: None },
     })
@@ -151,6 +153,7 @@ impl<'a> App<'a> {
           tui::Event::Tick => action_tx.send(Action::Tick)?,
           tui::Event::Render => action_tx.send(Action::Render)?,
           tui::Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
+          tui::Event::Mouse(event) => self.last_frame_mouse_event = Some(event),
           tui::Event::Key(key) => {
             if let Some(keymap) = self.config.keybindings.get(&self.state.focus) {
               if let Some(action) = keymap.get(&vec![key]) {
@@ -239,6 +242,7 @@ impl<'a> App<'a> {
             tui.draw(|f| {
               self.draw_layout(f);
             })?;
+            self.last_frame_mouse_event = None;
           },
           Action::FocusMenu => {
             log::info!("FocusMenu");
@@ -350,6 +354,11 @@ impl<'a> App<'a> {
           }
         }
       }
+      if self.last_frame_mouse_event.is_some() {
+        tui.draw(|f| {
+          self.draw_layout(f);
+        })?;
+      }
       if self.should_quit {
         tui.stop()?;
         break;
@@ -368,6 +377,23 @@ impl<'a> App<'a> {
       .direction(Direction::Vertical)
       .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
       .split(root_layout[1]);
+
+    if let Some(event) = &self.last_frame_mouse_event {
+      if self.state.query_task.is_none() {
+        let position = Position::new(event.column, event.row);
+        let menu_target = root_layout[0];
+        let editor_target = right_layout[0];
+        let data_target = right_layout[1];
+        if menu_target.contains(position) {
+          self.state.focus = Focus::Menu;
+        } else if editor_target.contains(position) {
+          self.state.focus = Focus::Editor;
+        } else if data_target.contains(position) {
+          self.state.focus = Focus::Data;
+        }
+      }
+    }
+
     let state = &self.state;
 
     self.components.menu.draw(f, root_layout[0], state).unwrap();
@@ -383,8 +409,8 @@ impl<'a> App<'a> {
     let area = center(frame.size(), Constraint::Percentage(60), Constraint::Percentage(60));
     let block = Block::default()
       .borders(Borders::ALL)
-      .border_style(Style::default().fg(Color::Green))
-      .title(Line::from("Confirm Action").centered())
+      .border_style(Style::default().fg(Color::Yellow))
+      .title(Line::from(" Confirm Action ").centered())
       .padding(Padding::uniform(1));
     let layout = Layout::default()
       .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])

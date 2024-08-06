@@ -22,11 +22,12 @@ or
 
 where `connection_url` includes the username:password for accessing the database (ex. `postgres://username:password@localhost:5432/postgres`)
 
-## known issues
+## known issues and limitations
 - for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535). Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
 - on mac, for VS Code and terminal (and perhaps other editors), a setting for "use option as meta key" needs to be turned on for Alt/Opt keybindings to work. (In VS Code, it's `"terminal.integrated.macOptionIsMeta": true`.)
 - in visual mode, when selecting an entire line, the behavior is not the same as vim's, as it simply moves starts the selection at the head of the line, so moving up or down in lines will break the selection. 
 - in visual mode, operations on backwards selections do not behave as expected. will be fixed after https://github.com/rhysd/tui-textarea/issues/80
+- mouse events are only used for changing focus and scrolling; the editor does not currently support mouse events, and menu items cannot be selected using the mouse
 
 ## roadmap
 <details>
@@ -43,7 +44,7 @@ where `connection_url` includes the username:password for accessing the database
   - [x] table selection and yanking
   - [x] multi-line pasting
   - [x] editor os clipboard support
-  - [ ] handle mouse events
+  - [x] handle mouse events
   - [ ] keybindings hints at bottom
   - [ ] unit / e2e tests
   - [ ] branch protection
@@ -68,6 +69,7 @@ where `connection_url` includes the username:password for accessing the database
   - [ ] live graphs / metrics (a la pgadmin)
   - [ ] customization (keybindings, colors)
   - [ ] better vim multi-line selection emulation
+  - [ ] handle more mouse events
 </details>
 
 ## acknowledgements

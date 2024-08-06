@@ -63,7 +63,7 @@ impl Tui {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let cancellation_token = CancellationToken::new();
     let task = tokio::spawn(async {});
-    let mouse = false;
+    let mouse = true;
     let paste = true;
     Ok(Self { terminal, task, cancellation_token, event_rx, event_tx, frame_rate, tick_rate, mouse, paste })
   }
@@ -103,6 +103,7 @@ impl Tui {
       let mut reader = crossterm::event::EventStream::new();
       let mut tick_interval = tokio::time::interval(tick_delay);
       let mut render_interval = tokio::time::interval(render_delay);
+      let mut last_frame_mouse_event: Option<MouseEvent> = None; // debounce mouse events
       _event_tx.send(Event::Init).unwrap();
       loop {
         let tick_delay = tick_interval.tick();
@@ -122,7 +123,7 @@ impl Tui {
                     }
                   },
                   CrosstermEvent::Mouse(mouse) => {
-                    _event_tx.send(Event::Mouse(mouse)).unwrap();
+                     last_frame_mouse_event = Some(mouse);
                   },
                   CrosstermEvent::Resize(x, y) => {
                     _event_tx.send(Event::Resize(x, y)).unwrap();
@@ -145,10 +146,13 @@ impl Tui {
             }
           },
           _ = tick_delay => {
-              _event_tx.send(Event::Tick).unwrap();
+            _event_tx.send(Event::Tick).unwrap();
           },
           _ = render_delay => {
-              _event_tx.send(Event::Render).unwrap();
+            _event_tx.send(Event::Render).unwrap();
+            if let Some(mouse_event) = last_frame_mouse_event.take() {
+              _event_tx.send(Event::Mouse(mouse_event)).unwrap();
+            }
           },
         }
       }

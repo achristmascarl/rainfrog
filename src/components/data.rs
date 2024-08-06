@@ -2,7 +2,10 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use arboard::Clipboard;
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::{
+  event::{KeyCode, KeyEvent, MouseEventKind},
+  terminal::ScrollDown,
+};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::Statement;
@@ -122,77 +125,96 @@ impl<'a> Component for Data<'a> {
     Ok(())
   }
 
-  fn handle_events(
+  fn handle_mouse_events(
     &mut self,
-    event: Option<Event>,
-    last_tick_key_events: Vec<KeyEvent>,
+    mouse: crossterm::event::MouseEvent,
     app_state: &AppState,
   ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Data {
       return Ok(None);
     }
-    if let Some(Event::Key(key)) = event {
-      match key.code {
-        KeyCode::Right | KeyCode::Char('l') => {
-          self.scrollable.scroll(ScrollDirection::Right);
-        },
-        KeyCode::Left | KeyCode::Char('h') => {
-          self.scrollable.scroll(ScrollDirection::Left);
-        },
-        KeyCode::Down | KeyCode::Char('j') => {
-          self.scrollable.scroll(ScrollDirection::Down);
-        },
-        KeyCode::Up | KeyCode::Char('k') => {
-          self.scrollable.scroll(ScrollDirection::Up);
-        },
-        KeyCode::Char('e') => {
-          self.scrollable.next_column();
-        },
-        KeyCode::Char('b') => {
-          self.scrollable.prev_column();
-        },
-        KeyCode::Char('g') => {
-          self.scrollable.top_row();
-        },
-        KeyCode::Char('G') => {
-          self.scrollable.bottom_row();
-        },
-        KeyCode::Char('0') => {
-          self.scrollable.first_column();
-        },
-        KeyCode::Char('$') => {
-          self.scrollable.last_column();
-        },
-        KeyCode::Char('v') => {
-          self.scrollable.transition_selection_mode(Some(SelectionMode::Cell));
-        },
-        KeyCode::Char('V') => {
-          self.scrollable.transition_selection_mode(Some(SelectionMode::Row));
-        },
-        KeyCode::Char('y') => {
-          if let DataState::HasResults((rows, _)) = &self.data_state {
-            let (x, y) = self.scrollable.get_cell_offsets();
-            let row = row_to_vec(&rows[y]);
-            let mut clipboard = Clipboard::new().unwrap();
-            match self.scrollable.get_selection_mode() {
-              Some(SelectionMode::Row) => {
-                let row_string = row.join(", ");
-                clipboard.set_text(row_string).unwrap();
-              },
-              Some(SelectionMode::Cell) => {
-                let cell = row[x as usize].clone();
-                clipboard.set_text(cell).unwrap();
-              },
-              _ => {},
-            }
-            self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
+    match mouse.kind {
+      MouseEventKind::ScrollDown => {
+        self.scrollable.scroll(ScrollDirection::Down);
+      },
+      MouseEventKind::ScrollUp => {
+        self.scrollable.scroll(ScrollDirection::Up);
+      },
+      MouseEventKind::ScrollLeft => {
+        self.scrollable.scroll(ScrollDirection::Left);
+      },
+      MouseEventKind::ScrollRight => {
+        self.scrollable.scroll(ScrollDirection::Right);
+      },
+      _ => {},
+    };
+    Ok(None)
+  }
+
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
+    if app_state.focus != Focus::Data {
+      return Ok(None);
+    }
+    match key.code {
+      KeyCode::Right | KeyCode::Char('l') => {
+        self.scrollable.scroll(ScrollDirection::Right);
+      },
+      KeyCode::Left | KeyCode::Char('h') => {
+        self.scrollable.scroll(ScrollDirection::Left);
+      },
+      KeyCode::Down | KeyCode::Char('j') => {
+        self.scrollable.scroll(ScrollDirection::Down);
+      },
+      KeyCode::Up | KeyCode::Char('k') => {
+        self.scrollable.scroll(ScrollDirection::Up);
+      },
+      KeyCode::Char('e') => {
+        self.scrollable.next_column();
+      },
+      KeyCode::Char('b') => {
+        self.scrollable.prev_column();
+      },
+      KeyCode::Char('g') => {
+        self.scrollable.top_row();
+      },
+      KeyCode::Char('G') => {
+        self.scrollable.bottom_row();
+      },
+      KeyCode::Char('0') => {
+        self.scrollable.first_column();
+      },
+      KeyCode::Char('$') => {
+        self.scrollable.last_column();
+      },
+      KeyCode::Char('v') => {
+        self.scrollable.transition_selection_mode(Some(SelectionMode::Cell));
+      },
+      KeyCode::Char('V') => {
+        self.scrollable.transition_selection_mode(Some(SelectionMode::Row));
+      },
+      KeyCode::Char('y') => {
+        if let DataState::HasResults((rows, _)) = &self.data_state {
+          let (x, y) = self.scrollable.get_cell_offsets();
+          let row = row_to_vec(&rows[y]);
+          let mut clipboard = Clipboard::new().unwrap();
+          match self.scrollable.get_selection_mode() {
+            Some(SelectionMode::Row) => {
+              let row_string = row.join(", ");
+              clipboard.set_text(row_string).unwrap();
+            },
+            Some(SelectionMode::Cell) => {
+              let cell = row[x as usize].clone();
+              clipboard.set_text(cell).unwrap();
+            },
+            _ => {},
           }
-        },
-        KeyCode::Esc => {
-          self.scrollable.transition_selection_mode(None);
-        },
-        _ => {},
-      }
+          self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
+        }
+      },
+      KeyCode::Esc => {
+        self.scrollable.transition_selection_mode(None);
+      },
+      _ => {},
     };
     Ok(None)
   }
