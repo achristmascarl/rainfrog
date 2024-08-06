@@ -6,6 +6,7 @@ description = "a database management tui for postgres"
 repository = "https://github.com/achristmascarl/rainfrog"
 authors = ["achristmascarl <carl@rainfrog.dev>"]
 build = "build.rs"
+license = "MIT"
 
 [profile.dev]
 opt-level = 2 # very slow on 1, basically as fast as --release on 2
