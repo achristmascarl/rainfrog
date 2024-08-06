@@ -25,6 +25,8 @@ where `connection_url` includes the username:password for accessing the database
 ## known issues
 - for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535). Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
 - on mac, for VS Code and terminal (and perhaps other editors), a setting for "use option as meta key" needs to be turned on for Alt/Opt keybindings to work. (In VS Code, it's `"terminal.integrated.macOptionIsMeta": true`.)
+- in visual mode, when selecting an entire line, the behavior is not the same as vim's, as it simply moves starts the selection at the head of the line, so moving up or down in lines will break the selection. 
+- in visual mode, operations on backwards selections do not behave as expected. will be fixed after https://github.com/rhysd/tui-textarea/issues/80
 
 ## roadmap
 <details>
@@ -40,7 +42,7 @@ where `connection_url` includes the username:password for accessing the database
   - [x] confirm before delete/drop
   - [x] table selection and yanking
   - [x] multi-line pasting
-  - [ ] editor os clipboard support
+  - [x] editor os clipboard support
   - [ ] handle mouse events
   - [ ] keybindings hints at bottom
   - [ ] unit / e2e tests
@@ -53,6 +55,8 @@ where `connection_url` includes the username:password for accessing the database
   - [ ] handle explain / analyze output
   - [ ] shortcuts to view indexes, keys, etc.
   - [ ] session history
+  - [ ] fix multi-line vim selections
+  - [ ] non-vim editor keybindings
   - [ ] loading animation
 </details>
 
@@ -63,6 +67,7 @@ where `connection_url` includes the username:password for accessing the database
   - [ ] syntax highlighting
   - [ ] live graphs / metrics (a la pgadmin)
   - [ ] customization (keybindings, colors)
+  - [ ] better vim multi-line selection emulation
 </details>
 
 ## acknowledgements

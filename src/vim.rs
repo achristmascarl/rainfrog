@@ -136,6 +136,7 @@ impl Vim {
             return Transition::Mode(Mode::Replace);
           },
           Input { key: Key::Char('x'), .. } => {
+            // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
             if !textarea.is_selecting() {
               textarea.start_selection();
             }
@@ -226,6 +227,7 @@ impl Vim {
             return Transition::Mode(Mode::Operator(op));
           },
           Input { key: Key::Char('y'), ctrl: false, .. } if self.mode == Mode::Visual => {
+            // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
             textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
             textarea.copy();
             let mut clipboard = Clipboard::new().unwrap();
@@ -234,6 +236,7 @@ impl Vim {
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('d'), ctrl: false, .. } if self.mode == Mode::Visual => {
+            // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
             textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
             textarea.cut();
             let mut clipboard = Clipboard::new().unwrap();
@@ -242,6 +245,7 @@ impl Vim {
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('c'), ctrl: false, .. } if self.mode == Mode::Visual => {
+            // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
             textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
             textarea.cut();
             let mut clipboard = Clipboard::new().unwrap();
