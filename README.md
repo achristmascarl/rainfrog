@@ -27,32 +27,43 @@ where `connection_url` includes the username:password for accessing the database
 - on mac, for VS Code and terminal (and perhaps other editors), a setting for "use option as meta key" needs to be turned on for Alt/Opt keybindings to work. (In VS Code, it's `"terminal.integrated.macOptionIsMeta": true`.)
 
 ## roadmap
-### v0.1.0
-- [x] scrollable table 
-- [x] cancellable async querying (spawn tokio task)
-- [x] menu list with tables and schemas (collapsable)
-- [x] tui-textarea for query editor
-- [x] basic tui-textarea vim keybindings
-- [x] handle custom types / enums
-- [x] display rows affected
-- [x] confirm before delete/drop
-- [x] table selection and yanking
-- [ ] editor os clipboard support
-- [ ] multi-line pasting
-- [ ] handle mouse events
-- [ ] keybindings hints at bottom
-- [ ] unit / e2e tests
-- [ ] branch protection
-### v0.1.1
-- [ ] handle explain / analyze output
-- [ ] shortcuts to view indexes, keys, etc.
-- [ ] session history
-- [ ] loading animation
-### backburner 
-- [ ] editor auto-complete
-- [ ] syntax highlighting
-- [ ] live graphs / metrics (a la pgadmin)
-- [ ] customization (keybindings, colors)
+<details>
+  <summary><b>v0.1.0</b></summary>
+  
+  - [x] scrollable table 
+  - [x] cancellable async querying (spawn tokio task)
+  - [x] menu list with tables and schemas (collapsable)
+  - [x] tui-textarea for query editor
+  - [x] basic tui-textarea vim keybindings
+  - [x] handle custom types / enums
+  - [x] display rows affected
+  - [x] confirm before delete/drop
+  - [x] table selection and yanking
+  - [ ] editor os clipboard support
+  - [ ] multi-line pasting
+  - [ ] handle mouse events
+  - [ ] keybindings hints at bottom
+  - [ ] unit / e2e tests
+  - [ ] branch protection
+</details>
+
+<details>
+  <summary><b>v0.1.1</b></summary>
+
+  - [ ] handle explain / analyze output
+  - [ ] shortcuts to view indexes, keys, etc.
+  - [ ] session history
+  - [ ] loading animation
+</details>
+
+<details>
+  <summary><b>backburner</b></summary>
+
+  - [ ] editor auto-complete
+  - [ ] syntax highlighting
+  - [ ] live graphs / metrics (a la pgadmin)
+  - [ ] customization (keybindings, colors)
+</details>
 
 ## acknowledgements
 - [ratatui](https://github.com/ratatui-org/ratatui) (this project used ratatui's [component template](https://github.com/ratatui-org/templates/tree/983aa3cb3b8dd743200e8e2a1faa6e7c06aad85e/component/template) as a starting point)
