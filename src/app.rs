@@ -7,7 +7,7 @@ use log::log;
 use ratatui::{
   layout::{Constraint, Direction, Layout, Position},
   prelude::Rect,
-  style::{Color, Style},
+  style::{Color, Style, Stylize},
   text::Line,
   widgets::{Block, Borders, Clear, Padding, Paragraph},
   Frame,
@@ -369,10 +369,14 @@ impl<'a> App<'a> {
   }
 
   fn draw_layout(&mut self, f: &mut Frame) {
+    let hints_layout = Layout::default()
+      .direction(Direction::Vertical)
+      .constraints([Constraint::Fill(1), Constraint::Length(1)])
+      .split(f.size());
     let root_layout = Layout::default()
       .direction(Direction::Horizontal)
       .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
-      .split(f.size());
+      .split(hints_layout[0]);
     let right_layout = Layout::default()
       .direction(Direction::Vertical)
       .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
@@ -399,10 +403,26 @@ impl<'a> App<'a> {
     self.components.menu.draw(f, root_layout[0], state).unwrap();
     self.components.editor.draw(f, right_layout[0], state).unwrap();
     self.components.data.draw(f, right_layout[1], state).unwrap();
+    self.render_hints(f, hints_layout[1]);
 
     if let Some(DbTask::TxPending(tx, results)) = &self.state.query_task {
       self.render_popup(f, results);
     }
+  }
+
+  fn render_hints(&self, frame: &mut Frame, area: Rect) {
+    let block = Block::default().style(Style::default().fg(Color::Blue));
+    let paragraph = Paragraph::new(
+      Line::from(match self.state.focus {
+        Focus::Menu => "[j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [<esc>] exit search [<enter>] preview table [g] top [G] bottom",
+        Focus::Editor => "[<alt + enter>] execute query",
+        Focus::Data => "[j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [g] top [G] bottom [0] first col [$] last col",
+        Focus::PopUp => "[<esc>] cancel",
+      })
+      .centered(),
+    )
+    .block(block);
+    frame.render_widget(paragraph, area);
   }
 
   fn render_popup(&self, frame: &mut Frame, results: &QueryResultsWithMetadata) {

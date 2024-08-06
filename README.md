@@ -45,14 +45,14 @@ where `connection_url` includes the username:password for accessing the database
   - [x] multi-line pasting
   - [x] editor os clipboard support
   - [x] handle mouse events
-  - [ ] keybindings hints at bottom
-  - [ ] unit / e2e tests
+  - [x] keybindings hints at bottom
   - [ ] branch protection
 </details>
 
 <details>
   <summary><b>v0.1.1</b></summary>
 
+  - [ ] unit / e2e tests
   - [ ] handle explain / analyze output
   - [ ] shortcuts to view indexes, keys, etc.
   - [ ] session history

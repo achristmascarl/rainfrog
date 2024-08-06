@@ -168,7 +168,7 @@ impl<'a> Component for Data<'a> {
       KeyCode::Up | KeyCode::Char('k') => {
         self.scrollable.scroll(ScrollDirection::Up);
       },
-      KeyCode::Char('e') => {
+      KeyCode::Char('e') | KeyCode::Char('w') => {
         self.scrollable.next_column();
       },
       KeyCode::Char('b') => {
@@ -240,19 +240,19 @@ impl<'a> Component for Data<'a> {
       let row = row_to_vec(&rows[y]);
       let title_string = match self.scrollable.get_selection_mode() {
         Some(SelectionMode::Row) => {
-          format!("results (row {} of {})", y.saturating_add(1), rows.len())
+          format!(" 󰆼 results <alt+3> (row {} of {})", y.saturating_add(1), rows.len())
         },
         Some(SelectionMode::Cell) => {
-          format!("results (row {} of {}) - {} ", y.saturating_add(1), rows.len(), row[x as usize].clone())
+          format!(" 󰆼 results <alt+3> (row {} of {}) - {} ", y.saturating_add(1), rows.len(), row[x as usize].clone())
         },
         Some(SelectionMode::Copied) => {
-          format!("results ({} rows) - copied! ", rows.len())
+          format!(" 󰆼 results <alt+3> ({} rows) - copied! ", rows.len())
         },
-        _ => format!("results ({} rows)", rows.len()),
+        _ => format!(" 󰆼 results <alt+3> ({} rows)", rows.len()),
       };
       block = block.title(title_string);
     } else {
-      block = block.title("results");
+      block = block.title(" 󰆼 results <alt+3>");
     }
 
     match &self.data_state {

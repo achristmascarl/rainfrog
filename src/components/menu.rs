@@ -333,7 +333,7 @@ impl Component for Menu {
       match i {
         x if x == self.schema_index => {
           let block = Block::default()
-            .title(k.as_str().to_owned() + "(schema)")
+            .title(format!(" 󰦄  {} <alt+1> (schema) ", k))
             .borders(Borders::ALL)
             .border_style(if focused && self.menu_focus == MenuFocus::Schema {
               Style::default().fg(Color::Green)
@@ -381,7 +381,7 @@ impl Component for Menu {
         x if x == self.table_map.keys().len().saturating_sub(1) => {
           f.render_widget(
             Text::styled(
-              "└".to_owned() + k.to_owned().as_str() + "(schema)",
+              "└ ".to_owned() + k.to_owned().as_str(),
               if focused { Style::default() } else { Style::new().dim() },
             ),
             layout[layout_index],
@@ -390,7 +390,7 @@ impl Component for Menu {
         0 => {
           f.render_widget(
             Text::styled(
-              "┌".to_owned() + k.to_owned().as_str() + "(schema)",
+              "┌ ".to_owned() + k.to_owned().as_str(),
               if focused { Style::default() } else { Style::new().dim() },
             ),
             layout[layout_index],
@@ -399,7 +399,7 @@ impl Component for Menu {
         _ => {
           f.render_widget(
             Text::styled(
-              "├".to_owned() + k.to_owned().as_str() + "(schema)",
+              "├ ".to_owned() + k.to_owned().as_str(),
               if focused { Style::default() } else { Style::new().dim() },
             ),
             layout[layout_index],

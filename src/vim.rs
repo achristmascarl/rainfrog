@@ -29,13 +29,13 @@ pub enum Mode {
 impl Mode {
   pub fn block<'a>(&self) -> Block<'a> {
     let help = match self {
-      Self::Normal => "type i to enter insert mode",
+      Self::Normal => "type i to enter insert mode, v to enter visual mode",
       Self::Insert => "type Esc to back to normal mode",
       Self::Visual => "type y to yank, type d to delete, type Esc to back to normal mode",
       Self::Replace => "type character to replace underlined",
       Self::Operator(_) => "move cursor to apply operator",
     };
-    let title = format!("{} MODE ({})", self, help);
+    let title = format!(" {} MODE ({}) ", self, help);
     Block::default().borders(Borders::ALL).title_bottom(Line::from(title).right_aligned())
   }
 
