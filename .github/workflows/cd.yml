@@ -10,6 +10,8 @@ jobs:
 
     name: Publishing for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
 
     strategy:
       matrix:
@@ -125,8 +127,6 @@ jobs:
           fi
       - name: Releasing assets
         uses: softprops/action-gh-release@v1
-        permissions:
-          contents: write
         with:
           files: |
 
