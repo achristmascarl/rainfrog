@@ -137,12 +137,11 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   <summary><b>v0.2.0 (beta)</b></summary>
 
   - [x] vhs explainer gifs
-  - [ ] upgrade ratatui and tui-textarea 
-  - [ ] improve memory usage
-  - [ ] unit / e2e tests
+  - [x] upgrade ratatui and tui-textarea 
   - [ ] handle explain / analyze output
   - [ ] shortcuts to view indexes, keys, etc.
   - [ ] session history
+  - [ ] unit / e2e tests
   - [ ] fix multi-line vim selections
   - [ ] non-vim editor keybindings
   - [ ] homebrew 

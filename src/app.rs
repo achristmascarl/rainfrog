@@ -102,7 +102,6 @@ impl<'a> App<'a> {
     self.pool = Some(pool);
 
     let mut tui = tui::Tui::new()?.tick_rate(self.tick_rate).frame_rate(self.frame_rate);
-    // tui.mouse(true);
     tui.enter()?;
 
     self.components.menu.register_action_handler(action_tx.clone())?;
@@ -387,7 +386,7 @@ impl<'a> App<'a> {
       .split(root_layout[1]);
 
     if let Some(event) = &self.last_frame_mouse_event {
-      if self.state.query_task.is_none() && event.kind != MouseEventKind::Moved {
+      if !matches!(self.state.query_task, Some(DbTask::TxPending(_, _))) && event.kind != MouseEventKind::Moved {
         let position = Position::new(event.column, event.row);
         let menu_target = root_layout[0];
         let editor_target = right_layout[0];
@@ -424,10 +423,12 @@ impl<'a> App<'a> {
             _ => ""
         },
         match self.state.focus {
-            Focus::Menu => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [<enter>] preview table [g] top [G] bottom",
-            Focus::Editor => "[<alt + enter>] execute query",
-            Focus::Data => "[j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [g] top [G] bottom [0] first col [$] last col",
+            Focus::Menu if self.state.query_task.is_none() => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [<enter>] preview table [g] top [G] bottom",
+            Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
+            Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query",
+            Focus::Data if self.state.query_task.is_none() => "[j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
+            _ => "",
         }
     );
     let paragraph = Paragraph::new(Line::from(help_text).centered()).block(block).wrap(Wrap { trim: true });

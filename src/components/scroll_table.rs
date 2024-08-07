@@ -30,7 +30,6 @@ pub enum SelectionMode {
 
 #[derive(Debug, Clone, Default)]
 pub struct ScrollTable<'a> {
-  viewport_buffer: Buffer,
   table: Table<'a>,
   parent_area: Rect,
   block: Option<Block<'a>>,
@@ -47,7 +46,6 @@ pub struct ScrollTable<'a> {
 impl<'a> ScrollTable<'a> {
   pub fn new() -> Self {
     Self {
-      viewport_buffer: Buffer::empty(Rect::new(0, 0, 0, 0)),
       table: Table::default(),
       parent_area: Rect::new(0, 0, 0, 0),
       block: None,
@@ -64,14 +62,14 @@ impl<'a> ScrollTable<'a> {
 
   pub fn set_table(
     &mut self,
-    table: Box<Table<'a>>,
+    table: Table<'a>,
     column_count: usize,
     row_count: usize,
     column_width: u16,
   ) -> &mut Self {
     let requested_width = column_width.saturating_mul(column_count as u16);
     let max_height = u16::MAX.saturating_div(std::cmp::max(1, requested_width));
-    self.table = *table;
+    self.table = table;
     self.column_width = column_width;
     self.requested_width = requested_width;
     self.max_height = max_height;
