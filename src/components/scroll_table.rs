@@ -60,13 +60,7 @@ impl<'a> ScrollTable<'a> {
     }
   }
 
-  pub fn set_table(
-    &mut self,
-    table: Table<'a>,
-    column_count: usize,
-    row_count: usize,
-    column_width: u16,
-  ) -> &mut Self {
+  pub fn set_table(&mut self, table: Table<'a>, column_count: usize, row_count: usize, column_width: u16) -> &mut Self {
     let requested_width = column_width.saturating_mul(column_count as u16);
     let max_height = u16::MAX.saturating_div(std::cmp::max(1, requested_width));
     self.table = table;
