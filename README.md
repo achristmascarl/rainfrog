@@ -68,6 +68,7 @@ rainfrog --url $(connection_url)
 keybindings may not behave exactly like vim. the full list of active vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | keybinding             | description                            |
 |------------------------|----------------------------------------|
+| `Alt+Enter`, `F5`          | execute query                          |
 | `j`, `↓`                   | move cursor down 1 line                |
 | `k`, `↑`                   | move cursor up 1 line                  |
 | `h`, `←`                   | move cursor left 1 char                |
