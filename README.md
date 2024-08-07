@@ -23,7 +23,7 @@ this software is currently under active development; expect breaking changes, an
 ### cargo
 after installing rust (recommended to do so via [rustup](https://www.rust-lang.org/tools/install)):
 ```sh
-cargo install rainfrog
+cargo install rainfrog --locked
 ```
 
 ### binaries
@@ -68,6 +68,7 @@ rainfrog --url $(connection_url)
 keybindings may not behave exactly like vim. the full list of active vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | keybinding             | description                            |
 |------------------------|----------------------------------------|
+| `Alt+Enter`, `F5`          | execute query                          |
 | `j`, `↓`                   | move cursor down 1 line                |
 | `k`, `↑`                   | move cursor up 1 line                  |
 | `h`, `←`                   | move cursor left 1 char                |
@@ -137,12 +138,11 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   <summary><b>v0.2.0 (beta)</b></summary>
 
   - [x] vhs explainer gifs
-  - [ ] upgrade ratatui and tui-textarea 
-  - [ ] improve memory usage
-  - [ ] unit / e2e tests
+  - [x] upgrade ratatui and tui-textarea 
   - [ ] handle explain / analyze output
   - [ ] shortcuts to view indexes, keys, etc.
   - [ ] session history
+  - [ ] unit / e2e tests
   - [ ] fix multi-line vim selections
   - [ ] non-vim editor keybindings
   - [ ] homebrew 
@@ -165,7 +165,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 
 ## known issues and limitations
 - for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535). Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
-- on mac, for VS Code and terminal (and perhaps other editors), a setting for "use option as meta key" needs to be turned on for Alt/Opt keybindings to work. (In VS Code, it's `"terminal.integrated.macOptionIsMeta": true`.)
+- on mac, for VS Code and terminal (and perhaps other editors), a setting for "use option as meta key" needs to be turned on for Alt/Opt keybindings to work. (In VS Code, it's `"terminal.integrated.macOptionIsMeta": true`; in kitty, it's `macos_option_as_alt yes` in the config.)
 - in visual mode, when selecting an entire line, the behavior is not the same as vim's, as it simply moves starts the selection at the head of the line, so moving up or down in lines will break the selection. 
 - in visual mode, operations on backwards selections do not behave as expected. will be fixed after https://github.com/rhysd/tui-textarea/issues/80
 - mouse events are only used for changing focus and scrolling; the editor does not currently support mouse events, and menu items cannot be selected using the mouse

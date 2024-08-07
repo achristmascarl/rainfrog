@@ -9,8 +9,18 @@ on:
 jobs:
 
   test:
-    name: Test Suite
-    runs-on: ubuntu-latest
+    name: Test Suite (${{ matrix.os-name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            os-name: mac
+          - os: ubuntu-latest
+            os-name: ubuntu
+          - os: windows-latest
+            os-name: windows
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

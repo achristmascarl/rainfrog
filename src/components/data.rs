@@ -92,7 +92,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
             .style(Style::default())
             .column_spacing(1)
             .highlight_style(Style::default().fg(Color::LightBlue).reversed().bold());
-          self.scrollable.set_table(Box::new(buf_table), headers.len(), rows.0.len(), 36_u16);
+          self.scrollable.set_table(buf_table, headers.len(), rows.0.len(), 36_u16);
           self.data_state = DataState::HasResults(rows);
         }
       },

@@ -30,7 +30,6 @@ pub enum SelectionMode {
 
 #[derive(Debug, Clone, Default)]
 pub struct ScrollTable<'a> {
-  viewport_buffer: Buffer,
   table: Table<'a>,
   parent_area: Rect,
   block: Option<Block<'a>>,
@@ -47,7 +46,6 @@ pub struct ScrollTable<'a> {
 impl<'a> ScrollTable<'a> {
   pub fn new() -> Self {
     Self {
-      viewport_buffer: Buffer::empty(Rect::new(0, 0, 0, 0)),
       table: Table::default(),
       parent_area: Rect::new(0, 0, 0, 0),
       block: None,
@@ -62,16 +60,10 @@ impl<'a> ScrollTable<'a> {
     }
   }
 
-  pub fn set_table(
-    &mut self,
-    table: Box<Table<'a>>,
-    column_count: usize,
-    row_count: usize,
-    column_width: u16,
-  ) -> &mut Self {
+  pub fn set_table(&mut self, table: Table<'a>, column_count: usize, row_count: usize, column_width: u16) -> &mut Self {
     let requested_width = column_width.saturating_mul(column_count as u16);
     let max_height = u16::MAX.saturating_div(std::cmp::max(1, requested_width));
-    self.table = *table;
+    self.table = table;
     self.column_width = column_width;
     self.requested_width = requested_width;
     self.max_height = max_height;
@@ -258,8 +250,9 @@ impl<'a> Widget for Renderer<'a> {
       let row = get_row(&content_buf.content, content_y, content_width);
       for x in area.x..max_x {
         let content_x = x + scrollable.x_offset - area.x;
+        let default_cell = Cell::default();
         let cell = match &row.len().saturating_sub(1).saturating_sub(content_x as usize) {
-          0 => &Cell::default(),
+          0 => &default_cell,
           _ => &row[content_x as usize],
         };
         let right_edge = scrollable
@@ -274,7 +267,8 @@ impl<'a> Widget for Renderer<'a> {
           _ => cell.style(),
         };
         buf
-          .get_mut(x, y)
+          .cell_mut(Position::from((x, y)))
+          .unwrap()
           .set_symbol(cell.symbol())
           .set_fg(cell.fg)
           .set_bg(cell.bg)
