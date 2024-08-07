@@ -1,5 +1,7 @@
+.DS_Store
 /target
 .data/*.log
 flamegraph*
 *flamegraph.stacks
 *.data
+test.tape

@@ -1,6 +1,8 @@
 # 🐸 rainfrog
 a database management tui for postgres
 
+![rainfrog demo](demo/demo.gif)
+
 ### features
 - efficient navigation via vim-like keybindings for query editor and data table
 - quickly copy data, filter and preview tables, and switch between schemas
@@ -52,7 +54,7 @@ where `connection_url` includes the username:password for accessing the database
 <details>
   <summary><b>v0.2.0 (beta)</b></summary>
 
-  - [ ] vhs explainer gifs
+  - [x] vhs explainer gifs
   - [ ] improve memory usage
   - [ ] unit / e2e tests
   - [ ] handle explain / analyze output

@@ -434,7 +434,7 @@ impl<'a> App<'a> {
   }
 
   fn render_popup(&self, frame: &mut Frame, results: &QueryResultsWithMetadata) {
-    let area = center(frame.size(), Constraint::Percentage(60), Constraint::Percentage(60));
+    let area = center(frame.size(), Constraint::Percentage(50), Constraint::Percentage(50));
     let block = Block::default()
       .borders(Borders::ALL)
       .border_style(Style::default().fg(Color::Yellow))
@@ -465,7 +465,7 @@ impl<'a> App<'a> {
       },
     };
     let popup_cta = Paragraph::new(Line::from(cta).centered());
-    let popup_actions = Paragraph::new(Line::from("(Y)es to confirm | (N)o to cancel").centered());
+    let popup_actions = Paragraph::new(Line::from("[Y]es to confirm | [N]o to cancel").centered());
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
     frame.render_widget(popup_cta, center(layout[0], Constraint::Fill(1), Constraint::Percentage(50)));
