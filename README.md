@@ -42,12 +42,12 @@ rainfrog --url $(connection_url)
 | keybinding                  | description                            |
 |-----------------------------|----------------------------------------|
 | `Ctrl+c`                      | quit program                           |
-| `Alt+1`                       | change focus to menu                   |
-| `Alt+2`                       | change focus to query editor           |
-| `Alt+3`                       | change focus to results                |
+| `Alt+1`, `Ctrl+m`               | change focus to menu                   |
+| `Alt+2`, `Ctrl+n`               | change focus to query editor           |
+| `Alt+3`, `Ctrl+b`               | change focus to results                |
 | `q`                           | abort current query                    |
 
-### 󰦄 menu (list of schemas and tables)
+### menu (list of schemas and tables)
 | keybinding                  | description                            |
 |-----------------------------|----------------------------------------|
 | `j`, `↓`                        | move selection down by 1               |
@@ -64,26 +64,54 @@ rainfrog --url $(connection_url)
 | `Enter` with selected table   | preview table (100 rows)               |
 | `R`                           | reload schemas and tables              |
 
-### 󰤏 query editor
-| keybinding                  | description                            |
-|-----------------------------|----------------------------------------|
-| `j`, `↓`                        | move selection down by 1               |
-| `k`, `↑`                        | move selection up by 1                 |
-| `g`                           | jump to top of current list            |
-| `G`                           | jump to bottom of current list         |
-| `h`, `←`                        | focus on schemas (if more than 1)      |
-| `l`, `→`                        | focus on tables                        |
+### query editor
+keybindings may not behave exactly like vim. the full list of active vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
+| keybinding             | description                            |
+|------------------------|----------------------------------------|
+| `j`, `↓`                   | move cursor down 1 line                |
+| `k`, `↑`                   | move cursor up 1 line                  |
+| `h`, `←`                   | move cursor left 1 char                |
+| `l`, `→`                   | move cursor right 1 char               |
+| `w`                      | move cursor to next start of word      |
+| `e`                      | move cursor to next end of word        |
+| `b`                      | move cursor to prev start of word      |
+| `0`                      | move cursor to beginning of line       |
+| `$`                      | move cursor to end of line             |
+| `gg`                     | jump to top of editor                  |
+| `G`                      | jump to bottom of current list         |
+| `Esc`                    | return to normal mode                  |
+| `i`                      | enter insert (edit) mode               |
+| `I`                      | enter insert mode at beginning of line | 
+| `A`                      | enter insert mode at end of line       |
+| `o`                      | insert new line below and insert       |
+| `v`                      | enter visual (select) mode             |
+| `V`                      | enter visual mode and select line      |
+| `r`                      | begin replace operation                |
+| `y`                      | begin yank (copy) operation            |
+| `x`                      | begin cut operation                    |
+| `p`                      | paste from clipboard                   |
+| `u`                      | undo                                   |
+| `Ctrl+r`                 | redo                                   |
+| `Ctrl+e`                 | scroll down                            |
+| `Ctrl+y`                 | scroll up                              |
 
-### 󰆼 results
-| keybinding                  | description                            |
-|-----------------------------|----------------------------------------|
-| `j`, `↓`                        | move selection down by 1               |
-| `k`, `↑`                        | move selection up by 1                 |
-| `g`                           | jump to top of current list            |
-| `G`                           | jump to bottom of current list         |
-| `h`, `←`                        | focus on schemas (if more than 1)      |
-| `l`, `→`                        | focus on tables                        |
-
+### results
+| keybinding             | description                            |
+|------------------------|----------------------------------------|
+| `j`, `↓`                   | scroll down by 1 row                   |
+| `k`, `↑`                   | scroll up by 1 row                     |
+| `h`, `←`                   | scroll left by 1 cell                  |
+| `l`, `→`                   | scroll right by 1 cell                 |
+| `b`                      | scroll right by 1 cell                 |
+| `e`, `w`                   | scroll left by 1 column                |
+| `g`                      | jump to top of table                   |
+| `G`                      | jump to bottom of table                |
+| `0`                      | jump to first column                   |
+| `$`                      | jump to last column                    |
+| `v`                      | select individual field                |
+| `V`                      | select row                             |
+| `y`                      | copy selection                         |
+| `Esc`                    | stop selecting                         |
 
 ## roadmap
 <details>
