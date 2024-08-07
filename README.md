@@ -1,7 +1,7 @@
 # 🐸 rainfrog
 a database management tui for postgres
 
-![rainfrog demo](demo/demo.gif)
+![rainfrog demo](demo.gif)
 
 ### features
 - efficient navigation via vim-like keybindings for query editor and data table

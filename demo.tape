@@ -6,6 +6,8 @@ Set Shell zsh
 Set Theme "tokyonight-storm"
 Set Width 2000
 Set Height 1000
+
+# https://www.nerdfonts.com/font-downloads
 Set FontFamily "GohuFont uni14 Nerd Font Mono"
 Set PlaybackSpeed 0.75
 Set TypingSpeed 250ms
@@ -15,12 +17,13 @@ Sleep 2.5s
 Type "rainfrog"
 Sleep 2s
 Hide
-Type " "
+Backspace 8
 Sleep 1.5s
-Type "--url postgres://root:password@localhost:5432/rainfrog"
+Type "make dev"
 Enter
+Sleep 10s
 Show
-Sleep 1s
+Sleep 3s
 Enter
 Type "jjj"
 Sleep 1s
@@ -38,49 +41,37 @@ Sleep 500ms
 Type "jjj"
 Enter
 Sleep 1s
-Alt+"3"
+Ctrl+B
 Sleep 2s
-Type "vj"
-Sleep 500ms
-Type "e"
-Sleep 500ms
-Type "k"
-Sleep 500ms
+Type "v"
+Sleep 2s
 Type "j"
+Sleep 2s 
+Type "e"
 Sleep 1s
 Type "y"
-Sleep 1.5s
-Alt+"1"
+Sleep 2s
+Ctrl+M
 Sleep 1s
-Alt+"2"
+Ctrl+N
 Sleep 1s
 Type "dd"
 Sleep 1s
-Type "iselect * from public.user where email ilike '"
-Sleep 500ms
-Type "%%'"
-Escape
-Type "[D"
-Escape
-Type "[D"
-Escape
-Type "[200~leto.atreides@caladan.com"
-Escape
-Type "[201~"
+Type "p"
+Sleep 2s
+Type "dd"
 Sleep 1s
-Backspace 12
+Type "i"
 Sleep 500ms
-Escape
-Type "bbhhdawvd"
-Sleep 1s
-Escape
-Enter
-Sleep 1.5s
-Type "bbbbbbbbi"
+Type@100ms "select * from public.user where email ilike '%atreides%'"
+Sleep 500ms
+Alt+Enter
+Sleep 4s
+Type "0eeli"
 Backspace 9
-Type "delete "
+Type "delete"
 Sleep 1s
 Alt+Enter
 Sleep 2.5s
 Type "N"
-Sleep 2s
+Sleep 3s

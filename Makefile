@@ -1,4 +1,4 @@
-port ?= 5432
+port ?= 5499
 url ?= postgres://root:password@localhost:$(port)/rainfrog?sslmode=disable
 
 .DEFAULT_GOAL := restart
