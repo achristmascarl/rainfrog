@@ -3,8 +3,13 @@ a database management tui for postgres
 
 ![rainfrog demo](demo.gif)
 
+> [!WARNING]
+> rainfrog is currently in alpha. 
+
+the goal for rainfrog is to provide a lightweight, terminal-based alternative to pgadmin/dbeaver. 
+
 ### features
-- efficient navigation via vim-like keybindings for query editor and data table
+- efficient navigation via vim-like keybindings for query editor, data table, and menu
 - quickly copy data, filter and preview tables, and switch between schemas
 - cross-platform (macOS, linux, windows, android via termux)
 
