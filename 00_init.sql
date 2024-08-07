@@ -152,38 +152,110 @@ INSERT INTO "robot_parts" ("id", "robot_id", "part_id", "part_quantity") VALUES
 (39, 15, 15, 1);
 
 -- additional schema for testing
-CREATE SCHEMA "test";
+CREATE SCHEMA "etl";
 
-CREATE TABLE "test"."user" (
+CREATE TABLE "etl"."notion" (
 	"id" INTEGER NOT NULL UNIQUE,
-	"email" VARCHAR,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
+	PRIMARY KEY("id")
+);
+
+CREATE TABLE "etl"."airtable" (
+	"id" INTEGER NOT NULL UNIQUE,
+	"data" VARCHAR,
 	"_created" TIMESTAMPTZ,
 	PRIMARY KEY("id")
 );
 
 
-CREATE TABLE "test"."robot" (
+CREATE TABLE "etl"."slack" (
 	"id" INTEGER NOT NULL UNIQUE,
-	"name" VARCHAR,
+	"data" VARCHAR,
 	"_created" TIMESTAMPTZ,
-	"owner_id" INTEGER,
 	PRIMARY KEY("id")
 );
 
-
-CREATE TABLE "test"."part" (
+CREATE TABLE "etl"."linear" (
 	"id" INTEGER NOT NULL UNIQUE,
-	"name" VARCHAR,
-	"cost" NUMERIC,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
 	PRIMARY KEY("id")
 );
 
-
-CREATE TABLE "test"."robot_parts" (
+CREATE TABLE "etl"."salesforce" (
 	"id" INTEGER NOT NULL UNIQUE,
-	"robot_id" INTEGER,
-	"part_id" INTEGER,
-	"part_quantity" DECIMAL,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
 	PRIMARY KEY("id")
 );
 
+CREATE TABLE "etl"."hubspot" (
+	"id" INTEGER NOT NULL UNIQUE,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
+	PRIMARY KEY("id")
+);
+
+CREATE TABLE "etl"."trello" (
+	"id" INTEGER NOT NULL UNIQUE,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
+	PRIMARY KEY("id")
+);
+
+CREATE TABLE "etl"."asana" (
+	"id" INTEGER NOT NULL UNIQUE,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
+	PRIMARY KEY("id")
+);
+
+CREATE TABLE "etl"."jira" (
+	"id" INTEGER NOT NULL UNIQUE,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
+	PRIMARY KEY("id")
+);
+
+CREATE TABLE "etl"."teams" (
+	"id" INTEGER NOT NULL UNIQUE,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
+	PRIMARY KEY("id")
+);
+
+CREATE TABLE "etl"."gdrive" (
+	"id" INTEGER NOT NULL UNIQUE,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
+	PRIMARY KEY("id")
+);
+
+CREATE TABLE "etl"."outlook" (
+	"id" INTEGER NOT NULL UNIQUE,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
+	PRIMARY KEY("id")
+);
+
+CREATE TABLE "etl"."redis" (
+	"id" INTEGER NOT NULL UNIQUE,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
+	PRIMARY KEY("id")
+);
+
+CREATE TABLE "etl"."github" (
+	"id" INTEGER NOT NULL UNIQUE,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
+	PRIMARY KEY("id")
+);
+
+CREATE TABLE "etl"."calendar" (
+	"id" INTEGER NOT NULL UNIQUE,
+	"data" VARCHAR,
+	"_created" TIMESTAMPTZ,
+	PRIMARY KEY("id")
+);
