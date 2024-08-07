@@ -415,21 +415,26 @@ impl<'a> App<'a> {
 
   fn render_hints(&self, frame: &mut Frame, area: Rect) {
     let block = Block::default().style(Style::default().fg(Color::Blue));
-    let paragraph = Paragraph::new(
-      Line::from(match self.state.focus {
-        Focus::Menu => "[j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [<esc>] exit search [<enter>] preview table [g] top [G] bottom",
-        Focus::Editor => "[<alt + enter>] execute query",
-        Focus::Data => "[j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [g] top [G] bottom [0] first col [$] last col",
-        Focus::PopUp => "[<esc>] cancel",
-      })
-      .centered(),
-    )
-    .block(block).wrap(Wrap { trim: true });
+    let help_text = format!(
+        "{}{}",
+        match self.state.query_task {
+            None => "",
+            _ if self.state.focus != Focus::PopUp => "[q] abort ",
+            _ => ""
+        },
+        match self.state.focus {
+            Focus::Menu => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [<enter>] preview table [g] top [G] bottom",
+            Focus::Editor => "[<alt + enter>] execute query",
+            Focus::Data => "[j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [g] top [G] bottom [0] first col [$] last col",
+            Focus::PopUp => "[<esc>] cancel",
+        }
+    );
+    let paragraph = Paragraph::new(Line::from(help_text).centered()).block(block).wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
   }
 
   fn render_popup(&self, frame: &mut Frame, results: &QueryResultsWithMetadata) {
-    let area = center(frame.size(), Constraint::Percentage(60), Constraint::Percentage(60));
+    let area = center(frame.size(), Constraint::Percentage(50), Constraint::Percentage(50));
     let block = Block::default()
       .borders(Borders::ALL)
       .border_style(Style::default().fg(Color::Yellow))
@@ -460,7 +465,7 @@ impl<'a> App<'a> {
       },
     };
     let popup_cta = Paragraph::new(Line::from(cta).centered());
-    let popup_actions = Paragraph::new(Line::from("(Y)es to confirm | (N)o to cancel").centered());
+    let popup_actions = Paragraph::new(Line::from("[Y]es to confirm | [N]o to cancel").centered());
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
     frame.render_widget(popup_cta, center(layout[0], Constraint::Fill(1), Constraint::Percentage(50)));

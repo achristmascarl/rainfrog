@@ -6,9 +6,9 @@
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
       "<Alt-3>": "FocusData",
-      "<Ctrl-1>": "FocusMenu",
-      "<Ctrl-2>": "FocusEditor",
-      "<Ctrl-3>": "FocusData"
+      "<Ctrl-m>": "FocusMenu",
+      "<Ctrl-n>": "FocusEditor",
+      "<Ctrl-b>": "FocusData"
 
     },
     "Editor": {
@@ -17,9 +17,9 @@
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
       "<Alt-3>": "FocusData",
-      "<Ctrl-1>": "FocusMenu",
-      "<Ctrl-2>": "FocusEditor",
-      "<Ctrl-3>": "FocusData",
+      "<Ctrl-m>": "FocusMenu",
+      "<Ctrl-n>": "FocusEditor",
+      "<Ctrl-b>": "FocusData",
       "<F5>": "SubmitEditorQuery"
     },
     "Data": {
@@ -28,9 +28,9 @@
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
       "<Alt-3>": "FocusData",
-      "<Ctrl-1>": "FocusMenu",
-      "<Ctrl-2>": "FocusEditor",
-      "<Ctrl-3>": "FocusData"
+      "<Ctrl-m>": "FocusMenu",
+      "<Ctrl-n>": "FocusEditor",
+      "<Ctrl-b>": "FocusData"
     },
     "PopUp": {
       "<Ctrl-c>": "Quit",
