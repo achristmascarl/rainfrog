@@ -1,37 +1,37 @@
 # 🐸 rainfrog
 a database management tui for postgres
 
+### features
+- efficient navigation via vim-like keybindings for query editor and data table
+- quickly copy data, filter and preview tables, and switch between schemas
+- cross-platform (macOS, linux, windows, android via termux)
+
+### why "rainfrog"?
 > [frogs find refuge in elephant tracks](https://www.sciencedaily.com/releases/2019/06/190604131157.htm) 
 
 ## disclaimer
-this software is currently under active development; expect breaking changes, and use at your own risk.
+this software is currently under active development; expect breaking changes, and use at your own risk. it is not recommended to use this tool with write access on a production database.
 
 ## installation
-`git clone https://github.com/achristmascarl/rainfrog.git`
+### cargo
+after installing rust (recommended to do so via [rustup](https://www.rust-lang.org/tools/install)):
+```
+cargo install rainfrog
+```
+
+### binaries
+1. download the appropriate binary for your os from the latest [release](https://github.com/achristmascarl/rainfrog/releases)
+2. move the binary to a folder in your `PATH` environment variable
 
 ## usage
-`cd rainfrog`
-
-and 
-
-`make dev url=$(connection_url)`
-
-or
-
-`cargo run -- -u $(connection_url)`
-
+```
+$ rainfrog --url $(connection_url)
+```
 where `connection_url` includes the username:password for accessing the database (ex. `postgres://username:password@localhost:5432/postgres`)
-
-## known issues and limitations
-- for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535). Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
-- on mac, for VS Code and terminal (and perhaps other editors), a setting for "use option as meta key" needs to be turned on for Alt/Opt keybindings to work. (In VS Code, it's `"terminal.integrated.macOptionIsMeta": true`.)
-- in visual mode, when selecting an entire line, the behavior is not the same as vim's, as it simply moves starts the selection at the head of the line, so moving up or down in lines will break the selection. 
-- in visual mode, operations on backwards selections do not behave as expected. will be fixed after https://github.com/rhysd/tui-textarea/issues/80
-- mouse events are only used for changing focus and scrolling; the editor does not currently support mouse events, and menu items cannot be selected using the mouse
 
 ## roadmap
 <details>
-  <summary><b>v0.1.0</b></summary>
+  <summary><b>v0.1.0 (alpha)</b></summary>
   
   - [x] scrollable table 
   - [x] cancellable async querying (spawn tokio task)
@@ -50,9 +50,10 @@ where `connection_url` includes the username:password for accessing the database
 </details>
 
 <details>
-  <summary><b>v0.1.1</b></summary>
+  <summary><b>v0.2.0 (beta)</b></summary>
 
   - [ ] vhs explainer gifs
+  - [ ] improve memory usage
   - [ ] unit / e2e tests
   - [ ] handle explain / analyze output
   - [ ] shortcuts to view indexes, keys, etc.
@@ -71,9 +72,18 @@ where `connection_url` includes the username:password for accessing the database
   - [ ] customization (keybindings, colors)
   - [ ] better vim multi-line selection emulation
   - [ ] handle more mouse events
+  - [ ] support mysql, sqlite, other sqlx adaptors
 </details>
+
+## known issues and limitations
+- for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535). Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
+- on mac, for VS Code and terminal (and perhaps other editors), a setting for "use option as meta key" needs to be turned on for Alt/Opt keybindings to work. (In VS Code, it's `"terminal.integrated.macOptionIsMeta": true`.)
+- in visual mode, when selecting an entire line, the behavior is not the same as vim's, as it simply moves starts the selection at the head of the line, so moving up or down in lines will break the selection. 
+- in visual mode, operations on backwards selections do not behave as expected. will be fixed after https://github.com/rhysd/tui-textarea/issues/80
+- mouse events are only used for changing focus and scrolling; the editor does not currently support mouse events, and menu items cannot be selected using the mouse
 
 ## acknowledgements
 - [ratatui](https://github.com/ratatui-org/ratatui) (this project used ratatui's [component template](https://github.com/ratatui-org/templates/tree/983aa3cb3b8dd743200e8e2a1faa6e7c06aad85e/component/template) as a starting point)
 - [tui-textarea](https://github.com/rhysd/tui-textarea) (used in the query editor)
 - [gobang](https://github.com/TaKO8Ki/gobang) (a rust db tui i drew inspiration from)
+- [ricky rainfrog](https://us.jellycat.com/ricky-rain-frog/)
