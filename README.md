@@ -17,7 +17,7 @@ this software is currently under active development; expect breaking changes, an
 ## installation
 ### cargo
 after installing rust (recommended to do so via [rustup](https://www.rust-lang.org/tools/install)):
-```
+```sh
 cargo install rainfrog
 ```
 
@@ -26,10 +26,11 @@ cargo install rainfrog
 2. move the binary to a folder in your `PATH` environment variable
 
 ## usage
-```
+> [!NOTE]
+> `connection_url` must include your credentials for accessing the database (ex. `postgres://username:password@localhost:5432/postgres`) 
+```sh
 rainfrog --url $(connection_url)
 ```
-where `connection_url` includes the username:password for accessing the database (ex. `postgres://username:password@localhost:5432/postgres`)
 
 ## keybindings
 ### general
