@@ -137,6 +137,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   <summary><b>v0.2.0 (beta)</b></summary>
 
   - [x] vhs explainer gifs
+  - [ ] upgrade ratatui and tui-textarea 
   - [ ] improve memory usage
   - [ ] unit / e2e tests
   - [ ] handle explain / analyze output
@@ -144,6 +145,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [ ] session history
   - [ ] fix multi-line vim selections
   - [ ] non-vim editor keybindings
+  - [ ] homebrew 
   - [ ] loading animation
 </details>
 
@@ -153,10 +155,12 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [ ] editor auto-complete
   - [ ] syntax highlighting
   - [ ] live graphs / metrics (a la pgadmin)
+  - [ ] more packaging 
   - [ ] customization (keybindings, colors)
   - [ ] better vim multi-line selection emulation
   - [ ] handle more mouse events
   - [ ] support mysql, sqlite, other sqlx adaptors
+  - [ ] vhs in cd
 </details>
 
 ## known issues and limitations
