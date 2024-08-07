@@ -23,7 +23,7 @@ this software is currently under active development; expect breaking changes, an
 ### cargo
 after installing rust (recommended to do so via [rustup](https://www.rust-lang.org/tools/install)):
 ```sh
-cargo install rainfrog
+cargo install rainfrog --locked
 ```
 
 ### binaries

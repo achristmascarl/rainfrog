@@ -2,6 +2,7 @@
 name = "rainfrog"
 version = "0.1.1"
 edition = "2021"
+rust-version = "1.79"
 description = "a database management tui for postgres"
 repository = "https://github.com/achristmascarl/rainfrog"
 authors = ["achristmascarl <carl@rainfrog.dev>"]
