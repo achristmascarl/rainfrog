@@ -33,7 +33,7 @@ where `connection_url` includes the username:password for accessing the database
 
 ## keybindings
 ### general
-| keybindings                 | description                            |
+| keybinding                  | description                            |
 |-----------------------------|----------------------------------------|
 | `Ctrl+c`                      | quit program                           |
 | `Alt+1`                       | change focus to menu                   |
@@ -41,8 +41,8 @@ where `connection_url` includes the username:password for accessing the database
 | `Alt+3`                       | change focus to results                |
 | `q`                           | abort current query                    |
 
-### menu (list of schemas and tables)
-| keybindings                 | description                            |
+### 󰦄 menu (list of schemas and tables)
+| keybinding                  | description                            |
 |-----------------------------|----------------------------------------|
 | `j`, `↓`                        | move selection down by 1               |
 | `k`, `↑`                        | move selection up by 1                 |
@@ -58,8 +58,8 @@ where `connection_url` includes the username:password for accessing the database
 | `Enter` with selected table   | preview table (100 rows)               |
 | `R`                           | reload schemas and tables              |
 
-### query editor
-| keybindings                 | description                            |
+### 󰤏 query editor
+| keybinding                  | description                            |
 |-----------------------------|----------------------------------------|
 | `j`, `↓`                        | move selection down by 1               |
 | `k`, `↑`                        | move selection up by 1                 |
@@ -68,8 +68,8 @@ where `connection_url` includes the username:password for accessing the database
 | `h`, `←`                        | focus on schemas (if more than 1)      |
 | `l`, `→`                        | focus on tables                        |
 
-### results
-| keybindings                 | description                            |
+### 󰆼 results
+| keybinding                  | description                            |
 |-----------------------------|----------------------------------------|
 | `j`, `↓`                        | move selection down by 1               |
 | `k`, `↑`                        | move selection up by 1                 |
