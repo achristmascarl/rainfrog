@@ -27,9 +27,57 @@ cargo install rainfrog
 
 ## usage
 ```
-$ rainfrog --url $(connection_url)
+rainfrog --url $(connection_url)
 ```
 where `connection_url` includes the username:password for accessing the database (ex. `postgres://username:password@localhost:5432/postgres`)
+
+## keybindings
+### general
+| keybindings                 | description                            |
+|-----------------------------|----------------------------------------|
+| `Ctrl+c`                      | quit program                           |
+| `Alt+1`                       | change focus to menu                   |
+| `Alt+2`                       | change focus to query editor           |
+| `Alt+3`                       | change focus to results                |
+| `q`                           | abort current query                    |
+
+### menu (list of schemas and tables)
+| keybindings                 | description                            |
+|-----------------------------|----------------------------------------|
+| `j`, `↓`                        | move selection down by 1               |
+| `k`, `↑`                        | move selection up by 1                 |
+| `g`                           | jump to top of current list            |
+| `G`                           | jump to bottom of current list         |
+| `h`, `←`                        | focus on schemas (if more than 1)      |
+| `l`, `→`                        | focus on tables                        |
+| `/`                           | filter tables                          |
+| `Esc`                         | clear search                           |
+| `Backspace`                   | focus on tables                        |
+| `Enter` when searching        | focus on tables                        |
+| `Enter` with selected schema  | focus on tables                        |
+| `Enter` with selected table   | preview table (100 rows)               |
+| `R`                           | reload schemas and tables              |
+
+### query editor
+| keybindings                 | description                            |
+|-----------------------------|----------------------------------------|
+| `j`, `↓`                        | move selection down by 1               |
+| `k`, `↑`                        | move selection up by 1                 |
+| `g`                           | jump to top of current list            |
+| `G`                           | jump to bottom of current list         |
+| `h`, `←`                        | focus on schemas (if more than 1)      |
+| `l`, `→`                        | focus on tables                        |
+
+### results
+| keybindings                 | description                            |
+|-----------------------------|----------------------------------------|
+| `j`, `↓`                        | move selection down by 1               |
+| `k`, `↑`                        | move selection up by 1                 |
+| `g`                           | jump to top of current list            |
+| `G`                           | jump to bottom of current list         |
+| `h`, `←`                        | focus on schemas (if more than 1)      |
+| `l`, `→`                        | focus on tables                        |
+
 
 ## roadmap
 <details>

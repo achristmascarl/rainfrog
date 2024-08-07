@@ -423,7 +423,7 @@ impl<'a> App<'a> {
             _ => ""
         },
         match self.state.focus {
-            Focus::Menu => "[j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [<esc>] exit search [<enter>] preview table [g] top [G] bottom",
+            Focus::Menu => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [<enter>] preview table [g] top [G] bottom",
             Focus::Editor => "[<alt + enter>] execute query",
             Focus::Data => "[j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
