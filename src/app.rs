@@ -113,9 +113,10 @@ impl<'a> App<'a> {
     self.components.editor.register_config_handler(self.config.clone())?;
     self.components.data.register_config_handler(self.config.clone())?;
 
-    self.components.menu.init(tui.size()?)?;
-    self.components.editor.init(tui.size()?)?;
-    self.components.data.init(tui.size()?)?;
+    let size = tui.size()?;
+    self.components.menu.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
+    self.components.editor.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
+    self.components.data.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
 
     action_tx.send(Action::LoadMenu)?;
 
@@ -371,11 +372,11 @@ impl<'a> App<'a> {
   fn draw_layout(&mut self, f: &mut Frame) {
     let hints_layout = Layout::default()
       .direction(Direction::Vertical)
-      .constraints(match f.size().width {
+      .constraints(match f.area().width {
         x if x < 135 => [Constraint::Fill(1), Constraint::Length(2)],
         _ => [Constraint::Fill(1), Constraint::Length(1)],
       })
-      .split(f.size());
+      .split(f.area());
     let root_layout = Layout::default()
       .direction(Direction::Horizontal)
       .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
@@ -434,7 +435,7 @@ impl<'a> App<'a> {
   }
 
   fn render_popup(&self, frame: &mut Frame, results: &QueryResultsWithMetadata) {
-    let area = center(frame.size(), Constraint::Percentage(50), Constraint::Percentage(50));
+    let area = center(frame.area(), Constraint::Percentage(50), Constraint::Percentage(50));
     let block = Block::default()
       .borders(Borders::ALL)
       .border_style(Style::default().fg(Color::Yellow))

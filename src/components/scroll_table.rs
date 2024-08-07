@@ -258,8 +258,9 @@ impl<'a> Widget for Renderer<'a> {
       let row = get_row(&content_buf.content, content_y, content_width);
       for x in area.x..max_x {
         let content_x = x + scrollable.x_offset - area.x;
+        let default_cell = Cell::default();
         let cell = match &row.len().saturating_sub(1).saturating_sub(content_x as usize) {
-          0 => &Cell::default(),
+          0 => &default_cell,
           _ => &row[content_x as usize],
         };
         let right_edge = scrollable
@@ -274,7 +275,8 @@ impl<'a> Widget for Renderer<'a> {
           _ => cell.style(),
         };
         buf
-          .get_mut(x, y)
+          .cell_mut(Position::from((x, y)))
+          .unwrap()
           .set_symbol(cell.symbol())
           .set_fg(cell.fg)
           .set_bg(cell.bg)

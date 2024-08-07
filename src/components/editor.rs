@@ -5,8 +5,11 @@ use std::{
 };
 
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
-use ratatui::{prelude::*, widgets::*};
+use ratatui::{
+  crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind},
+  prelude::*,
+  widgets::*,
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{Input, Key, Scrolling, TextArea};
