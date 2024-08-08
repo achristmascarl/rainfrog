@@ -29,4 +29,5 @@ pub enum Action {
   FocusEditor,
   FocusData,
   LoadMenu,
+  CopyData(String),
 }
