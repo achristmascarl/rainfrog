@@ -8,7 +8,7 @@ on:
 jobs:
   publish:
 
-    name: Publishing for ${{ matrix.os }}
+    name: Publishing for ${{ matrix.os-name }}-${{ matrix.architecture }}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
