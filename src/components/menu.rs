@@ -172,7 +172,6 @@ impl<'a> SettableTableList<'a> for Menu {
           }
           self.table_map.get_mut(&schema).unwrap().push(table.clone());
         });
-        log::info!("table map: {:?}", self.table_map);
         if self.table_map.keys().len() == 1 {
           self.menu_focus = MenuFocus::Tables;
           self.list_state = ListState::default().with_selected(Some(0));
@@ -182,7 +181,7 @@ impl<'a> SettableTableList<'a> for Menu {
         }
       },
       Some(Err(e)) => {
-        log::info!("{}", e);
+        log::error!("{}", e);
       },
       None => {},
     }
