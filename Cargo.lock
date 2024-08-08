@@ -636,6 +636,7 @@ dependencies = [
  "bitflags 2.5.0",
  "crossterm_winapi",
  "futures-core",
+ "libc",
  "mio 1.0.1",
  "parking_lot",
  "rustix",

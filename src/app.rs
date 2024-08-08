@@ -325,20 +325,18 @@ impl<'a> App<'a> {
               self.components.data.set_data_state(Some(Err(DbError::Left(sqlx::Error::PoolTimedOut))), None)
             }
           },
-          Action::AbortQuery => {
-            match &self.state.query_task {
-              Some(DbTask::Query(task)) => {
-                task.abort();
-                self.state.query_task = None;
-                self.components.data.set_cancelled();
-              },
-              Some(DbTask::TxStart(task)) => {
-                task.abort();
-                self.state.query_task = None;
-                self.components.data.set_cancelled();
-              },
-              _ => {},
-            }
+          Action::AbortQuery => match &self.state.query_task {
+            Some(DbTask::Query(task)) => {
+              task.abort();
+              self.state.query_task = None;
+              self.components.data.set_cancelled();
+            },
+            Some(DbTask::TxStart(task)) => {
+              task.abort();
+              self.state.query_task = None;
+              self.components.data.set_cancelled();
+            },
+            _ => {},
           },
           _ => {},
         }
