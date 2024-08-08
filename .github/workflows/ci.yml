@@ -36,16 +36,18 @@ jobs:
         with:
           targets: ${{ matrix.target }} 
       - uses: Swatinem/rust-cache@v2
-      - uses: nttld/setup-ndk@v1
-        if: ${{ matrix.target == 'aarch64-linux-android' }}
+      - name: Run tests
+        uses: houseabsolute/actions-rust-cross@v0
         with:
-          ndk-version: r26d
-      - name: Run tests (default)
-        if: ${{ matrix.target == null }}
-        run: cargo test --features=${{ matrix.features }} --workspace
-      - name: Run tests (${{ matrix.target }})
-        if: ${{ matrix.target != null }}
-        run: cargo test --features=${{ matrix.features }} --workspace --target ${{ matrix.target }}
+          command: test 
+          target: ${{ matrix.platform.target }}
+          args: "--features=${{ matrix.features }} --workspace"
+      # - name: Run tests (default)
+      #   if: ${{ matrix.target == null }}
+      #   run: cargo test --features=${{ matrix.features }} --workspace
+      # - name: Run tests (${{ matrix.target }})
+      #   if: ${{ matrix.target != null }}
+      #   run: cargo test --features=${{ matrix.features }} --workspace --target ${{ matrix.target }}
 
   rustfmt:
     name: Rustfmt
