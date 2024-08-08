@@ -38,7 +38,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
         run: |
-          if [ -z ${{ matrix.target }} ]; then
+          if [[ -z ${{ matrix.target }} ]]; then
             cargo test --features=${{ matrix.features }} --workspace
           else
             cargo test --features=${{ matrix.features }} --workspace --target ${{ matrix.target }}
