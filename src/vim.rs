@@ -2,7 +2,9 @@
 // https://github.com/rhysd/tui-textarea/blob/main/examples/vim.rs
 use std::{env, fmt, fs, io, io::BufRead};
 
+#[cfg(not(feature = "termux"))]
 use arboard::Clipboard;
+use color_eyre::eyre::Result;
 use crossterm::{
   event::{DisableMouseCapture, EnableMouseCapture},
   terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -118,9 +120,12 @@ impl Vim {
             return Transition::Mode(Mode::Insert);
           },
           Input { key: Key::Char('p'), .. } => {
-            let mut clipboard = Clipboard::new().unwrap();
-            let text = clipboard.get_text().unwrap();
-            textarea.set_yank_text(text);
+            #[cfg(not(feature = "termux"))]
+            {
+              let mut clipboard = Clipboard::new().unwrap();
+              let text = clipboard.get_text().unwrap();
+              textarea.set_yank_text(text);
+            }
             textarea.paste();
             return Transition::Mode(Mode::Normal);
           },
@@ -142,9 +147,12 @@ impl Vim {
             }
             textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
             textarea.cut();
-            let mut clipboard = Clipboard::new().unwrap();
             let text = textarea.yank_text();
-            clipboard.set_text(text).unwrap();
+            #[cfg(not(feature = "termux"))]
+            {
+              let mut clipboard = Clipboard::new().unwrap();
+              clipboard.set_text(text).unwrap();
+            }
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('i'), .. } => {
@@ -230,27 +238,36 @@ impl Vim {
             // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
             textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
             textarea.copy();
-            let mut clipboard = Clipboard::new().unwrap();
             let text = textarea.yank_text();
-            clipboard.set_text(text).unwrap();
+            #[cfg(not(feature = "termux"))]
+            {
+              let mut clipboard = Clipboard::new().unwrap();
+              clipboard.set_text(text).unwrap();
+            }
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('d'), ctrl: false, .. } if self.mode == Mode::Visual => {
             // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
             textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
             textarea.cut();
-            let mut clipboard = Clipboard::new().unwrap();
             let text = textarea.yank_text();
-            clipboard.set_text(text).unwrap();
+            #[cfg(not(feature = "termux"))]
+            {
+              let mut clipboard = Clipboard::new().unwrap();
+              clipboard.set_text(text).unwrap();
+            }
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('c'), ctrl: false, .. } if self.mode == Mode::Visual => {
             // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
             textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
             textarea.cut();
-            let mut clipboard = Clipboard::new().unwrap();
             let text = textarea.yank_text();
-            clipboard.set_text(text).unwrap();
+            #[cfg(not(feature = "termux"))]
+            {
+              let mut clipboard = Clipboard::new().unwrap();
+              clipboard.set_text(text).unwrap();
+            }
             return Transition::Mode(Mode::Insert);
           },
           Input { key: Key::Esc, .. } => {
@@ -264,9 +281,12 @@ impl Vim {
         match self.mode {
           Mode::Operator('y') => {
             textarea.copy();
-            let mut clipboard = Clipboard::new().unwrap();
             let text = textarea.yank_text();
-            clipboard.set_text(text).unwrap();
+            #[cfg(not(feature = "termux"))]
+            {
+              let mut clipboard = Clipboard::new().unwrap();
+              clipboard.set_text(text).unwrap();
+            }
             Transition::Mode(Mode::Normal)
           },
           Mode::Operator('d') => {
@@ -275,9 +295,12 @@ impl Vim {
           },
           Mode::Operator('c') => {
             textarea.cut();
-            let mut clipboard = Clipboard::new().unwrap();
             let text = textarea.yank_text();
-            clipboard.set_text(text).unwrap();
+            #[cfg(not(feature = "termux"))]
+            {
+              let mut clipboard = Clipboard::new().unwrap();
+              clipboard.set_text(text).unwrap();
+            }
             Transition::Mode(Mode::Insert)
           },
           _ => Transition::Nop,

@@ -26,6 +26,16 @@ after installing rust (recommended to do so via [rustup](https://www.rust-lang.o
 cargo install rainfrog --locked
 ```
 
+### termux
+if you are using [termux](https://termux.dev/), you'll need to install rust via their package manager:
+```sh
+pkg install rust
+```
+and then make sure to install with termux features (and disable default features):
+```sh
+cargo install rainfrog --locked --features termux --no-default-features
+```
+
 ### binaries
 1. download the appropriate binary for your os from the latest [release](https://github.com/achristmascarl/rainfrog/releases)
 2. move the binary to a folder in your `PATH` environment variable

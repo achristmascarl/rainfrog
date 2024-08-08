@@ -16,19 +16,37 @@ jobs:
         include:
           - os: macos-latest
             os-name: mac
+            features: default
           - os: ubuntu-latest
             os-name: ubuntu
+            features: default
           - os: windows-latest
             os-name: windows
+            features: default
+          - os: ubuntu-latest 
+            os-name: android
+            target: aarch64-linux-android
+            features: termux --no-default-features
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.target }} 
       - uses: Swatinem/rust-cache@v2
-      - name: Run tests
-        run: cargo test --all-features --workspace
+      - name: Run tests (cross)
+        if: ${{ matrix.target != null }}
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          command: test 
+          target: ${{ matrix.target }}
+          args: "--features ${{ matrix.features }} --workspace"
+          cross-version: 7b79041c9278769eca57fae10c74741f5aa5c14b
+      - name: Run tests (default)
+        if: ${{ matrix.target == null }}
+        run: cargo test --features ${{ matrix.features }} --workspace
 
   rustfmt:
     name: Rustfmt

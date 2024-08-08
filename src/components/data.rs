@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use arboard::Clipboard;
 use color_eyre::eyre::Result;
 use crossterm::{
   event::{KeyCode, KeyEvent, MouseEventKind},
@@ -196,15 +195,14 @@ impl<'a> Component for Data<'a> {
         if let DataState::HasResults((rows, _)) = &self.data_state {
           let (x, y) = self.scrollable.get_cell_offsets();
           let row = row_to_vec(&rows[y]);
-          let mut clipboard = Clipboard::new().unwrap();
           match self.scrollable.get_selection_mode() {
             Some(SelectionMode::Row) => {
               let row_string = row.join(", ");
-              clipboard.set_text(row_string).unwrap();
+              self.command_tx.clone().unwrap().send(Action::CopyData(row_string))?;
             },
             Some(SelectionMode::Cell) => {
               let cell = row[x as usize].clone();
-              clipboard.set_text(cell).unwrap();
+              self.command_tx.clone().unwrap().send(Action::CopyData(cell))?;
             },
             _ => {},
           }

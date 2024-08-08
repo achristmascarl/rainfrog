@@ -6,6 +6,9 @@ url ?= postgres://root:password@localhost:$(port)/rainfrog?sslmode=disable
 dev:
 	cargo run -- -u $(url)
 
+dev-termux:
+	cargo run --features termux --no-default-features -- -u $(url)
+
 profile:
 	cargo flamegraph --post-process flamelens --root -- -u $(url)
 

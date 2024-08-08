@@ -4,6 +4,8 @@ use std::{
   time::Duration,
 };
 
+#[cfg(not(feature = "termux"))]
+use arboard::Clipboard;
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use ratatui::{prelude::*, widgets::*};
@@ -146,6 +148,16 @@ impl<'a> Component for Editor<'a> {
     } else if let Action::SubmitEditorQuery = action {
       if let Some(sender) = &self.command_tx {
         sender.send(Action::Query(self.textarea.lines().join(" ")))?;
+      }
+    } else if let Action::CopyData(data) = action {
+      #[cfg(not(feature = "termux"))]
+      {
+        let mut clipboard = Clipboard::new().unwrap();
+        clipboard.set_text(data).unwrap();
+      }
+      #[cfg(feature = "termux")]
+      {
+        self.textarea.set_yank_text(data);
       }
     }
     Ok(None)
