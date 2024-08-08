@@ -8,7 +8,7 @@ on:
 jobs:
   publish:
 
-    name: Publishing for ${{ matrix.os }}
+    name: Publishing for ${{ matrix.os-name }}-${{ matrix.architecture }}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -86,7 +86,16 @@ jobs:
           profile: minimal
           override: true
       - uses: Swatinem/rust-cache@v2
+      - name: Cross build
+        if: ${{ matrix.use-cross == true }}
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          command: build
+          target: ${{ matrix.target }}
+          args: "--release --features ${{ matrix.features }}"
+          cross-version: 7b79041c9278769eca57fae10c74741f5aa5c14b
       - name: Cargo build
+        if: ${{ matrix.use-cross != true }}
         uses: actions-rs/cargo@v1
         with:
           command: build
@@ -107,12 +116,13 @@ jobs:
               sudo apt update
               sudo apt-get install -y binutils-aarch64-linux-gnu
           fi
-      - name: Packaging final binary
+
+      - name: Strip binary
+        if: ${{ matrix.use-cross != true }}
         shell: bash
         run: |
 
           cd target/${{ matrix.target }}/release
-
 
           ####### reduce binary size by removing debug symbols #######
 
@@ -125,8 +135,17 @@ jobs:
           fi
           "$GCC_PREFIX"strip $BINARY_NAME
 
+          cd ../../../
+
+      - name: Packaging final binary
+        shell: bash
+        run: |
+
+          cd target/${{ matrix.target }}/release
+
           ########## create tar.gz ##########
 
+          BINARY_NAME=${{ matrix.binary-name }}${{ matrix.binary-postfix }}
           RELEASE_NAME=${{ matrix.binary-name }}-${GITHUB_REF/refs\/tags\//}-${{ matrix.os-name }}-${{ matrix.architecture }}
 
           tar czvf $RELEASE_NAME.tar.gz $BINARY_NAME
@@ -139,6 +158,7 @@ jobs:
           else
             shasum -a 256 $RELEASE_NAME.tar.gz > $RELEASE_NAME.sha256
           fi
+
       - name: Releasing assets
         uses: softprops/action-gh-release@v1
         with:
