@@ -153,6 +153,7 @@ jobs:
 
           ########## create tar.gz ##########
 
+          BINARY_NAME=${{ matrix.binary-name }}${{ matrix.binary-postfix }}
           RELEASE_NAME=${{ matrix.binary-name }}-${GITHUB_REF/refs\/tags\//}-${{ matrix.os-name }}-${{ matrix.architecture }}
 
           tar czvf $RELEASE_NAME.tar.gz $BINARY_NAME
