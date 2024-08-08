@@ -17,15 +17,15 @@ jobs:
           - os: macos-latest
             os-name: mac
             features: default
-            target: default
+            target: null
           - os: ubuntu-latest
             os-name: ubuntu
             features: default
-            target: default
+            target: null
           - os: windows-latest
             os-name: windows
             features: default
-            target: default
+            target: null
           - os: ubuntu-latest 
             os-name: android
             target: aarch64-linux-android
@@ -41,7 +41,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
         run: |
-          if [[ ${{ matrix.target }} == default ]]; then
+          if [[ ${{ matrix.target }} == '' ]]; then
             cargo test --features=${{ matrix.features }} --workspace
           else
             cargo test --features=${{ matrix.features }} --workspace --target ${{ matrix.target }}
