@@ -107,7 +107,6 @@ pub fn should_use_tx(query: &str) -> Result<bool, DbError> {
       if ast.len() > 1 {
         return Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())));
       }
-      log::info!("{:?}", ast[0]);
       match ast[0] {
         Statement::Delete(_) | Statement::Drop { .. } => Ok(true),
         _ => Ok(false),

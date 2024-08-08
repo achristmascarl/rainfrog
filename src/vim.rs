@@ -28,6 +28,23 @@ pub enum Mode {
   Operator(char),
 }
 
+pub enum SelectionDirection {
+  Forward,
+  Backward,
+  Neutral,
+}
+
+fn get_selection_direction(range: ((usize, usize), (usize, usize)), cursor: (usize, usize)) -> SelectionDirection {
+  let (start, end) = range;
+  if cursor == start && cursor == end {
+    SelectionDirection::Neutral
+  } else if cursor == end {
+    SelectionDirection::Forward
+  } else {
+    SelectionDirection::Backward
+  }
+}
+
 impl Mode {
   pub fn block<'a>(&self) -> Block<'a> {
     let help = match self {
@@ -141,11 +158,18 @@ impl Vim {
             return Transition::Mode(Mode::Replace);
           },
           Input { key: Key::Char('x'), .. } => {
-            // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
             if !textarea.is_selecting() {
               textarea.start_selection();
             }
-            textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
+            if let Some(selection_range) = textarea.selection_range() {
+              let selection_direction = get_selection_direction(selection_range, textarea.cursor());
+              match selection_direction {
+                SelectionDirection::Backward => {},
+                _ => {
+                  textarea.move_cursor(CursorMove::Forward); // Vim's forward text selection is inclusive
+                },
+              }
+            }
             textarea.cut();
             let text = textarea.yank_text();
             #[cfg(not(feature = "termux"))]
@@ -235,8 +259,15 @@ impl Vim {
             return Transition::Mode(Mode::Operator(op));
           },
           Input { key: Key::Char('y'), ctrl: false, .. } if self.mode == Mode::Visual => {
-            // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
-            textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
+            if let Some(selection_range) = textarea.selection_range() {
+              let selection_direction = get_selection_direction(selection_range, textarea.cursor());
+              match selection_direction {
+                SelectionDirection::Backward => {},
+                _ => {
+                  textarea.move_cursor(CursorMove::Forward); // Vim's forward text selection is inclusive
+                },
+              }
+            }
             textarea.copy();
             let text = textarea.yank_text();
             #[cfg(not(feature = "termux"))]
@@ -247,8 +278,15 @@ impl Vim {
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('d'), ctrl: false, .. } if self.mode == Mode::Visual => {
-            // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
-            textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
+            if let Some(selection_range) = textarea.selection_range() {
+              let selection_direction = get_selection_direction(selection_range, textarea.cursor());
+              match selection_direction {
+                SelectionDirection::Backward => {},
+                _ => {
+                  textarea.move_cursor(CursorMove::Forward); // Vim's forward text selection is inclusive
+                },
+              }
+            }
             textarea.cut();
             let text = textarea.yank_text();
             #[cfg(not(feature = "termux"))]
@@ -259,8 +297,15 @@ impl Vim {
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('c'), ctrl: false, .. } if self.mode == Mode::Visual => {
-            // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
-            textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
+            if let Some(selection_range) = textarea.selection_range() {
+              let selection_direction = get_selection_direction(selection_range, textarea.cursor());
+              match selection_direction {
+                SelectionDirection::Backward => {},
+                _ => {
+                  textarea.move_cursor(CursorMove::Forward); // Vim's forward text selection is inclusive
+                },
+              }
+            }
             textarea.cut();
             let text = textarea.yank_text();
             #[cfg(not(feature = "termux"))]

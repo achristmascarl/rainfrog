@@ -244,18 +244,9 @@ impl<'a> App<'a> {
             })?;
             self.last_frame_mouse_event = None;
           },
-          Action::FocusMenu => {
-            log::info!("FocusMenu");
-            self.state.focus = Focus::Menu;
-          },
-          Action::FocusEditor => {
-            log::info!("FocusEditor");
-            self.state.focus = Focus::Editor;
-          },
-          Action::FocusData => {
-            log::info!("FocusData");
-            self.state.focus = Focus::Data;
-          },
+          Action::FocusMenu => self.state.focus = Focus::Menu,
+          Action::FocusEditor => self.state.focus = Focus::Editor,
+          Action::FocusData => self.state.focus = Focus::Data,
           Action::LoadMenu => {
             log::info!("LoadMenu");
             if let Some(pool) = &self.pool {
@@ -284,7 +275,6 @@ impl<'a> App<'a> {
                   self.components.data.set_loading();
                   let tx = pool.begin().await?;
                   self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                    log::info!("Tx Query: {}", query);
                     let (results, tx) = database::query_with_tx(tx, query.clone()).await;
                     match results {
                       Ok(rows_affected) => {
@@ -303,7 +293,6 @@ impl<'a> App<'a> {
                 Ok(false) => {
                   self.components.data.set_loading();
                   self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                    log::info!("Query: {}", query);
                     let results = database::query(query.clone(), &pool).await;
                     match &results {
                       Ok(rows) => {
