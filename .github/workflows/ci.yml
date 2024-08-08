@@ -36,13 +36,12 @@ jobs:
         with:
           targets: ${{ matrix.target }} 
       - uses: Swatinem/rust-cache@v2
-      - name: Run tests
-        run: |
-          if [[ -z ${{ matrix.target }} ]]; then
-            cargo test --features=${{ matrix.features }} --workspace
-          else
-            cargo test --features=${{ matrix.features }} --workspace --target ${{ matrix.target }}
-          fi
+      - name: Run tests (default)
+        if: ${{ matrix.target == null }}
+        run: cargo test --features=${{ matrix.features }} --workspace
+      - name: Run tests (${{ matrix.target }})
+        if: ${{ matrix.target != null }}
+        run: cargo test --features=${{ matrix.features }} --workspace --target ${{ matrix.target }}
 
   rustfmt:
     name: Rustfmt
