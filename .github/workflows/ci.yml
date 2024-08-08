@@ -43,6 +43,7 @@ jobs:
           command: test 
           target: ${{ matrix.target }}
           args: "--features ${{ matrix.features }} --workspace"
+          cross-version: HEAD
       - name: Run tests (default)
         if: ${{ matrix.target == null }}
         run: cargo test --features=${{ matrix.features }} --workspace
