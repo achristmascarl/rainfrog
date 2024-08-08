@@ -23,6 +23,7 @@ jobs:
             binary-postfix: ""
             binary-name: rainfrog
             use-cross: false
+            features: default
           - os: macos-latest
             os-name: macos
             target: aarch64-apple-darwin
@@ -30,6 +31,7 @@ jobs:
             binary-postfix: ""
             use-cross: false
             binary-name: rainfrog
+            features: default
           - os: ubuntu-latest
             os-name: linux
             target: x86_64-unknown-linux-gnu
@@ -37,6 +39,7 @@ jobs:
             binary-postfix: ""
             use-cross: false
             binary-name: rainfrog
+            features: default
           - os: windows-latest
             os-name: windows
             target: x86_64-pc-windows-msvc
@@ -44,6 +47,7 @@ jobs:
             binary-postfix: ".exe"
             use-cross: false
             binary-name: rainfrog
+            features: default
           - os: ubuntu-latest
             os-name: linux
             target: aarch64-unknown-linux-gnu
@@ -51,6 +55,7 @@ jobs:
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
+            features: default
           - os: ubuntu-latest
             os-name: linux
             target: i686-unknown-linux-gnu
@@ -58,6 +63,15 @@ jobs:
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
+            features: default
+          - os: ubuntu-latest
+            os-name: android
+            target: aarch64-linux-android
+            architecture: arm64
+            binary-postfix: ""
+            use-cross: true
+            binary-name: rainfrog
+            features: termux
 
     steps:
       - name: Checkout repository
@@ -81,7 +95,7 @@ jobs:
 
           toolchain: stable
 
-          args: --release --target ${{ matrix.target }}
+          args: --release --target ${{ matrix.target }} --features=${{ matrix.features }}
 
 
       - name: install strip command
