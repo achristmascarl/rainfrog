@@ -52,7 +52,3 @@ vergen = { version = "8.2.6", features = [ "build", "git", "gitoxide", "cargo" ]
 [features]
 default = ["dep:arboard"]
 termux = []
-
-[target.aarch64-linux-android]
-linker = "aarch64-linux-android29-clang"
-features = ["termux"]
