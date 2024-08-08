@@ -158,11 +158,18 @@ impl Vim {
             return Transition::Mode(Mode::Replace);
           },
           Input { key: Key::Char('x'), .. } => {
-            // TODO: fix after https://github.com/rhysd/tui-textarea/issues/80
             if !textarea.is_selecting() {
               textarea.start_selection();
             }
-            textarea.move_cursor(CursorMove::Forward); // Vim's text selection is inclusive
+            if let Some(selection_range) = textarea.selection_range() {
+              let selection_direction = get_selection_direction(selection_range, textarea.cursor());
+              match selection_direction {
+                SelectionDirection::Backward => {},
+                _ => {
+                  textarea.move_cursor(CursorMove::Forward); // Vim's forward text selection is inclusive
+                },
+              }
+            }
             textarea.cut();
             let text = textarea.yank_text();
             #[cfg(not(feature = "termux"))]
