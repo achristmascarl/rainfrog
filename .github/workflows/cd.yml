@@ -87,7 +87,7 @@ jobs:
           override: true
       - uses: Swatinem/rust-cache@v2
       - name: Cross build
-        if: ${{ matrix.use-cross == true }}
+        if: ${{ matrix.target == 'aarch64-linux-android' }}
         uses: houseabsolute/actions-rust-cross@v0
         with:
           command: build
@@ -95,7 +95,7 @@ jobs:
           args: "--release --features ${{ matrix.features }}"
           cross-version: 7b79041c9278769eca57fae10c74741f5aa5c14b
       - name: Cargo build
-        if: ${{ matrix.use-cross != true }}
+        if: ${{ matrix.target != 'aarch64-linux-android' }}
         uses: actions-rs/cargo@v1
         with:
           command: build
