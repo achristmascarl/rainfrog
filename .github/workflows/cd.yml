@@ -71,7 +71,7 @@ jobs:
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
-            features: termux
+            features: termux --no-default-features
 
     steps:
       - name: Checkout repository
@@ -95,7 +95,7 @@ jobs:
 
           toolchain: stable
 
-          args: --release --target ${{ matrix.target }} --features=${{ matrix.features }}
+          args: --release --target ${{ matrix.target }} --features ${{ matrix.features }}
 
 
       - name: install strip command

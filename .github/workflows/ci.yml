@@ -26,7 +26,7 @@ jobs:
           - os: ubuntu-latest 
             os-name: android
             target: aarch64-linux-android
-            features: termux
+            features: termux --no-default-features
 
     steps:
       - name: Checkout repository
@@ -42,7 +42,7 @@ jobs:
         with:
           command: test 
           target: ${{ matrix.target }}
-          args: "--features=${{ matrix.features }} --workspace"
+          args: "--features ${{ matrix.features }} --workspace"
       - name: Run tests (default)
         if: ${{ matrix.target == null }}
         run: cargo test --features=${{ matrix.features }} --workspace
