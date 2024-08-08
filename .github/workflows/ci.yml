@@ -124,7 +124,9 @@ jobs:
               sudo apt update
               sudo apt-get install -y binutils-aarch64-linux-gnu
           fi
-      - name: Packaging final binary
+
+      - name: Strip binary
+        if: ${{ matrix.use-cross != true }}
         shell: bash
         run: |
 
@@ -142,6 +144,11 @@ jobs:
           fi
           "$GCC_PREFIX"strip $BINARY_NAME
 
+          cd ../../../
+
+      - name: Packaging final binary
+        shell: bash
+        run: |
           ########## create tar.gz ##########
 
           RELEASE_NAME=${{ matrix.binary-name }}-${GITHUB_REF/refs\/tags\//}-${{ matrix.os-name }}-${{ matrix.architecture }}
