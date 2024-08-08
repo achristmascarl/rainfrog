@@ -40,9 +40,6 @@ jobs:
         if: ${{ matrix.target == 'aarch64-linux-android' }}
         with:
           ndk-version: r26d
-      - name: Build android ndk
-        if: ${{ matrix.target == 'aarch64-linux-android' }}
-        run: ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./Android.mk NDK_APPLICATION_MK=./Application.mk
       - name: Run tests (default)
         if: ${{ matrix.target == null }}
         run: cargo test --features=${{ matrix.features }} --workspace
