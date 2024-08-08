@@ -17,15 +17,15 @@ jobs:
           - os: macos-latest
             os-name: mac
             features: default
-            target: null
+            target: ${{ null }}
           - os: ubuntu-latest
             os-name: ubuntu
             features: default
-            target: null
+            target: ${{ null }}
           - os: windows-latest
             os-name: windows
             features: default
-            target: null
+            target: ${{ null }}
           - os: ubuntu-latest 
             os-name: android
             target: aarch64-linux-android
