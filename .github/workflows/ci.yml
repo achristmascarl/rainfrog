@@ -46,7 +46,7 @@ jobs:
           cross-version: 7b79041c9278769eca57fae10c74741f5aa5c14b
       - name: Run tests (default)
         if: ${{ matrix.target == null }}
-        run: cargo test --features=${{ matrix.features }} --workspace
+        run: cargo test --features ${{ matrix.features }} --workspace
 
   rustfmt:
     name: Rustfmt
