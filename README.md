@@ -149,8 +149,9 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 
   - [x] vhs explainer gifs
   - [x] upgrade ratatui and tui-textarea 
-  - [ ] handle explain / analyze output
+  - [ ] change cursor insert-mode style
   - [ ] shortcuts to view indexes, keys, etc.
+  - [ ] handle explain / analyze output
   - [ ] session history
   - [ ] unit / e2e tests
   - [ ] fix multi-line vim selections
