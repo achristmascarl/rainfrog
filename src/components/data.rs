@@ -221,14 +221,15 @@ impl<'a> Component for Data<'a> {
             Some(SelectionMode::Row) => {
               let row_string = row.join(", ");
               self.command_tx.clone().unwrap().send(Action::CopyData(row_string))?;
+              self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
             },
             Some(SelectionMode::Cell) => {
               let cell = row[x as usize].clone();
               self.command_tx.clone().unwrap().send(Action::CopyData(cell))?;
+              self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
             },
             _ => {},
           }
-          self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
         }
       },
       KeyCode::Esc => {

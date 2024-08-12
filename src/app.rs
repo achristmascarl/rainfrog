@@ -367,7 +367,7 @@ impl<'a> App<'a> {
       .split(f.area());
     let root_layout = Layout::default()
       .direction(Direction::Horizontal)
-      .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
+      .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
       .split(hints_layout[0]);
     let right_layout = Layout::default()
       .direction(Direction::Vertical)
