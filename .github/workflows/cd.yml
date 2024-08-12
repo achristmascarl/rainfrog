@@ -155,6 +155,7 @@ jobs:
   publish-cargo:
     name: Publishing to Cargo
     runs-on: ubuntu-latest
+    needs: publish
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
