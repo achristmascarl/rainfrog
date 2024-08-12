@@ -18,6 +18,7 @@ use crate::{
   action::Action,
   app::{App, AppState},
   config::{Config, KeyBindings},
+  database::get_keywords,
   focus::Focus,
   tui::Event,
   vim::{Mode, Transition, Vim},
@@ -35,6 +36,17 @@ struct Selection {
   pub end: CursorPosition,
 }
 
+fn keyword_regex() -> String {
+  let keywords = get_keywords();
+  let mut regex = String::new();
+  regex.push_str("(?i)");
+  for keyword in keywords {
+    regex.push_str(&format!("(^|[^a-zA-Z0-9\'\".]+){}($|[^a-zA-Z0-9\'\".]+)|", keyword));
+  }
+  regex.pop();
+  regex
+}
+
 #[derive(Default)]
 pub struct Editor<'a> {
   command_tx: Option<UnboundedSender<Action>>,
@@ -47,11 +59,14 @@ pub struct Editor<'a> {
 
 impl<'a> Editor<'a> {
   pub fn new() -> Self {
+    let mut textarea = TextArea::default();
+    textarea.set_search_pattern(keyword_regex()).unwrap();
+    textarea.set_search_style(Style::default().fg(Color::Magenta).bold());
     Editor {
       command_tx: None,
       config: Config::default(),
       selection: None,
-      textarea: TextArea::default(),
+      textarea,
       vim_state: Vim::new(Mode::Normal),
       cursor_style: Mode::Normal.cursor_style(),
     }
@@ -144,6 +159,8 @@ impl<'a> Component for Editor<'a> {
       }
       let query = format!("select * from {}.{} limit 100", schema, table);
       self.textarea = TextArea::from(vec![query.clone()]);
+      self.textarea.set_search_pattern(keyword_regex()).unwrap();
+      self.textarea.set_search_style(Style::default().fg(Color::Magenta).bold());
       self.command_tx.as_ref().unwrap().send(Action::Query(query))?;
     } else if let Action::SubmitEditorQuery = action {
       if let Some(sender) = &self.command_tx {

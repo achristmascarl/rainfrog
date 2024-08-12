@@ -288,12 +288,6 @@ impl Vim {
               }
             }
             textarea.cut();
-            let text = textarea.yank_text();
-            #[cfg(not(feature = "termux"))]
-            {
-              let mut clipboard = Clipboard::new().unwrap();
-              clipboard.set_text(text).unwrap();
-            }
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('c'), ctrl: false, .. } if self.mode == Mode::Visual => {

@@ -13,9 +13,9 @@ Set PlaybackSpeed 0.75
 Set TypingSpeed 250ms
 
 Show
-Sleep 2.5s
+Sleep 1s
 Type "rainfrog"
-Sleep 2s
+Sleep 1.5s
 Hide
 Backspace 8
 Sleep 1.5s
@@ -25,20 +25,24 @@ Sleep 10s
 Show
 Sleep 3s
 Enter
+Sleep 1s
 Type "jjj"
 Sleep 1s
 Type "/github"
+Sleep 1s
 Enter
 Sleep 500ms
 Escape
 Sleep 1s
 Escape
 Type "h"
-Sleep 500ms
+Sleep 1s
 Type "j"
+Sleep 1.5s
 Enter
 Sleep 500ms
 Type "jjj"
+Sleep 500ms
 Enter
 Sleep 1s
 Ctrl+B

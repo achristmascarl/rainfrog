@@ -361,7 +361,7 @@ impl Component for Menu {
               .fg(if focused && !self.search_focused && self.menu_focus == MenuFocus::Tables {
                 Color::Green
               } else {
-                Color::White
+                Color::Gray
               })
               .reversed(),
           );

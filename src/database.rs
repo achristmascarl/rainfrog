@@ -4,6 +4,7 @@ use futures::stream::StreamExt;
 use sqlparser::{
   ast::Statement,
   dialect::PostgreSqlDialect,
+  keywords,
   parser::{Parser, ParserError},
 };
 use sqlx::{
@@ -311,4 +312,8 @@ pub fn vec_to_string<T: std::string::ToString>(vec: Vec<T>) -> String {
 
 pub fn row_to_vec(row: &PgRow) -> Vec<String> {
   row.columns().iter().map(|col| parse_value(row, col).unwrap().string).collect()
+}
+
+pub fn get_keywords() -> Vec<String> {
+  keywords::ALL_KEYWORDS.iter().map(|k| k.to_string()).collect()
 }
