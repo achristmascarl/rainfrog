@@ -41,7 +41,7 @@ fn keyword_regex() -> String {
   let mut regex = String::new();
   regex.push_str("(?i)");
   for keyword in keywords {
-    regex.push_str(&format!("(^|[^a-zA-Z0-9\'\"]+){}($|[^a-zA-Z0-9\'\"]+)|", keyword));
+    regex.push_str(&format!("(^|[^a-zA-Z0-9\'\".]+){}($|[^a-zA-Z0-9\'\".]+)|", keyword));
   }
   regex.pop();
   regex
@@ -159,6 +159,8 @@ impl<'a> Component for Editor<'a> {
       }
       let query = format!("select * from {}.{} limit 100", schema, table);
       self.textarea = TextArea::from(vec![query.clone()]);
+      self.textarea.set_search_pattern(keyword_regex()).unwrap();
+      self.textarea.set_search_style(Style::default().fg(Color::Magenta).bold());
       self.command_tx.as_ref().unwrap().send(Action::Query(query))?;
     } else if let Action::SubmitEditorQuery = action {
       if let Some(sender) = &self.command_tx {
