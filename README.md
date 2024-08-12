@@ -151,22 +151,22 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 
   - [x] vhs explainer gifs
   - [x] upgrade ratatui and tui-textarea 
-  - [ ] change cursor insert-mode style
+  - [x] syntax highlighting
   - [ ] shortcuts to view indexes, keys, etc.
   - [ ] handle explain / analyze output
   - [ ] session history
   - [ ] unit / e2e tests
   - [ ] fix multi-line vim selections
   - [ ] non-vim editor keybindings
-  - [ ] homebrew 
+  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
   - [ ] loading animation
 </details>
 
 <details>
   <summary><b>backburner</b></summary>
 
+  - [ ] change cursor insert-mode style (not sure it's possible with tui-textarea)
   - [ ] editor auto-complete
-  - [ ] syntax highlighting
   - [ ] live graphs / metrics (a la pgadmin)
   - [ ] more packaging 
   - [ ] customization (keybindings, colors)
