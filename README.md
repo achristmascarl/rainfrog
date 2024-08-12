@@ -121,6 +121,8 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 | `$`                      | jump to last column                    |
 | `v`                      | select individual field                |
 | `V`                      | select row                             |
+| `Enter`                  | change selection mode inwards          |
+| `Backspace`              | change selection mode outwards         |
 | `y`                      | copy selection                         |
 | `Esc`                    | stop selecting                         |
 
