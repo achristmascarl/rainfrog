@@ -18,7 +18,6 @@ use crate::{
   action::{Action, MenuPreview},
   app::{App, AppState},
   config::{Config, KeyBindings},
-  database::get_keywords,
   focus::Focus,
   tui::Event,
   vim::{Mode, Transition, Vim},
@@ -34,17 +33,6 @@ struct CursorPosition {
 struct Selection {
   pub start: CursorPosition,
   pub end: CursorPosition,
-}
-
-fn keyword_regex() -> String {
-  let keywords = get_keywords();
-  let mut regex = String::new();
-  regex.push_str("(?i)");
-  for keyword in keywords {
-    regex.push_str(&format!("(^|[^a-zA-Z0-9\'\"._]+){}($|[^a-zA-Z0-9\'\"._]+)|", keyword));
-  }
-  regex.pop();
-  regex
 }
 
 #[derive(Default)]
