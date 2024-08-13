@@ -152,9 +152,9 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] vhs explainer gifs
   - [x] upgrade ratatui and tui-textarea 
   - [x] syntax highlighting
-  - [ ] shortcuts to view indexes, keys, etc.
-  - [ ] handle explain / analyze output
+  - [x] shortcuts to view indexes, keys, etc.
   - [ ] session history
+  - [ ] handle explain / analyze output
   - [ ] unit / e2e tests
   - [ ] changelog, release workflow
   - [ ] fix multi-line vim selections

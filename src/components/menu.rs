@@ -403,13 +403,15 @@ impl Component for Menu {
               }
             })
             .collect();
-          let list = List::default().items(filtered_tables_items).block(block).highlight_style(Style::default().fg(
-            if focused && !self.search_focused && self.menu_focus == MenuFocus::Tables {
-              Color::Green
-            } else {
-              Color::Gray
-            },
-          ));
+          let list = List::default().items(filtered_tables_items).block(block).highlight_style(
+            Style::default()
+              .fg(if focused && !self.search_focused && self.menu_focus == MenuFocus::Tables {
+                Color::Green
+              } else {
+                Color::Gray
+              })
+              .add_modifier(if focused { Modifier::BOLD } else { Modifier::REVERSED }),
+          );
           f.render_stateful_widget(list, layout[layout_index], &mut self.list_state);
           let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .symbols(scrollbar::VERTICAL)
