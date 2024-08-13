@@ -59,14 +59,11 @@ pub struct Editor<'a> {
 
 impl<'a> Editor<'a> {
   pub fn new() -> Self {
-    let mut textarea = TextArea::default();
-    textarea.set_search_pattern(keyword_regex()).unwrap();
-    textarea.set_search_style(Style::default().fg(Color::Magenta).bold());
     Editor {
       command_tx: None,
       config: Config::default(),
       selection: None,
-      textarea,
+      textarea: TextArea::default(),
       vim_state: Vim::new(Mode::Normal),
       cursor_style: Mode::Normal.cursor_style(),
     }
@@ -182,8 +179,6 @@ impl<'a> Component for Editor<'a> {
         },
       };
       self.textarea = TextArea::from(vec![query.clone()]);
-      self.textarea.set_search_pattern(keyword_regex()).unwrap();
-      self.textarea.set_search_style(Style::default().fg(Color::Magenta).bold());
       self.command_tx.as_ref().unwrap().send(Action::Query(query))?;
     } else if let Action::SubmitEditorQuery = action {
       if let Some(sender) = &self.command_tx {
