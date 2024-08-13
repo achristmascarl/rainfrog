@@ -2387,7 +2387,7 @@ dependencies = [
 
 [[package]]
 name = "rainfrog"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "arboard",
  "better-panic",

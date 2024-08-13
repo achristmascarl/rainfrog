@@ -15,7 +15,7 @@ use tui_textarea::{Input, Key, Scrolling, TextArea};
 
 use super::{Component, Frame};
 use crate::{
-  action::Action,
+  action::{Action, MenuPreview},
   app::{App, AppState},
   config::{Config, KeyBindings},
   database::get_keywords,
@@ -41,7 +41,7 @@ fn keyword_regex() -> String {
   let mut regex = String::new();
   regex.push_str("(?i)");
   for keyword in keywords {
-    regex.push_str(&format!("(^|[^a-zA-Z0-9\'\".]+){}($|[^a-zA-Z0-9\'\".]+)|", keyword));
+    regex.push_str(&format!("(^|[^a-zA-Z0-9\'\"._]+){}($|[^a-zA-Z0-9\'\"._]+)|", keyword));
   }
   regex.pop();
   regex
@@ -153,11 +153,34 @@ impl<'a> Component for Editor<'a> {
   }
 
   fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
-    if let Action::MenuSelect(schema, table) = action {
+    if let Action::MenuPreview(preview_type, schema, table) = action {
       if app_state.query_task.is_some() {
         return Ok(None);
       }
-      let query = format!("select * from {}.{} limit 100", schema, table);
+      let query = match preview_type {
+        MenuPreview::Rows => format!("select * from {}.{} limit 100", schema, table),
+        MenuPreview::Columns => {
+          format!(
+            "select column_name, * from information_schema.columns where table_schema = '{}' and table_name = '{}'",
+            schema, table
+          )
+        },
+        MenuPreview::Constraints => {
+          format!(
+            "select constraint_name, * from information_schema.table_constraints where table_schema = '{}' and table_name = '{}'",
+            schema, table
+          )
+        },
+        MenuPreview::Indexes => {
+          format!(
+            "select indexname, indexdef, * from pg_indexes where schemaname = '{}' and tablename = '{}'",
+            schema, table
+          )
+        },
+        MenuPreview::Policies => {
+          format!("select * from pg_policies where schemaname = '{}' and tablename = '{}'", schema, table)
+        },
+      };
       self.textarea = TextArea::from(vec![query.clone()]);
       self.textarea.set_search_pattern(keyword_regex()).unwrap();
       self.textarea.set_search_style(Style::default().fg(Color::Magenta).bold());

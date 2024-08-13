@@ -152,12 +152,12 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] vhs explainer gifs
   - [x] upgrade ratatui and tui-textarea 
   - [x] syntax highlighting
-  - [ ] shortcuts to view indexes, keys, etc.
-  - [ ] handle explain / analyze output
+  - [x] shortcuts to view indexes, keys, etc.
   - [ ] session history
+  - [ ] handle explain / analyze output
   - [ ] unit / e2e tests
+  - [ ] changelog, release workflow
   - [ ] fix multi-line vim selections
-  - [ ] non-vim editor keybindings
   - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
   - [ ] loading animation
 </details>
@@ -165,6 +165,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 <details>
   <summary><b>backburner</b></summary>
 
+  - [ ] non-vim editor keybindings
   - [ ] change cursor insert-mode style (not sure it's possible with tui-textarea)
   - [ ] editor auto-complete
   - [ ] live graphs / metrics (a la pgadmin)
@@ -180,7 +181,6 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 - for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535). Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
 - on mac, for VS Code and terminal (and perhaps other editors), a setting for "use option as meta key" needs to be turned on for Alt/Opt keybindings to work. (In VS Code, it's `"terminal.integrated.macOptionIsMeta": true`; in kitty, it's `macos_option_as_alt yes` in the config.)
 - in visual mode, when selecting an entire line, the behavior is not the same as vim's, as it simply moves starts the selection at the head of the line, so moving up or down in lines will break the selection. 
-- in visual mode, operations on backwards selections do not behave as expected. will be fixed after https://github.com/rhysd/tui-textarea/issues/80
 - mouse events are only used for changing focus and scrolling; the editor does not currently support mouse events, and menu items cannot be selected using the mouse
 
 ## acknowledgements

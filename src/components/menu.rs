@@ -15,7 +15,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use super::{Component, Frame};
 use crate::{
-  action::Action,
+  action::{Action, MenuPreview},
   app::{App, AppState},
   config::{Config, KeyBindings},
   database::{get_headers, parse_value, row_to_json, row_to_vec, DbError, Rows},
@@ -245,6 +245,33 @@ impl Component for Menu {
             KeyCode::Char('g') => self.scroll_top(),
             KeyCode::Char('G') => self.scroll_bottom(),
             KeyCode::Char('R') => self.command_tx.as_ref().unwrap().send(Action::LoadMenu)?,
+            KeyCode::Char('1') | KeyCode::Char('2') | KeyCode::Char('3') | KeyCode::Char('4') => {
+              if let Some(selected) = self.list_state.selected() {
+                let (schema, tables) = self.table_map.get_index(self.schema_index).unwrap();
+                let filtered_tables: Vec<String> = tables
+                  .iter()
+                  .filter(|t| {
+                    if let Some(search) = self.search.as_ref() {
+                      t.to_lowercase().contains(search.to_lowercase().trim())
+                    } else {
+                      true
+                    }
+                  })
+                  .cloned()
+                  .collect();
+                self.command_tx.as_ref().unwrap().send(Action::MenuPreview(
+                  match key.code {
+                    KeyCode::Char('1') => MenuPreview::Columns,
+                    KeyCode::Char('2') => MenuPreview::Constraints,
+                    KeyCode::Char('3') => MenuPreview::Indexes,
+                    KeyCode::Char('4') => MenuPreview::Policies,
+                    _ => MenuPreview::Rows,
+                  },
+                  schema.clone(),
+                  filtered_tables[selected].clone(),
+                ))?;
+              }
+            },
             _ => {},
           }
         }
@@ -267,11 +294,11 @@ impl Component for Menu {
             })
             .cloned()
             .collect();
-          self
-            .command_tx
-            .as_ref()
-            .unwrap()
-            .send(Action::MenuSelect(schema.clone(), filtered_tables[selected].clone()))?;
+          self.command_tx.as_ref().unwrap().send(Action::MenuPreview(
+            MenuPreview::Rows,
+            schema.clone(),
+            filtered_tables[selected].clone(),
+          ))?;
         }
       },
       KeyCode::Esc => self.reset_search(),
@@ -356,14 +383,34 @@ impl Component for Menu {
             .collect();
           let table_length = filtered_tables.len();
           let available_height = block.inner(parent_block.inner(area)).height as usize;
-          let list = List::default().items(filtered_tables).block(block).highlight_style(
+          let selected_table_index = self.list_state.selected();
+          let filtered_tables_items: Vec<ListItem> = filtered_tables
+            .into_iter()
+            .enumerate()
+            .map(|(i, t)| {
+              let is_selected = selected_table_index == Some(i);
+              if is_selected && focused && !self.search_focused {
+                ListItem::new(Text::from(vec![
+                  Line::from(t),
+                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[<enter>] rows" }),
+                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[1] columns" }),
+                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[2] constraints" }),
+                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[3] indexes" }),
+                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "└[4] rls policies" }),
+                ]))
+              } else {
+                ListItem::new(t)
+              }
+            })
+            .collect();
+          let list = List::default().items(filtered_tables_items).block(block).highlight_style(
             Style::default()
               .fg(if focused && !self.search_focused && self.menu_focus == MenuFocus::Tables {
                 Color::Green
               } else {
                 Color::Gray
               })
-              .reversed(),
+              .add_modifier(if focused { Modifier::BOLD } else { Modifier::REVERSED }),
           );
           f.render_stateful_widget(list, layout[layout_index], &mut self.list_state);
           let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
