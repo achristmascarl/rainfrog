@@ -13,15 +13,15 @@ Set PlaybackSpeed 0.75
 Set TypingSpeed 250ms
 
 Show
-Sleep 1s
+Sleep 250ms
 Type "rainfrog"
-Sleep 1.5s
+Sleep 1s
 Hide
 Backspace 8
 Sleep 1.5s
 Type "make dev"
 Enter
-Sleep 10s
+Sleep 15s
 Show
 Sleep 3s
 Enter
