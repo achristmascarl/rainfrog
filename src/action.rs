@@ -12,6 +12,15 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
+pub enum MenuPreview {
+  Rows,
+  Columns,
+  Constraints,
+  Indexes,
+  Policies,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
 pub enum Action {
   Tick,
   Render,
@@ -23,7 +32,7 @@ pub enum Action {
   Help,
   SubmitEditorQuery,
   Query(String),
-  MenuSelect(String, String),
+  MenuPreview(MenuPreview, String, String), // (preview, schema, table)
   AbortQuery,
   FocusMenu,
   FocusEditor,
