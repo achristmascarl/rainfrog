@@ -156,8 +156,8 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [ ] handle explain / analyze output
   - [ ] session history
   - [ ] unit / e2e tests
+  - [ ] changelog, release workflow
   - [ ] fix multi-line vim selections
-  - [ ] non-vim editor keybindings
   - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
   - [ ] loading animation
 </details>
@@ -165,6 +165,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 <details>
   <summary><b>backburner</b></summary>
 
+  - [ ] non-vim editor keybindings
   - [ ] change cursor insert-mode style (not sure it's possible with tui-textarea)
   - [ ] editor auto-complete
   - [ ] live graphs / metrics (a la pgadmin)
