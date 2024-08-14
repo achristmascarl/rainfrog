@@ -23,7 +23,7 @@ this software is currently under active development; expect breaking changes, an
 ### cargo
 after installing rust (recommended to do so via [rustup](https://www.rust-lang.org/tools/install)):
 ```sh
-cargo install rainfrog --locked
+cargo install rainfrog
 ```
 
 ### aur
@@ -39,7 +39,7 @@ pkg install rust
 ```
 and then make sure to install with termux features (and disable default features):
 ```sh
-cargo install rainfrog --locked --features termux --no-default-features
+cargo install rainfrog --features termux --no-default-features
 ```
 
 ### binaries
