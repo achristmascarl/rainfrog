@@ -158,6 +158,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] vhs explainer gifs
   - [x] upgrade ratatui and tui-textarea 
   - [x] shortcuts to view indexes, keys, etc.
+  - [x] performant syntax highlighting
   - [ ] session history
   - [ ] handle explain / analyze output
   - [ ] unit / e2e tests
@@ -170,7 +171,6 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 <details>
   <summary><b>backburner</b></summary>
 
-  - [ ] performant syntax highlighting
   - [ ] non-vim editor keybindings
   - [ ] change cursor insert-mode style (not sure it's possible with tui-textarea)
   - [ ] editor auto-complete
