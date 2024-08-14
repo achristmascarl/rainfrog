@@ -26,6 +26,12 @@ after installing rust (recommended to do so via [rustup](https://www.rust-lang.o
 cargo install rainfrog --locked
 ```
 
+### aur
+arch linux users can install [from the AUR](https://aur.archlinux.org/packages/rainfrog) with an [AUR helper](https://wiki.archlinux.org/title/AUR_helpers):
+```sh
+paru -S rainfrog
+```
+
 ### termux
 if you are using [termux](https://termux.dev/), you'll need to install rust via their package manager:
 ```sh
