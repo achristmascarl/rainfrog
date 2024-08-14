@@ -9,7 +9,7 @@ use ratatui::{
   prelude::Rect,
   style::{Color, Style, Stylize},
   text::Line,
-  widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap},
+  widgets::{Block, Borders, Clear, Padding, Paragraph, Tabs, Wrap},
   Frame,
 };
 use serde::{Deserialize, Serialize};
@@ -72,6 +72,7 @@ pub struct App<'a> {
   pub last_frame_mouse_event: Option<MouseEvent>,
   pub pool: Option<DbPool>,
   pub state: AppState<'a>,
+  last_focused_tab: Focus,
 }
 
 impl<'a> App<'a> {
@@ -91,6 +92,7 @@ impl<'a> App<'a> {
       last_frame_mouse_event: None,
       pool: None,
       state: AppState { connection_string, focus, query_task: None },
+      last_focused_tab: Focus::Editor,
     })
   }
 
@@ -245,8 +247,14 @@ impl<'a> App<'a> {
             self.last_frame_mouse_event = None;
           },
           Action::FocusMenu => self.state.focus = Focus::Menu,
-          Action::FocusEditor => self.state.focus = Focus::Editor,
-          Action::FocusHistory => self.state.focus = Focus::History,
+          Action::FocusEditor => {
+            self.state.focus = Focus::Editor;
+            self.last_focused_tab = Focus::Editor;
+          },
+          Action::FocusHistory => {
+            self.state.focus = Focus::History;
+            self.last_focused_tab = Focus::History;
+          },
           Action::FocusData => self.state.focus = Focus::Data,
           Action::LoadMenu => {
             log::info!("LoadMenu");
@@ -372,8 +380,25 @@ impl<'a> App<'a> {
       .split(hints_layout[0]);
     let right_layout = Layout::default()
       .direction(Direction::Vertical)
-      .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+      .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
       .split(root_layout[1]);
+    let tabs_layout = Layout::default()
+      .direction(Direction::Vertical)
+      .constraints([Constraint::Length(1), Constraint::Fill(1)])
+      .split(right_layout[0]);
+    let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+3>"])
+      .highlight_style(
+        Style::new()
+          .fg(if self.state.focus == Focus::Editor || self.state.focus == Focus::History {
+            Color::Green
+          } else {
+            Color::default()
+          })
+          .reversed(),
+      )
+      .select(if self.last_focused_tab == Focus::Editor { 0 } else { 1 })
+      .padding(" ", "")
+      .divider(" ");
 
     if let Some(event) = &self.last_frame_mouse_event {
       if !matches!(self.state.query_task, Some(DbTask::TxPending(_, _))) && event.kind != MouseEventKind::Moved {
@@ -393,8 +418,13 @@ impl<'a> App<'a> {
 
     let state = &self.state;
 
+    f.render_widget(tabs, tabs_layout[0]);
+    if self.last_focused_tab == Focus::Editor {
+      self.components.editor.draw(f, tabs_layout[1], state).unwrap();
+    } else {
+      f.render_widget(Paragraph::new("yoooo"), tabs_layout[1]);
+    }
     self.components.menu.draw(f, root_layout[0], state).unwrap();
-    self.components.editor.draw(f, right_layout[0], state).unwrap();
     self.components.data.draw(f, right_layout[1], state).unwrap();
     self.render_hints(f, hints_layout[1]);
 
@@ -415,6 +445,7 @@ impl<'a> App<'a> {
         match self.state.focus {
             Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
             Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query",
+            Focus::History => "[j|↓] down [k|↑] up [y] copy query [<enter>] edit query [D] clear history",
             Focus::Data if self.state.query_task.is_none() => "[j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
             _ => "",

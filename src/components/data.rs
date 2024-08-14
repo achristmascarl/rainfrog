@@ -261,19 +261,19 @@ impl<'a> Component for Data<'a> {
       let row = row_to_vec(&rows[y]);
       let title_string = match self.scrollable.get_selection_mode() {
         Some(SelectionMode::Row) => {
-          format!(" 󰆼 results <alt+3> (row {} of {})", y.saturating_add(1), rows.len())
+          format!(" 󰆼 results <alt+4> (row {} of {})", y.saturating_add(1), rows.len())
         },
         Some(SelectionMode::Cell) => {
-          format!(" 󰆼 results <alt+3> (row {} of {}) - {} ", y.saturating_add(1), rows.len(), row[x as usize].clone())
+          format!(" 󰆼 results <alt+4> (row {} of {}) - {} ", y.saturating_add(1), rows.len(), row[x as usize].clone())
         },
         Some(SelectionMode::Copied) => {
-          format!(" 󰆼 results <alt+3> ({} rows) - copied! ", rows.len())
+          format!(" 󰆼 results <alt+4> ({} rows) - copied! ", rows.len())
         },
-        _ => format!(" 󰆼 results <alt+3> ({} rows)", rows.len()),
+        _ => format!(" 󰆼 results <alt+4> ({} rows)", rows.len()),
       };
       block = block.title(title_string);
     } else {
-      block = block.title(" 󰆼 results <alt+3>");
+      block = block.title(" 󰆼 results <alt+4>");
     }
 
     match &self.data_state {

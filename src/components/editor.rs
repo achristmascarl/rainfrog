@@ -199,11 +199,8 @@ impl<'a> Component for Editor<'a> {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Editor;
-    let block = self.vim_state.mode.block().title(" 󰤏 query <alt+2> ").border_style(if focused {
-      Style::new().green()
-    } else {
-      Style::new().dim()
-    });
+    let block =
+      self.vim_state.mode.block().border_style(if focused { Style::new().green() } else { Style::new().dim() });
 
     self.textarea.set_cursor_style(self.cursor_style);
     self.textarea.set_block(block);
