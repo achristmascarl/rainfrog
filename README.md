@@ -1,7 +1,7 @@
 # 🐸 rainfrog
 a database management tui for postgres
 
-![rainfrog demo](demo.gif?)
+![rainfrog demo](demo.gif)
 
 > [!WARNING]
 > rainfrog is currently in alpha. 
@@ -24,6 +24,12 @@ this software is currently under active development; expect breaking changes, an
 after installing rust (recommended to do so via [rustup](https://www.rust-lang.org/tools/install)):
 ```sh
 cargo install rainfrog --locked
+```
+
+### aur
+arch linux users can install [from the AUR](https://aur.archlinux.org/packages/rainfrog) with an [AUR helper](https://wiki.archlinux.org/title/AUR_helpers):
+```sh
+paru -S rainfrog
 ```
 
 ### termux
