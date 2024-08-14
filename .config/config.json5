@@ -5,32 +5,37 @@
       "q": "AbortQuery",
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
-      "<Alt-3>": "FocusData",
-      "<Ctrl-m>": "FocusMenu",
-      "<Ctrl-n>": "FocusEditor",
-      "<Ctrl-b>": "FocusData"
+      "<Alt-3>": "FocusHistory",
+      "<Alt-4>": "FocusData",
+      "<Ctrl-n>": "FocusMenu",
+      "<Ctrl-b>": "FocusEditor",
+      "<Ctrl-h>": "FocusHistory",
+      "<Ctrl-g>": "FocusData"
 
     },
     "Editor": {
       "<Ctrl-c>": "Quit",
       "q": "AbortQuery",
+      "<F5>": "SubmitEditorQuery",
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
-      "<Alt-3>": "FocusData",
-      "<Ctrl-m>": "FocusMenu",
-      "<Ctrl-n>": "FocusEditor",
-      "<Ctrl-b>": "FocusData",
-      "<F5>": "SubmitEditorQuery"
+      "<Alt-3>": "FocusHistory",
+      "<Alt-4>": "FocusData",
+      "<Ctrl-n>": "FocusMenu",
+      "<Ctrl-b>": "FocusEditor",
+      "<Ctrl-h>": "FocusHistory",
+      "<Ctrl-g>": "FocusData"
     },
     "Data": {
       "<Ctrl-c>": "Quit",
       "q": "AbortQuery",
       "<Alt-1>": "FocusMenu",
       "<Alt-2>": "FocusEditor",
-      "<Alt-3>": "FocusData",
-      "<Ctrl-m>": "FocusMenu",
-      "<Ctrl-n>": "FocusEditor",
-      "<Ctrl-b>": "FocusData"
+      "<Alt-3>": "FocusHistory",
+      "<Alt-4>": "FocusData",
+      "<Ctrl-n>": "FocusMenu",
+      "<Ctrl-b>": "FocusEditor",
+      "<Ctrl-h>": "FocusHistory",
     },
     "PopUp": {
       "<Ctrl-c>": "Quit",

@@ -36,6 +36,7 @@ pub enum Action {
   AbortQuery,
   FocusMenu,
   FocusEditor,
+  FocusHistory,
   FocusData,
   LoadMenu,
   CopyData(String),

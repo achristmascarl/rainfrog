@@ -246,6 +246,7 @@ impl<'a> App<'a> {
           },
           Action::FocusMenu => self.state.focus = Focus::Menu,
           Action::FocusEditor => self.state.focus = Focus::Editor,
+          Action::FocusHistory => self.state.focus = Focus::History,
           Action::FocusData => self.state.focus = Focus::Data,
           Action::LoadMenu => {
             log::info!("LoadMenu");
@@ -367,7 +368,7 @@ impl<'a> App<'a> {
       .split(f.area());
     let root_layout = Layout::default()
       .direction(Direction::Horizontal)
-      .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
+      .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
       .split(hints_layout[0]);
     let right_layout = Layout::default()
       .direction(Direction::Vertical)

@@ -58,9 +58,10 @@ rainfrog --url $(connection_url)
 | keybinding                  | description                            |
 |-----------------------------|----------------------------------------|
 | `Ctrl+c`                      | quit program                           |
-| `Alt+1`, `Ctrl+m`               | change focus to menu                   |
-| `Alt+2`, `Ctrl+n`               | change focus to query editor           |
-| `Alt+3`, `Ctrl+b`               | change focus to results                |
+| `Alt+1`, `Ctrl+n`               | change focus to menu                   |
+| `Alt+2`, `Ctrl+b`               | change focus to query editor           |
+| `Alt+3`, `Ctrl+h`               | change focus to query history        |
+| `Alt+4`, `Ctrl+g`               | change focus to results                |
 | `q`                           | abort current query                    |
 
 ### menu (list of schemas and tables)
