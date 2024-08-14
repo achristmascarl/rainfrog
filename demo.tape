@@ -4,8 +4,9 @@ Require rainfrog
 
 Set Shell zsh
 Set Theme "tokyonight-storm"
-Set Width 2000
+Set Width 1800
 Set Height 1000
+Set Padding 20
 
 # https://www.nerdfonts.com/font-downloads
 Set FontFamily "GohuFont uni14 Nerd Font Mono"
