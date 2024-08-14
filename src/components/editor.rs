@@ -37,14 +37,7 @@ struct Selection {
 }
 
 fn keyword_regex() -> String {
-  let keywords = get_keywords();
-  let mut regex = String::new();
-  regex.push_str("(?i)");
-  for keyword in keywords {
-    regex.push_str(&format!("(^|[^a-zA-Z0-9\'\"._]+){}($|[^a-zA-Z0-9\'\"._]+)|", keyword));
-  }
-  regex.pop();
-  regex
+  format!("(?i)(^|[^a-zA-Z0-9\'\"._]+)({})($|[^a-zA-Z0-9\'\"._]+)", get_keywords().join("|"))
 }
 
 #[derive(Default)]
