@@ -188,7 +188,6 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 - on mac, for VS Code and terminal (and perhaps other editors), a setting for "use option as meta key" needs to be turned on for Alt/Opt keybindings to work. (In VS Code, it's `"terminal.integrated.macOptionIsMeta": true`; in kitty, it's `macos_option_as_alt yes` in the config.)
 - in visual mode, when selecting an entire line, the behavior is not the same as vim's, as it simply moves starts the selection at the head of the line, so moving up or down in lines will break the selection. 
 - mouse events are only used for changing focus and scrolling; the editor does not currently support mouse events, and menu items cannot be selected using the mouse
-- syntax highlighting was removed due to performance issues.
 
 ## acknowledgements
 - [ratatui](https://github.com/ratatui-org/ratatui) (this project used ratatui's [component template](https://github.com/ratatui-org/templates/tree/983aa3cb3b8dd743200e8e2a1faa6e7c06aad85e/component/template) as a starting point)
