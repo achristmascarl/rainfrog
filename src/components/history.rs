@@ -1,6 +1,6 @@
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
-use ratatui::{prelude::*, widgets::*};
+use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{Input, Key, Scrolling, TextArea};
@@ -19,11 +19,12 @@ pub struct History {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   list_state: ListState,
+  copied: bool,
 }
 
 impl History {
   pub fn new() -> Self {
-    History { command_tx: None, config: Config::default(), list_state: ListState::default() }
+    History { command_tx: None, config: Config::default(), list_state: ListState::default(), copied: false }
   }
 }
 
@@ -60,25 +61,38 @@ impl Component for History {
     Ok(None)
   }
 
-  fn handle_events(
-    &mut self,
-    event: Option<Event>,
-    last_tick_key_events: Vec<KeyEvent>,
-    app_state: &AppState,
-  ) -> Result<Option<Action>> {
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
     if app_state.focus != Focus::History {
       return Ok(None);
     }
-    // if let Some(Event::Paste(text)) = event {
-    //   self.textarea.insert_str(text);
-    // } else if let Some(Event::Mouse(event)) = event {
-    //   self.handle_mouse_events(event, app_state).unwrap();
-    // } else if let Some(Event::Key(key)) = event {
-    //   if app_state.query_task.is_none() {
-    //     let input = Input::from(key);
-    //     self.transition_vim_state(input)?;
-    //   }
-    // };
+    self.copied = false;
+    let current_selected = self.list_state.selected();
+    if let Some(i) = current_selected {
+      match key.code {
+        KeyCode::Down | KeyCode::Char('j') => {
+          self.list_state.select(Some(i.saturating_add(1)));
+        },
+        KeyCode::Up | KeyCode::Char('k') => {
+          self.list_state.select(Some(i.saturating_sub(1)));
+        },
+        KeyCode::Char('g') => {
+          self.list_state.select(Some(0));
+        },
+        KeyCode::Char('G') => self.list_state.select(Some(app_state.history.len().saturating_sub(1))),
+        KeyCode::Char('I') => {
+          self.command_tx.as_ref().unwrap().send(Action::HistoryToEditor(app_state.history[i].query_lines.clone()))?;
+          self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
+        },
+        KeyCode::Char('y') => {
+          self.command_tx.as_ref().unwrap().send(Action::CopyData(app_state.history[i].query_lines.join("\n")))?;
+          self.copied = true;
+        },
+        KeyCode::Char('D') => {
+          self.command_tx.as_ref().unwrap().send(Action::ClearHistory)?;
+        },
+        _ => {},
+      };
+    }
     Ok(None)
   }
 
@@ -93,26 +107,61 @@ impl Component for History {
     } else {
       Style::new().dim()
     });
-    let block_margin = block.inner(area).inner(Margin { vertical: 1, horizontal: 0 });
+    let scrollbar_margin = area.inner(Margin { vertical: 1, horizontal: 0 });
+
+    let items = app_state
+      .history
+      .iter()
+      .enumerate()
+      .map(|(i, h)| {
+        let selected = self.list_state.selected().map_or(false, |x| i == x);
+        let color = if selected { Color::Blue } else { Color::default() };
+        let mut lines = h
+          .query_lines
+          .clone()
+          .iter()
+          .map(|s| Line::from(s.clone()).style(Style::default().fg(color)))
+          .collect::<Vec<Line>>();
+        lines.insert(
+          0,
+          Line::from(format!("{}{}", if self.copied { "copied! - " } else { "" }, h.timestamp)).style(if focused {
+            Color::Yellow
+          } else {
+            Color::default()
+          }),
+        );
+        lines.push(
+          Line::from("--------------------------------------------------------------------------------")
+            .style(Style::default().fg(color)),
+        );
+        ListItem::new(Text::from_iter(lines))
+      })
+      .collect::<Vec<ListItem>>();
+
+    match self.list_state.selected() {
+      Some(x) if x > items.len().saturating_sub(1) => {
+        self.list_state.select(Some(0));
+      },
+      None => {
+        self.list_state.select(Some(0));
+      },
+      _ => {},
+    };
 
     let list = List::default()
-      .items(vec!["blah", "blah2"])
+      .items(items)
       .block(block)
-      .highlight_style(Style::default().fg(if focused { Color::Green } else { Color::Gray }).reversed());
+      .highlight_style(Style::default().bold())
+      .highlight_symbol(if self.copied { "  " } else { " > " })
+      .highlight_spacing(HighlightSpacing::Always);
 
-    let paragraph = Paragraph::new("history").block(block);
-    f.render_widget(paragraph, area);
-    f.render_stateful_widget(list, layout[layout_index], &mut self.list_state);
-    let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight).symbols(scrollbar::VERTICAL).style(
-      if focused && !self.search_focused && self.menu_focus == MenuFocus::Tables {
-        Style::default().fg(Color::Green)
-      } else {
-        Style::default()
-      },
-    );
+    f.render_stateful_widget(list, area, &mut self.list_state);
+    let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+      .symbols(scrollbar::VERTICAL)
+      .style(if focused { Style::default().fg(Color::Green) } else { Style::default() });
     let mut vertical_scrollbar_state =
-      ScrollbarState::new(table_length.saturating_sub(available_height)).position(self.list_state.offset());
-    f.render_stateful_widget(vertical_scrollbar, block_margin, &mut vertical_scrollbar_state);
+      ScrollbarState::new(app_state.history.len().saturating_sub(1)).position(self.list_state.offset());
+    f.render_stateful_widget(vertical_scrollbar, scrollbar_margin, &mut vertical_scrollbar_state);
     Ok(())
   }
 }

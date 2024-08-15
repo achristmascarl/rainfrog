@@ -31,8 +31,10 @@ pub enum Action {
   Error(String),
   Help,
   SubmitEditorQuery,
-  Query(String),
+  Query(Vec<String>),
   MenuPreview(MenuPreview, String, String), // (preview, schema, table)
+  HistoryToEditor(Vec<String>),
+  ClearHistory,
   AbortQuery,
   FocusMenu,
   FocusEditor,

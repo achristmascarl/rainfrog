@@ -47,8 +47,8 @@ pub enum DbTask<'a> {
 }
 
 pub struct HistoryEntry {
-  query_lines: Vec<String>,
-  timestamp: chrono::DateTime<chrono::Local>,
+  pub query_lines: Vec<String>,
+  pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
 pub struct AppState<'a> {
@@ -110,6 +110,17 @@ impl<'a> App<'a> {
     })
   }
 
+  fn add_to_history(&mut self, query_lines: Vec<String>) {
+    self.state.history.insert(0, HistoryEntry { query_lines, timestamp: chrono::Local::now() });
+    if self.state.history.len() > 50 {
+      self.state.history.pop();
+    }
+  }
+
+  fn clear_history(&mut self) {
+    self.state.history = vec![];
+  }
+
   pub async fn run(&mut self) -> Result<()> {
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
     let connection_url = self.state.connection_string.clone();
@@ -122,15 +133,18 @@ impl<'a> App<'a> {
 
     self.components.menu.register_action_handler(action_tx.clone())?;
     self.components.editor.register_action_handler(action_tx.clone())?;
+    self.components.history.register_action_handler(action_tx.clone())?;
     self.components.data.register_action_handler(action_tx.clone())?;
 
     self.components.menu.register_config_handler(self.config.clone())?;
     self.components.editor.register_config_handler(self.config.clone())?;
+    self.components.history.register_config_handler(self.config.clone())?;
     self.components.data.register_config_handler(self.config.clone())?;
 
     let size = tui.size()?;
     self.components.menu.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
     self.components.editor.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
+    self.components.history.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
     self.components.data.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
 
     action_tx.send(Action::LoadMenu)?;
@@ -231,6 +245,11 @@ impl<'a> App<'a> {
             action_tx.send(action)?;
           }
           if let Some(action) =
+            self.components.history.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
+          {
+            action_tx.send(action)?;
+          }
+          if let Some(action) =
             self.components.data.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
           {
             action_tx.send(action)?;
@@ -287,9 +306,10 @@ impl<'a> App<'a> {
               self.components.menu.set_table_list(Some(results));
             }
           },
-          Action::Query(query) => {
-            let query = query.to_owned();
-            let should_use_tx = database::should_use_tx(&query);
+          Action::Query(query_lines) => {
+            self.add_to_history(query_lines.clone());
+            let query_string = query_lines.clone().join(" ");
+            let should_use_tx = database::should_use_tx(&query_string);
             let action_tx = action_tx.clone();
             if let Some(pool) = &self.pool {
               let pool = pool.clone();
@@ -298,16 +318,16 @@ impl<'a> App<'a> {
                   self.components.data.set_loading();
                   let tx = pool.begin().await?;
                   self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                    let (results, tx) = database::query_with_tx(tx, query.clone()).await;
+                    let (results, tx) = database::query_with_tx(tx, query_string.clone()).await;
                     match results {
                       Ok(rows_affected) => {
                         log::info!("{:?} rows affected", rows_affected);
-                        let statement_type = database::get_statement_type(query.clone().as_str()).unwrap();
+                        let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
                         (QueryResultsWithMetadata { results: Ok((vec![], Some(rows_affected))), statement_type }, tx)
                       },
                       Err(e) => {
                         log::error!("{e:?}");
-                        let statement_type = database::get_statement_type(&query).unwrap();
+                        let statement_type = database::get_statement_type(&query_string).unwrap();
                         (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
                       },
                     }
@@ -316,7 +336,7 @@ impl<'a> App<'a> {
                 Ok(false) => {
                   self.components.data.set_loading();
                   self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                    let results = database::query(query.clone(), &pool).await;
+                    let results = database::query(query_string.clone(), &pool).await;
                     match &results {
                       Ok(rows) => {
                         log::info!("{:?} rows, {:?} affected", rows.0.len(), rows.1);
@@ -325,7 +345,7 @@ impl<'a> App<'a> {
                         log::error!("{e:?}");
                       },
                     };
-                    let statement_type = database::get_statement_type(&query).unwrap();
+                    let statement_type = database::get_statement_type(&query_string).unwrap();
 
                     QueryResultsWithMetadata { results, statement_type }
                   })));
@@ -352,6 +372,9 @@ impl<'a> App<'a> {
               _ => {},
             }
           },
+          Action::ClearHistory => {
+            self.clear_history();
+          },
           _ => {},
         }
         if !action_consumed {
@@ -359,6 +382,9 @@ impl<'a> App<'a> {
             action_tx.send(action)?;
           }
           if let Some(action) = self.components.editor.update(action.clone(), &self.state)? {
+            action_tx.send(action)?;
+          }
+          if let Some(action) = self.components.history.update(action.clone(), &self.state)? {
             action_tx.send(action)?;
           }
           if let Some(action) = self.components.data.update(action.clone(), &self.state)? {
@@ -459,7 +485,7 @@ impl<'a> App<'a> {
         match self.state.focus {
             Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
             Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query",
-            Focus::History => "[j|↓] down [k|↑] up [y] copy query [<enter>] edit query [D] clear history",
+            Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
             Focus::Data if self.state.query_task.is_none() => "[j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
             _ => "",

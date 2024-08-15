@@ -54,8 +54,6 @@ impl<'a> Editor<'a> {
   pub fn new() -> Self {
     let mut textarea = TextArea::default();
     textarea.set_search_pattern(keyword_regex()).unwrap();
-    textarea.set_search_style(Style::default().fg(Color::Magenta).bold());
-
     Editor {
       command_tx: None,
       config: Config::default(),
@@ -70,7 +68,7 @@ impl<'a> Editor<'a> {
     match input {
       Input { key: Key::Enter, alt: true, .. } => {
         if let Some(sender) = &self.command_tx {
-          sender.send(Action::Query(self.textarea.lines().join(" ")))?;
+          sender.send(Action::Query(self.textarea.lines().to_vec()))?;
           self.vim_state = Vim::new(Mode::Normal);
           self.cursor_style = Mode::Normal.cursor_style();
         }
@@ -147,52 +145,60 @@ impl<'a> Component for Editor<'a> {
   }
 
   fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
-    if let Action::MenuPreview(preview_type, schema, table) = action {
-      if app_state.query_task.is_some() {
-        return Ok(None);
-      }
-      let query = match preview_type {
-        MenuPreview::Rows => format!("select * from {}.{} limit 100", schema, table),
-        MenuPreview::Columns => {
-          format!(
-            "select column_name, * from information_schema.columns where table_schema = '{}' and table_name = '{}'",
-            schema, table
-          )
-        },
-        MenuPreview::Constraints => {
-          format!(
+    match action {
+      Action::MenuPreview(preview_type, schema, table) => {
+        if app_state.query_task.is_some() {
+          return Ok(None);
+        }
+        let query = match preview_type {
+          MenuPreview::Rows => format!("select * from {}.{} limit 100", schema, table),
+          MenuPreview::Columns => {
+            format!(
+              "select column_name, * from information_schema.columns where table_schema = '{}' and table_name = '{}'",
+              schema, table
+            )
+          },
+          MenuPreview::Constraints => {
+            format!(
             "select constraint_name, * from information_schema.table_constraints where table_schema = '{}' and table_name = '{}'",
             schema, table
           )
-        },
-        MenuPreview::Indexes => {
-          format!(
-            "select indexname, indexdef, * from pg_indexes where schemaname = '{}' and tablename = '{}'",
-            schema, table
-          )
-        },
-        MenuPreview::Policies => {
-          format!("select * from pg_policies where schemaname = '{}' and tablename = '{}'", schema, table)
-        },
-      };
-      self.textarea = TextArea::from(vec![query.clone()]);
-      self.textarea.set_search_pattern(keyword_regex()).unwrap();
-      self.textarea.set_search_style(Style::default().fg(Color::Magenta).bold());
-      self.command_tx.as_ref().unwrap().send(Action::Query(query))?;
-    } else if let Action::SubmitEditorQuery = action {
-      if let Some(sender) = &self.command_tx {
-        sender.send(Action::Query(self.textarea.lines().join(" ")))?;
-      }
-    } else if let Action::CopyData(data) = action {
-      #[cfg(not(feature = "termux"))]
-      {
-        let mut clipboard = Clipboard::new().unwrap();
-        clipboard.set_text(data).unwrap();
-      }
-      #[cfg(feature = "termux")]
-      {
-        self.textarea.set_yank_text(data);
-      }
+          },
+          MenuPreview::Indexes => {
+            format!(
+              "select indexname, indexdef, * from pg_indexes where schemaname = '{}' and tablename = '{}'",
+              schema, table
+            )
+          },
+          MenuPreview::Policies => {
+            format!("select * from pg_policies where schemaname = '{}' and tablename = '{}'", schema, table)
+          },
+        };
+        self.textarea = TextArea::from(vec![query.clone()]);
+        self.textarea.set_search_pattern(keyword_regex()).unwrap();
+        self.command_tx.as_ref().unwrap().send(Action::Query(vec![query.clone()]))?;
+      },
+      Action::SubmitEditorQuery => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::Query(self.textarea.lines().to_vec()))?;
+        }
+      },
+      Action::CopyData(data) => {
+        #[cfg(not(feature = "termux"))]
+        {
+          let mut clipboard = Clipboard::new().unwrap();
+          clipboard.set_text(data).unwrap();
+        }
+        #[cfg(feature = "termux")]
+        {
+          self.textarea.set_yank_text(data);
+        }
+      },
+      Action::HistoryToEditor(lines) => {
+        self.textarea = TextArea::from(lines.clone());
+        self.textarea.set_search_pattern(keyword_regex()).unwrap();
+      },
+      _ => {},
     }
     Ok(None)
   }
@@ -208,6 +214,7 @@ impl<'a> Component for Editor<'a> {
     self.textarea.set_cursor_line_style(Style::default().not_underlined());
     self.textarea.set_hard_tab_indent(false);
     self.textarea.set_tab_length(2);
+    self.textarea.set_search_style(Style::default().fg(Color::Magenta).bold());
     f.render_widget(&self.textarea, area);
     Ok(())
   }
