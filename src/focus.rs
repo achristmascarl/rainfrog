@@ -5,6 +5,7 @@ pub enum Focus {
   #[default]
   Menu,
   Editor,
+  History,
   Data,
   PopUp,
 }

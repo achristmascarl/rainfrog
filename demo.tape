@@ -4,8 +4,9 @@ Require rainfrog
 
 Set Shell zsh
 Set Theme "tokyonight-storm"
-Set Width 2000
+Set Width 1800
 Set Height 1000
+Set Padding 20
 
 # https://www.nerdfonts.com/font-downloads
 Set FontFamily "GohuFont uni14 Nerd Font Mono"
@@ -45,7 +46,7 @@ Type "jjj"
 Sleep 500ms
 Enter
 Sleep 1s
-Ctrl+B
+Ctrl+G
 Sleep 2s
 Type "v"
 Sleep 2s
@@ -55,9 +56,7 @@ Type "e"
 Sleep 1s
 Type "y"
 Sleep 2s
-Ctrl+M
-Sleep 1s
-Ctrl+N
+Ctrl+B
 Sleep 1s
 Type "dd"
 Sleep 1s
@@ -78,4 +77,14 @@ Sleep 1s
 Alt+Enter
 Sleep 2.5s
 Type "N"
-Sleep 3s
+Sleep 1s
+Ctrl+H
+Sleep 2s
+Type "jjj"
+Sleep 1s
+Type "y"
+Sleep 1.5s
+Type "I"
+Sleep 2s
+Alt+Enter
+Sleep 5s

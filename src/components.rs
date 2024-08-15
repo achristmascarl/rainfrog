@@ -12,6 +12,7 @@ use crate::{
 
 pub mod data;
 pub mod editor;
+pub mod history;
 pub mod menu;
 pub mod scroll_table;
 

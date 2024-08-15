@@ -9,7 +9,7 @@ use ratatui::{
   prelude::Rect,
   style::{Color, Style, Stylize},
   text::Line,
-  widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap},
+  widgets::{Block, Borders, Clear, Padding, Paragraph, Tabs, Wrap},
   Frame,
 };
 use serde::{Deserialize, Serialize};
@@ -28,6 +28,7 @@ use crate::{
   components::{
     data::{Data, DataComponent},
     editor::Editor,
+    history::History,
     menu::{Menu, MenuComponent},
     Component,
   },
@@ -45,15 +46,22 @@ pub enum DbTask<'a> {
   TxCommit(tokio::task::JoinHandle<QueryResultsWithMetadata>),
 }
 
+pub struct HistoryEntry {
+  pub query_lines: Vec<String>,
+  pub timestamp: chrono::DateTime<chrono::Local>,
+}
+
 pub struct AppState<'a> {
   pub connection_string: String,
   pub focus: Focus,
   pub query_task: Option<DbTask<'a>>,
+  pub history: Vec<HistoryEntry>,
 }
 
 pub struct Components<'a> {
   pub menu: Box<dyn MenuComponent<'a>>,
   pub editor: Box<dyn Component>,
+  pub history: Box<dyn Component>,
   pub data: Box<dyn DataComponent<'a>>,
 }
 
@@ -72,6 +80,7 @@ pub struct App<'a> {
   pub last_frame_mouse_event: Option<MouseEvent>,
   pub pool: Option<DbPool>,
   pub state: AppState<'a>,
+  last_focused_tab: Focus,
 }
 
 impl<'a> App<'a> {
@@ -79,19 +88,37 @@ impl<'a> App<'a> {
     let focus = Focus::Menu;
     let menu = Menu::new();
     let editor = Editor::new();
+    let history = History::new();
     let data = Data::new();
     let config = Config::new()?;
     Ok(Self {
       tick_rate,
       frame_rate,
-      components: Components { menu: Box::new(menu), editor: Box::new(editor), data: Box::new(data) },
+      components: Components {
+        menu: Box::new(menu),
+        editor: Box::new(editor),
+        history: Box::new(history),
+        data: Box::new(data),
+      },
       should_quit: false,
       config,
       last_tick_key_events: Vec::new(),
       last_frame_mouse_event: None,
       pool: None,
-      state: AppState { connection_string, focus, query_task: None },
+      state: AppState { connection_string, focus, query_task: None, history: vec![] },
+      last_focused_tab: Focus::Editor,
     })
+  }
+
+  fn add_to_history(&mut self, query_lines: Vec<String>) {
+    self.state.history.insert(0, HistoryEntry { query_lines, timestamp: chrono::Local::now() });
+    if self.state.history.len() > 50 {
+      self.state.history.pop();
+    }
+  }
+
+  fn clear_history(&mut self) {
+    self.state.history = vec![];
   }
 
   pub async fn run(&mut self) -> Result<()> {
@@ -106,15 +133,18 @@ impl<'a> App<'a> {
 
     self.components.menu.register_action_handler(action_tx.clone())?;
     self.components.editor.register_action_handler(action_tx.clone())?;
+    self.components.history.register_action_handler(action_tx.clone())?;
     self.components.data.register_action_handler(action_tx.clone())?;
 
     self.components.menu.register_config_handler(self.config.clone())?;
     self.components.editor.register_config_handler(self.config.clone())?;
+    self.components.history.register_config_handler(self.config.clone())?;
     self.components.data.register_config_handler(self.config.clone())?;
 
     let size = tui.size()?;
     self.components.menu.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
     self.components.editor.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
+    self.components.history.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
     self.components.data.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
 
     action_tx.send(Action::LoadMenu)?;
@@ -172,7 +202,7 @@ impl<'a> App<'a> {
                       };
                       self.components.data.set_data_state(
                         match result {
-                          Ok(_) => Some(Ok((vec![], None))),
+                          Ok(_) => Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
                           Err(e) => Some(Err(Either::Left(e))),
                         },
                         Some(match key.code {
@@ -215,6 +245,11 @@ impl<'a> App<'a> {
             action_tx.send(action)?;
           }
           if let Some(action) =
+            self.components.history.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
+          {
+            action_tx.send(action)?;
+          }
+          if let Some(action) =
             self.components.data.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
           {
             action_tx.send(action)?;
@@ -245,7 +280,14 @@ impl<'a> App<'a> {
             self.last_frame_mouse_event = None;
           },
           Action::FocusMenu => self.state.focus = Focus::Menu,
-          Action::FocusEditor => self.state.focus = Focus::Editor,
+          Action::FocusEditor => {
+            self.state.focus = Focus::Editor;
+            self.last_focused_tab = Focus::Editor;
+          },
+          Action::FocusHistory => {
+            self.state.focus = Focus::History;
+            self.last_focused_tab = Focus::History;
+          },
           Action::FocusData => self.state.focus = Focus::Data,
           Action::LoadMenu => {
             log::info!("LoadMenu");
@@ -264,9 +306,10 @@ impl<'a> App<'a> {
               self.components.menu.set_table_list(Some(results));
             }
           },
-          Action::Query(query) => {
-            let query = query.to_owned();
-            let should_use_tx = database::should_use_tx(&query);
+          Action::Query(query_lines) => {
+            self.add_to_history(query_lines.clone());
+            let query_string = query_lines.clone().join(" ");
+            let should_use_tx = database::should_use_tx(&query_string);
             let action_tx = action_tx.clone();
             if let Some(pool) = &self.pool {
               let pool = pool.clone();
@@ -275,16 +318,22 @@ impl<'a> App<'a> {
                   self.components.data.set_loading();
                   let tx = pool.begin().await?;
                   self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                    let (results, tx) = database::query_with_tx(tx, query.clone()).await;
+                    let (results, tx) = database::query_with_tx(tx, query_string.clone()).await;
                     match results {
                       Ok(rows_affected) => {
                         log::info!("{:?} rows affected", rows_affected);
-                        let statement_type = database::get_statement_type(query.clone().as_str()).unwrap();
-                        (QueryResultsWithMetadata { results: Ok((vec![], Some(rows_affected))), statement_type }, tx)
+                        let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
+                        (
+                          QueryResultsWithMetadata {
+                            results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+                            statement_type,
+                          },
+                          tx,
+                        )
                       },
                       Err(e) => {
                         log::error!("{e:?}");
-                        let statement_type = database::get_statement_type(&query).unwrap();
+                        let statement_type = database::get_statement_type(&query_string).unwrap();
                         (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
                       },
                     }
@@ -293,16 +342,16 @@ impl<'a> App<'a> {
                 Ok(false) => {
                   self.components.data.set_loading();
                   self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                    let results = database::query(query.clone(), &pool).await;
+                    let results = database::query(query_string.clone(), &pool).await;
                     match &results {
                       Ok(rows) => {
-                        log::info!("{:?} rows, {:?} affected", rows.0.len(), rows.1);
+                        log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
                       },
                       Err(e) => {
                         log::error!("{e:?}");
                       },
                     };
-                    let statement_type = database::get_statement_type(&query).unwrap();
+                    let statement_type = database::get_statement_type(&query_string).unwrap();
 
                     QueryResultsWithMetadata { results, statement_type }
                   })));
@@ -329,6 +378,9 @@ impl<'a> App<'a> {
               _ => {},
             }
           },
+          Action::ClearHistory => {
+            self.clear_history();
+          },
           _ => {},
         }
         if !action_consumed {
@@ -336,6 +388,9 @@ impl<'a> App<'a> {
             action_tx.send(action)?;
           }
           if let Some(action) = self.components.editor.update(action.clone(), &self.state)? {
+            action_tx.send(action)?;
+          }
+          if let Some(action) = self.components.history.update(action.clone(), &self.state)? {
             action_tx.send(action)?;
           }
           if let Some(action) = self.components.data.update(action.clone(), &self.state)? {
@@ -367,33 +422,80 @@ impl<'a> App<'a> {
       .split(f.area());
     let root_layout = Layout::default()
       .direction(Direction::Horizontal)
-      .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
+      .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
       .split(hints_layout[0]);
     let right_layout = Layout::default()
       .direction(Direction::Vertical)
-      .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+      .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
       .split(root_layout[1]);
+    let tabs_layout = Layout::default()
+      .direction(Direction::Vertical)
+      .constraints([Constraint::Length(1), Constraint::Fill(1)])
+      .split(right_layout[0]);
 
     if let Some(event) = &self.last_frame_mouse_event {
-      if !matches!(self.state.query_task, Some(DbTask::TxPending(_, _))) && event.kind != MouseEventKind::Moved {
+      if !matches!(self.state.query_task, Some(DbTask::TxPending(_, _)))
+        && event.kind != MouseEventKind::Moved
+        && !matches!(event.kind, MouseEventKind::Down(_))
+      {
         let position = Position::new(event.column, event.row);
         let menu_target = root_layout[0];
-        let editor_target = right_layout[0];
+        let tabs_target = tabs_layout[0];
+        let tab_content_target = tabs_layout[1];
         let data_target = right_layout[1];
         if menu_target.contains(position) {
           self.state.focus = Focus::Menu;
-        } else if editor_target.contains(position) {
-          self.state.focus = Focus::Editor;
+        } else if tabs_target.contains(position) {
+          match self.state.focus {
+            Focus::Editor => {
+              if matches!(event.kind, MouseEventKind::Up(_)) {
+                self.state.focus = Focus::History;
+                self.last_focused_tab = Focus::History;
+              }
+            },
+            Focus::History => {
+              if matches!(event.kind, MouseEventKind::Up(_)) {
+                self.state.focus = Focus::Editor;
+                self.last_focused_tab = Focus::Editor;
+              }
+            },
+            Focus::PopUp => {},
+            _ => {
+              self.state.focus = self.last_focused_tab;
+            },
+          }
+          self.last_frame_mouse_event = None;
+        } else if tab_content_target.contains(position) {
+          self.state.focus = self.last_focused_tab;
         } else if data_target.contains(position) {
           self.state.focus = Focus::Data;
         }
       }
     }
 
+    let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+3>"])
+      .highlight_style(
+        Style::new()
+          .fg(if self.state.focus == Focus::Editor || self.state.focus == Focus::History {
+            Color::Green
+          } else {
+            Color::default()
+          })
+          .reversed(),
+      )
+      .select(if self.last_focused_tab == Focus::Editor { 0 } else { 1 })
+      .padding(" ", "")
+      .divider(" ");
+
     let state = &self.state;
 
+    f.render_widget(tabs, tabs_layout[0]);
+    if self.last_focused_tab == Focus::Editor {
+      self.components.editor.draw(f, tabs_layout[1], state).unwrap();
+    } else {
+      self.components.history.draw(f, tabs_layout[1], state).unwrap();
+    }
     self.components.menu.draw(f, root_layout[0], state).unwrap();
-    self.components.editor.draw(f, right_layout[0], state).unwrap();
     self.components.data.draw(f, right_layout[1], state).unwrap();
     self.render_hints(f, hints_layout[1]);
 
@@ -414,6 +516,7 @@ impl<'a> App<'a> {
         match self.state.focus {
             Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
             Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query",
+            Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
             Focus::Data if self.state.query_task.is_none() => "[j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
             _ => "",
@@ -436,7 +539,7 @@ impl<'a> App<'a> {
       .split(block.inner(area));
 
     let rows_affected = match results.results {
-      Ok((_, Some(n))) => n,
+      Ok(Rows { rows_affected: Some(n), .. }) => n,
       _ => 0,
     };
     let cta = match results.statement_type {

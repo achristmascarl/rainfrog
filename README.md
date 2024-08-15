@@ -9,8 +9,10 @@ a database management tui for postgres
 the goal for rainfrog is to provide a lightweight, terminal-based alternative to pgadmin/dbeaver. 
 
 ### features
-- efficient navigation via vim-like keybindings for query editor, data table, and menu
-- quickly copy data, filter and preview tables, and switch between schemas
+- efficient navigation via vim-like keybindings and mouse controls 
+- query editor with keyword highlighting and session history
+- quickly copy data, filter tables, and switch between schemas
+- shortcuts to view table metadata and properties
 - cross-platform (macOS, linux, windows, android via termux)
 
 ### why "rainfrog"?
@@ -23,7 +25,7 @@ this software is currently under active development; expect breaking changes, an
 ### cargo
 after installing rust (recommended to do so via [rustup](https://www.rust-lang.org/tools/install)):
 ```sh
-cargo install rainfrog --locked
+cargo install rainfrog
 ```
 
 ### aur
@@ -39,7 +41,7 @@ pkg install rust
 ```
 and then make sure to install with termux features (and disable default features):
 ```sh
-cargo install rainfrog --locked --features termux --no-default-features
+cargo install rainfrog --features termux --no-default-features
 ```
 
 ### binaries
@@ -58,9 +60,10 @@ rainfrog --url $(connection_url)
 | keybinding                  | description                            |
 |-----------------------------|----------------------------------------|
 | `Ctrl+c`                      | quit program                           |
-| `Alt+1`, `Ctrl+m`               | change focus to menu                   |
-| `Alt+2`, `Ctrl+n`               | change focus to query editor           |
-| `Alt+3`, `Ctrl+b`               | change focus to results                |
+| `Alt+1`, `Ctrl+n`               | change focus to menu                   |
+| `Alt+2`, `Ctrl+b`               | change focus to query editor           |
+| `Alt+3`, `Ctrl+h`               | change focus to query history          |
+| `Alt+4`, `Ctrl+g`               | change focus to results                |
 | `q`                           | abort current query                    |
 
 ### menu (list of schemas and tables)
@@ -112,6 +115,17 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 | `Ctrl+e`                 | scroll down                            |
 | `Ctrl+y`                 | scroll up                              |
 
+### query history 
+| keybinding                  | description                            |
+|-----------------------------|----------------------------------------|
+| `j`, `↓`                        | move selection down by 1               |
+| `k`, `↑`                        | move selection up by 1                 |
+| `g`                           | jump to top of list                    |
+| `G`                           | jump to bottom of list                 |
+| `y`                           | copy selected query                    |
+| `I`                           | edit selected query in editor          |
+| `D`                           | delete all history                     |
+
 ### results
 | keybinding             | description                            |
 |------------------------|----------------------------------------|
@@ -159,7 +173,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] upgrade ratatui and tui-textarea 
   - [x] shortcuts to view indexes, keys, etc.
   - [x] performant syntax highlighting
-  - [ ] session history
+  - [x] session history
   - [ ] handle explain / analyze output
   - [ ] unit / e2e tests
   - [ ] changelog, release workflow

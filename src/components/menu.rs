@@ -163,10 +163,9 @@ impl<'a> SettableTableList<'a> for Menu {
     self.table_map = IndexMap::new();
     match data {
       Some(Ok(rows)) => {
-        rows.0.iter().for_each(|row| {
-          let row_as_strings = row_to_vec(row);
-          let schema = row_as_strings[0].clone();
-          let table = row_as_strings[1].clone();
+        rows.rows.iter().for_each(|row| {
+          let schema = row[0].clone();
+          let table = row[1].clone();
           if !self.table_map.contains_key(&schema) {
             self.table_map.insert(schema.clone(), vec![]);
           }
@@ -392,11 +391,19 @@ impl Component for Menu {
               if is_selected && focused && !self.search_focused {
                 ListItem::new(Text::from(vec![
                   Line::from(t),
-                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[<enter>] rows" }),
-                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[1] columns" }),
-                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[2] constraints" }),
-                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[3] indexes" }),
-                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "└[4] rls policies" }),
+                  Line::from(if app_state.query_task.is_some() { "├[...] rows" } else { "├[<enter>] rows" }),
+                  Line::from(if app_state.query_task.is_some() { "├[...] columns" } else { "├[1] columns" }),
+                  Line::from(if app_state.query_task.is_some() {
+                    "├[...] constraints"
+                  } else {
+                    "├[2] constraints"
+                  }),
+                  Line::from(if app_state.query_task.is_some() { "├[...] indexes" } else { "├[3] indexes" }),
+                  Line::from(if app_state.query_task.is_some() {
+                    "└[...] rls policies"
+                  } else {
+                    "└[4] rls policies"
+                  }),
                 ]))
               } else {
                 ListItem::new(t)

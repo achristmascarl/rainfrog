@@ -8,6 +8,7 @@ repository = "https://github.com/achristmascarl/rainfrog"
 authors = ["achristmascarl <carl@rainfrog.dev>"]
 build = "build.rs"
 license = "MIT"
+exclude = [".github/*", "demo.gif", "demo.tape", "00_init.sql", ".git/*", "Makefile", "docker-compose.yml"]
 
 [profile.dev]
 opt-level = 2 # very slow on 1, basically as fast as --release on 2
