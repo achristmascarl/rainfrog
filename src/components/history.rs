@@ -26,6 +26,20 @@ impl History {
   pub fn new() -> Self {
     History { command_tx: None, config: Config::default(), list_state: ListState::default(), copied: false }
   }
+
+  pub fn scroll_up(&mut self) {
+    let current_selected = self.list_state.selected();
+    if let Some(i) = current_selected {
+      self.list_state.select(Some(i.saturating_sub(1)));
+    }
+  }
+
+  pub fn scroll_down(&mut self, item_count: usize) {
+    let current_selected = self.list_state.selected();
+    if let Some(i) = current_selected {
+      self.list_state.select(Some(std::cmp::min(i.saturating_add(1), item_count.saturating_sub(1))));
+    }
+  }
 }
 
 impl Component for History {
@@ -43,21 +57,15 @@ impl Component for History {
     if app_state.focus != Focus::History {
       return Ok(None);
     }
-    // match mouse.kind {
-    //   MouseEventKind::ScrollDown => {
-    //     self.textarea.scroll((1, 0));
-    //   },
-    //   MouseEventKind::ScrollUp => {
-    //     self.textarea.scroll((-1, 0));
-    //   },
-    //   MouseEventKind::ScrollLeft => {
-    //     self.transition_vim_state(Input { key: Key::Char('h'), ctrl: false, alt: false, shift: false })?;
-    //   },
-    //   MouseEventKind::ScrollRight => {
-    //     self.transition_vim_state(Input { key: Key::Char('j'), ctrl: false, alt: false, shift: false })?;
-    //   },
-    //   _ => {},
-    // };
+    match mouse.kind {
+      MouseEventKind::ScrollDown => {
+        self.scroll_down(app_state.history.len());
+      },
+      MouseEventKind::ScrollUp => {
+        self.scroll_up();
+      },
+      _ => {},
+    };
     Ok(None)
   }
 
@@ -70,10 +78,10 @@ impl Component for History {
     if let Some(i) = current_selected {
       match key.code {
         KeyCode::Down | KeyCode::Char('j') => {
-          self.list_state.select(Some(std::cmp::min(i.saturating_add(1), app_state.history.len().saturating_sub(1))));
+          self.scroll_down(app_state.history.len());
         },
         KeyCode::Up | KeyCode::Char('k') => {
-          self.list_state.select(Some(i.saturating_sub(1)));
+          self.scroll_up();
         },
         KeyCode::Char('g') => {
           self.list_state.select(Some(0));
@@ -115,7 +123,7 @@ impl Component for History {
       .enumerate()
       .map(|(i, h)| {
         let selected = self.list_state.selected().map_or(false, |x| i == x);
-        let color = if selected { Color::Blue } else { Color::default() };
+        let color = if selected && focused { Color::Blue } else { Color::default() };
         let mut lines = h
           .query_lines
           .clone()
@@ -128,7 +136,7 @@ impl Component for History {
             .style(if focused { Color::Yellow } else { Color::default() }),
         );
         lines.push(
-          Line::from("--------------------------------------------------------------------------------")
+          Line::from("----------------------------------------------------------------------------------------------------------------------------------------------------------------")
             .style(Style::default().fg(color)),
         );
         ListItem::new(Text::from_iter(lines))
