@@ -392,11 +392,19 @@ impl Component for Menu {
               if is_selected && focused && !self.search_focused {
                 ListItem::new(Text::from(vec![
                   Line::from(t),
-                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[<enter>] rows" }),
-                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[1] columns" }),
-                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[2] constraints" }),
-                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "├[3] indexes" }),
-                  Line::from(if app_state.query_task.is_some() { "├[...]" } else { "└[4] rls policies" }),
+                  Line::from(if app_state.query_task.is_some() { "├[...] rows" } else { "├[<enter>] rows" }),
+                  Line::from(if app_state.query_task.is_some() { "├[...] columns" } else { "├[1] columns" }),
+                  Line::from(if app_state.query_task.is_some() {
+                    "├[...] constraints"
+                  } else {
+                    "├[2] constraints"
+                  }),
+                  Line::from(if app_state.query_task.is_some() { "├[...] indexes" } else { "├[3] indexes" }),
+                  Line::from(if app_state.query_task.is_some() {
+                    "├[...] rls policies"
+                  } else {
+                    "└[4] rls policies"
+                  }),
                 ]))
               } else {
                 ListItem::new(t)
