@@ -70,7 +70,7 @@ impl Component for History {
     if let Some(i) = current_selected {
       match key.code {
         KeyCode::Down | KeyCode::Char('j') => {
-          self.list_state.select(Some(i.saturating_add(1)));
+          self.list_state.select(Some(std::cmp::min(i.saturating_add(1), app_state.history.len().saturating_sub(1))));
         },
         KeyCode::Up | KeyCode::Char('k') => {
           self.list_state.select(Some(i.saturating_sub(1)));
@@ -124,11 +124,8 @@ impl Component for History {
           .collect::<Vec<Line>>();
         lines.insert(
           0,
-          Line::from(format!("{}{}", if self.copied { "copied! - " } else { "" }, h.timestamp)).style(if focused {
-            Color::Yellow
-          } else {
-            Color::default()
-          }),
+          Line::from(format!("{}{}", if self.copied && selected { " copied! - " } else { "" }, h.timestamp))
+            .style(if focused { Color::Yellow } else { Color::default() }),
         );
         lines.push(
           Line::from("--------------------------------------------------------------------------------")
@@ -159,8 +156,8 @@ impl Component for History {
     let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
       .symbols(scrollbar::VERTICAL)
       .style(if focused { Style::default().fg(Color::Green) } else { Style::default() });
-    let mut vertical_scrollbar_state =
-      ScrollbarState::new(app_state.history.len().saturating_sub(1)).position(self.list_state.offset());
+    let mut vertical_scrollbar_state = ScrollbarState::new(app_state.history.len().saturating_sub(1))
+      .position(self.list_state.selected().map_or(0, |x| x));
     f.render_stateful_widget(vertical_scrollbar, scrollbar_margin, &mut vertical_scrollbar_state);
     Ok(())
   }
