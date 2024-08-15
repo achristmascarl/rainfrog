@@ -28,6 +28,7 @@ use crate::{
   components::{
     data::{Data, DataComponent},
     editor::Editor,
+    history::History,
     menu::{Menu, MenuComponent},
     Component,
   },
@@ -45,15 +46,22 @@ pub enum DbTask<'a> {
   TxCommit(tokio::task::JoinHandle<QueryResultsWithMetadata>),
 }
 
+pub struct HistoryEntry {
+  query_lines: Vec<String>,
+  timestamp: chrono::DateTime<chrono::Local>,
+}
+
 pub struct AppState<'a> {
   pub connection_string: String,
   pub focus: Focus,
   pub query_task: Option<DbTask<'a>>,
+  pub history: Vec<HistoryEntry>,
 }
 
 pub struct Components<'a> {
   pub menu: Box<dyn MenuComponent<'a>>,
   pub editor: Box<dyn Component>,
+  pub history: Box<dyn Component>,
   pub data: Box<dyn DataComponent<'a>>,
 }
 
@@ -80,18 +88,24 @@ impl<'a> App<'a> {
     let focus = Focus::Menu;
     let menu = Menu::new();
     let editor = Editor::new();
+    let history = History::new();
     let data = Data::new();
     let config = Config::new()?;
     Ok(Self {
       tick_rate,
       frame_rate,
-      components: Components { menu: Box::new(menu), editor: Box::new(editor), data: Box::new(data) },
+      components: Components {
+        menu: Box::new(menu),
+        editor: Box::new(editor),
+        history: Box::new(history),
+        data: Box::new(data),
+      },
       should_quit: false,
       config,
       last_tick_key_events: Vec::new(),
       last_frame_mouse_event: None,
       pool: None,
-      state: AppState { connection_string, focus, query_task: None },
+      state: AppState { connection_string, focus, query_task: None, history: vec![] },
       last_focused_tab: Focus::Editor,
     })
   }
@@ -380,7 +394,7 @@ impl<'a> App<'a> {
       .split(hints_layout[0]);
     let right_layout = Layout::default()
       .direction(Direction::Vertical)
-      .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+      .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
       .split(root_layout[1]);
     let tabs_layout = Layout::default()
       .direction(Direction::Vertical)
@@ -422,7 +436,7 @@ impl<'a> App<'a> {
     if self.last_focused_tab == Focus::Editor {
       self.components.editor.draw(f, tabs_layout[1], state).unwrap();
     } else {
-      f.render_widget(Paragraph::new("yoooo"), tabs_layout[1]);
+      self.components.history.draw(f, tabs_layout[1], state).unwrap();
     }
     self.components.menu.draw(f, root_layout[0], state).unwrap();
     self.components.data.draw(f, right_layout[1], state).unwrap();

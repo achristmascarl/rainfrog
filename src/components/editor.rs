@@ -37,7 +37,7 @@ struct Selection {
 }
 
 fn keyword_regex() -> String {
-  format!("(?i)(^|[^a-zA-Z0-9\'\"._]+)({})($|[^a-zA-Z0-9\'\"._]+)", get_keywords().join("|"))
+  format!("(?i)(^|[^a-zA-Z0-9\'\"`._]+)({})($|[^a-zA-Z0-9\'\"`._]+)", get_keywords().join("|"))
 }
 
 #[derive(Default)]

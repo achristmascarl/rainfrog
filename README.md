@@ -9,8 +9,10 @@ a database management tui for postgres
 the goal for rainfrog is to provide a lightweight, terminal-based alternative to pgadmin/dbeaver. 
 
 ### features
-- efficient navigation via vim-like keybindings for query editor, data table, and menu
-- quickly copy data, filter and preview tables, and switch between schemas
+- efficient navigation via vim-like keybindings and mouse controls 
+- query editor with keyword highlighting and session history
+- quickly copy data, filter tables, and switch between schemas
+- shortcuts to view table metadata and properties
 - cross-platform (macOS, linux, windows, android via termux)
 
 ### why "rainfrog"?
