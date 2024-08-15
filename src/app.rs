@@ -426,6 +426,47 @@ impl<'a> App<'a> {
       .direction(Direction::Vertical)
       .constraints([Constraint::Length(1), Constraint::Fill(1)])
       .split(right_layout[0]);
+
+    if let Some(event) = &self.last_frame_mouse_event {
+      if !matches!(self.state.query_task, Some(DbTask::TxPending(_, _)))
+        && event.kind != MouseEventKind::Moved
+        && !matches!(event.kind, MouseEventKind::Down(_))
+      {
+        let position = Position::new(event.column, event.row);
+        let menu_target = root_layout[0];
+        let tabs_target = tabs_layout[0];
+        let tab_content_target = tabs_layout[1];
+        let data_target = right_layout[1];
+        if menu_target.contains(position) {
+          self.state.focus = Focus::Menu;
+        } else if tabs_target.contains(position) {
+          match self.state.focus {
+            Focus::Editor => {
+              if matches!(event.kind, MouseEventKind::Up(_)) {
+                self.state.focus = Focus::History;
+                self.last_focused_tab = Focus::History;
+              }
+            },
+            Focus::History => {
+              if matches!(event.kind, MouseEventKind::Up(_)) {
+                self.state.focus = Focus::Editor;
+                self.last_focused_tab = Focus::Editor;
+              }
+            },
+            Focus::PopUp => {},
+            _ => {
+              self.state.focus = self.last_focused_tab;
+            },
+          }
+          self.last_frame_mouse_event = None;
+        } else if tab_content_target.contains(position) {
+          self.state.focus = self.last_focused_tab;
+        } else if data_target.contains(position) {
+          self.state.focus = Focus::Data;
+        }
+      }
+    }
+
     let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+3>"])
       .highlight_style(
         Style::new()
@@ -439,22 +480,6 @@ impl<'a> App<'a> {
       .select(if self.last_focused_tab == Focus::Editor { 0 } else { 1 })
       .padding(" ", "")
       .divider(" ");
-
-    if let Some(event) = &self.last_frame_mouse_event {
-      if !matches!(self.state.query_task, Some(DbTask::TxPending(_, _))) && event.kind != MouseEventKind::Moved {
-        let position = Position::new(event.column, event.row);
-        let menu_target = root_layout[0];
-        let editor_target = right_layout[0];
-        let data_target = right_layout[1];
-        if menu_target.contains(position) {
-          self.state.focus = Focus::Menu;
-        } else if editor_target.contains(position) {
-          self.state.focus = Focus::Editor;
-        } else if data_target.contains(position) {
-          self.state.focus = Focus::Data;
-        }
-      }
-    }
 
     let state = &self.state;
 
