@@ -71,27 +71,29 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
   fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>, statement_type: Option<Statement>) {
     match data {
       Some(Ok(rows)) => {
-        if rows.0.is_empty() && rows.1.is_some_and(|n| n > 0) {
-          self.data_state = DataState::RowsAffected(rows.1.unwrap());
-        } else if rows.0.is_empty() && statement_type.is_some() && !matches!(statement_type, Some(Statement::Query(_)))
+        if rows.rows.is_empty() && rows.rows_affected.is_some_and(|n| n > 0) {
+          self.data_state = DataState::RowsAffected(rows.rows_affected.unwrap());
+        } else if rows.rows.is_empty()
+          && statement_type.is_some()
+          && !matches!(statement_type, Some(Statement::Query(_)))
         {
           self.data_state = DataState::StatementCompleted(statement_type.unwrap());
-        } else if rows.0.is_empty() {
+        } else if rows.rows.is_empty() {
           self.data_state = DataState::NoResults;
         } else {
-          let headers = get_headers(&rows);
-          let header_row =
-            Row::new(headers.iter().map(|h| Cell::from(format!("{}\n{}", h.name, h.type_name))).collect::<Vec<Cell>>())
-              .height(2)
-              .bottom_margin(1);
-          let value_rows = rows.0.iter().map(|r| Row::new(row_to_vec(r)).bottom_margin(1)).collect::<Vec<Row>>();
+          let header_row = Row::new(
+            rows.headers.iter().map(|h| Cell::from(format!("{}\n{}", h.name, h.type_name))).collect::<Vec<Cell>>(),
+          )
+          .height(2)
+          .bottom_margin(1);
+          let value_rows = rows.rows.iter().map(|r| Row::new(r.clone()).bottom_margin(1));
           let buf_table = Table::default()
             .rows(value_rows)
             .header(header_row)
             .style(Style::default())
             .column_spacing(1)
             .highlight_style(Style::default().fg(Color::LightBlue).reversed().bold());
-          self.scrollable.set_table(buf_table, headers.len(), rows.0.len(), 36_u16);
+          self.scrollable.set_table(buf_table, rows.headers.len(), rows.rows.len(), 36_u16);
           self.data_state = DataState::HasResults(rows);
         }
       },
@@ -214,9 +216,9 @@ impl<'a> Component for Data<'a> {
         };
       },
       KeyCode::Char('y') => {
-        if let DataState::HasResults((rows, _)) = &self.data_state {
+        if let DataState::HasResults(Rows { rows, .. }) = &self.data_state {
           let (x, y) = self.scrollable.get_cell_offsets();
-          let row = row_to_vec(&rows[y]);
+          let row = &rows[y];
           match self.scrollable.get_selection_mode() {
             Some(SelectionMode::Row) => {
               let row_string = row.join(", ");
@@ -256,9 +258,9 @@ impl<'a> Component for Data<'a> {
       Style::new().dim()
     });
 
-    if let DataState::HasResults((rows, _)) = &self.data_state {
+    if let DataState::HasResults(Rows { rows, .. }) = &self.data_state {
       let (x, y) = self.scrollable.get_cell_offsets();
-      let row = row_to_vec(&rows[y]);
+      let row = &rows[y];
       let title_string = match self.scrollable.get_selection_mode() {
         Some(SelectionMode::Row) => {
           format!(" 󰆼 results <alt+4> (row {} of {})", y.saturating_add(1), rows.len())

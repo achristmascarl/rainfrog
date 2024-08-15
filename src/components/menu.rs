@@ -163,10 +163,9 @@ impl<'a> SettableTableList<'a> for Menu {
     self.table_map = IndexMap::new();
     match data {
       Some(Ok(rows)) => {
-        rows.0.iter().for_each(|row| {
-          let row_as_strings = row_to_vec(row);
-          let schema = row_as_strings[0].clone();
-          let table = row_as_strings[1].clone();
+        rows.rows.iter().for_each(|row| {
+          let schema = row[0].clone();
+          let table = row[1].clone();
           if !self.table_map.contains_key(&schema) {
             self.table_map.insert(schema.clone(), vec![]);
           }
@@ -401,7 +400,7 @@ impl Component for Menu {
                   }),
                   Line::from(if app_state.query_task.is_some() { "├[...] indexes" } else { "├[3] indexes" }),
                   Line::from(if app_state.query_task.is_some() {
-                    "├[...] rls policies"
+                    "└[...] rls policies"
                   } else {
                     "└[4] rls policies"
                   }),

@@ -202,7 +202,7 @@ impl<'a> App<'a> {
                       };
                       self.components.data.set_data_state(
                         match result {
-                          Ok(_) => Some(Ok((vec![], None))),
+                          Ok(_) => Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
                           Err(e) => Some(Err(Either::Left(e))),
                         },
                         Some(match key.code {
@@ -323,7 +323,13 @@ impl<'a> App<'a> {
                       Ok(rows_affected) => {
                         log::info!("{:?} rows affected", rows_affected);
                         let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
-                        (QueryResultsWithMetadata { results: Ok((vec![], Some(rows_affected))), statement_type }, tx)
+                        (
+                          QueryResultsWithMetadata {
+                            results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+                            statement_type,
+                          },
+                          tx,
+                        )
                       },
                       Err(e) => {
                         log::error!("{e:?}");
@@ -339,7 +345,7 @@ impl<'a> App<'a> {
                     let results = database::query(query_string.clone(), &pool).await;
                     match &results {
                       Ok(rows) => {
-                        log::info!("{:?} rows, {:?} affected", rows.0.len(), rows.1);
+                        log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
                       },
                       Err(e) => {
                         log::error!("{e:?}");
@@ -533,7 +539,7 @@ impl<'a> App<'a> {
       .split(block.inner(area));
 
     let rows_affected = match results.results {
-      Ok((_, Some(n))) => n,
+      Ok(Rows { rows_affected: Some(n), .. }) => n,
       _ => 0,
     };
     let cta = match results.statement_type {

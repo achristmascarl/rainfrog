@@ -23,7 +23,11 @@ pub struct Value {
   pub string: String,
 }
 
-pub type Rows = (Vec<PgRow>, Option<u64>);
+pub struct Rows {
+  pub headers: Headers,
+  pub rows: Vec<Vec<String>>,
+  pub rows_affected: Option<u64>,
+}
 pub type Headers = Vec<Header>;
 pub type DbPool = PgPool;
 pub type DbError = sqlx::Either<Error, ParserError>;
@@ -44,6 +48,7 @@ pub async fn query(query: String, pool: &PgPool) -> Result<Rows, DbError> {
   let mut first_query_finished = false;
   let mut first_query_rows = vec![];
   let mut first_query_rows_affected: Option<u64> = None;
+  let mut headers: Headers = vec![];
   while !first_query_finished {
     let next = stream.next().await;
     match next {
@@ -52,13 +57,16 @@ pub async fn query(query: String, pool: &PgPool) -> Result<Rows, DbError> {
         first_query_finished = true;
       },
       Some(Ok(Either::Right(row))) => {
-        first_query_rows.push(row);
+        first_query_rows.push(row_to_vec(&row));
+        if headers.is_empty() {
+          headers = get_headers(&row);
+        }
       },
       Some(Err(e)) => return Err(Either::Left(e)),
       None => return Err(Either::Left(Error::Protocol("Results stream empty".to_owned()))),
     };
   }
-  Ok((first_query_rows, first_query_rows_affected))
+  Ok(Rows { rows_affected: first_query_rows_affected, headers, rows: first_query_rows })
 }
 
 pub async fn query_with_tx<'a>(
@@ -117,17 +125,12 @@ pub fn should_use_tx(query: &str) -> Result<bool, DbError> {
   }
 }
 
-pub fn get_headers(rows: &Rows) -> Headers {
-  match rows.0.len() {
-    0 => vec![],
-    _ => {
-      rows.0[0]
-        .columns()
-        .iter()
-        .map(|col| Header { name: col.name().to_string(), type_name: col.type_info().to_string() })
-        .collect()
-    },
-  }
+pub fn get_headers(row: &PgRow) -> Headers {
+  row
+    .columns()
+    .iter()
+    .map(|col| Header { name: col.name().to_string(), type_name: col.type_info().to_string() })
+    .collect()
 }
 
 // parsed based on https://docs.rs/sqlx/latest/sqlx/postgres/types/index.html
