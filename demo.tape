@@ -56,8 +56,6 @@ Type "e"
 Sleep 1s
 Type "y"
 Sleep 2s
-Ctrl+N
-Sleep 1s
 Ctrl+B
 Sleep 1s
 Type "dd"
@@ -79,4 +77,14 @@ Sleep 1s
 Alt+Enter
 Sleep 2.5s
 Type "N"
-Sleep 3s
+Sleep 1s
+Ctrl+H
+Sleep 2s
+Type "jjj"
+Sleep 1s
+Type "y"
+Sleep 1.5s
+Type "I"
+Sleep 2s
+Alt+Enter
+Sleep 5s
