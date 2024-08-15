@@ -62,7 +62,7 @@ rainfrog --url $(connection_url)
 | `Ctrl+c`                      | quit program                           |
 | `Alt+1`, `Ctrl+n`               | change focus to menu                   |
 | `Alt+2`, `Ctrl+b`               | change focus to query editor           |
-| `Alt+3`, `Ctrl+h`               | change focus to query history        |
+| `Alt+3`, `Ctrl+h`               | change focus to query history          |
 | `Alt+4`, `Ctrl+g`               | change focus to results                |
 | `q`                           | abort current query                    |
 
@@ -115,6 +115,17 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 | `Ctrl+e`                 | scroll down                            |
 | `Ctrl+y`                 | scroll up                              |
 
+### query history 
+| keybinding                  | description                            |
+|-----------------------------|----------------------------------------|
+| `j`, `↓`                        | move selection down by 1               |
+| `k`, `↑`                        | move selection up by 1                 |
+| `g`                           | jump to top of list                    |
+| `G`                           | jump to bottom of list                 |
+| `y`                           | copy selected query                    |
+| `I`                           | edit selected query in editor          |
+| `D`                           | delete all history                     |
+
 ### results
 | keybinding             | description                            |
 |------------------------|----------------------------------------|
@@ -162,7 +173,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] upgrade ratatui and tui-textarea 
   - [x] shortcuts to view indexes, keys, etc.
   - [x] performant syntax highlighting
-  - [ ] session history
+  - [x] session history
   - [ ] handle explain / analyze output
   - [ ] unit / e2e tests
   - [ ] changelog, release workflow
