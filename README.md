@@ -64,6 +64,8 @@ rainfrog --url $(connection_url)
 | `Alt+2`, `Ctrl+b`               | change focus to query editor           |
 | `Alt+3`, `Ctrl+h`               | change focus to query history          |
 | `Alt+4`, `Ctrl+g`               | change focus to results                |
+| `Tab`                         | cycle focus forwards                   |
+| `Shift+Tab`                   | cycle focus backwards                  |
 | `q`                           | abort current query                    |
 
 ### menu (list of schemas and tables)
@@ -177,7 +179,6 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [ ] handle explain / analyze output
   - [ ] unit / e2e tests
   - [ ] changelog, release workflow
-  - [ ] fix multi-line vim selections
   - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
   - [ ] loading animation
 </details>
