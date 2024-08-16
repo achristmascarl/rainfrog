@@ -10,7 +10,9 @@
       "<Ctrl-n>": "FocusMenu",
       "<Ctrl-b>": "FocusEditor",
       "<Ctrl-h>": "FocusHistory",
-      "<Ctrl-g>": "FocusData"
+      "<Ctrl-g>": "FocusData",
+      "<Tab>": "CycleFocusForwards",
+      "<Backtab>": "CycleFocusBackwards"
     },
     "Editor": {
       "<Ctrl-c>": "Quit",
@@ -23,7 +25,8 @@
       "<Ctrl-n>": "FocusMenu",
       "<Ctrl-b>": "FocusEditor",
       "<Ctrl-h>": "FocusHistory",
-      "<Ctrl-g>": "FocusData"
+      "<Ctrl-g>": "FocusData",
+      "<Backtab>": "CycleFocusBackwards"
     },
     "History": {
       "<Ctrl-c>": "Quit", 
@@ -35,7 +38,9 @@
       "<Ctrl-n>": "FocusMenu",
       "<Ctrl-b>": "FocusEditor",
       "<Ctrl-h>": "FocusHistory",
-      "<Ctrl-g>": "FocusData"
+      "<Ctrl-g>": "FocusData",
+      "<Tab>": "CycleFocusForwards",
+      "<Backtab>": "CycleFocusBackwards"
     },
     "Data": {
       "<Ctrl-c>": "Quit",
@@ -47,6 +52,9 @@
       "<Ctrl-n>": "FocusMenu",
       "<Ctrl-b>": "FocusEditor",
       "<Ctrl-h>": "FocusHistory",
+      "<Ctrl-g>": "FocusData",
+      "<Tab>": "CycleFocusForwards",
+      "<Backtab>": "CycleFocusBackwards"
     },
     "PopUp": {
       "<Ctrl-c>": "Quit",

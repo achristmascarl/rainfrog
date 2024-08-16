@@ -66,11 +66,16 @@ impl<'a> Editor<'a> {
 
   pub fn transition_vim_state(&mut self, input: Input) -> Result<()> {
     match input {
-      Input { key: Key::Enter, alt: true, .. } => {
+      Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::Query(self.textarea.lines().to_vec()))?;
           self.vim_state = Vim::new(Mode::Normal);
           self.cursor_style = Mode::Normal.cursor_style();
+        }
+      },
+      Input { key: Key::Tab, shift: false, .. } if self.vim_state.mode != Mode::Insert => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::CycleFocusForwards)?;
         }
       },
       _ => {

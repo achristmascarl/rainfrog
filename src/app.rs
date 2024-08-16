@@ -288,6 +288,36 @@ impl<'a> App<'a> {
             self.state.focus = Focus::History;
             self.last_focused_tab = Focus::History;
           },
+          Action::CycleFocusForwards => {
+            match self.state.focus {
+              Focus::Menu => {
+                self.state.focus = Focus::Editor;
+                self.last_focused_tab = Focus::Editor;
+              },
+              Focus::Editor => {
+                self.state.focus = Focus::History;
+                self.last_focused_tab = Focus::History;
+              },
+              Focus::History => self.state.focus = Focus::Data,
+              Focus::Data => self.state.focus = Focus::Menu,
+              _ => {},
+            }
+          },
+          Action::CycleFocusBackwards => {
+            match self.state.focus {
+              Focus::History => {
+                self.state.focus = Focus::Editor;
+                self.last_focused_tab = Focus::Editor;
+              },
+              Focus::Data => {
+                self.state.focus = Focus::History;
+                self.last_focused_tab = Focus::History;
+              },
+              Focus::Menu => self.state.focus = Focus::Data,
+              Focus::Editor => self.state.focus = Focus::Menu,
+              _ => {},
+            }
+          },
           Action::FocusData => self.state.focus = Focus::Data,
           Action::LoadMenu => {
             log::info!("LoadMenu");
@@ -307,60 +337,62 @@ impl<'a> App<'a> {
             }
           },
           Action::Query(query_lines) => {
-            self.add_to_history(query_lines.clone());
             let query_string = query_lines.clone().join(" ");
-            let should_use_tx = database::should_use_tx(&query_string);
-            let action_tx = action_tx.clone();
-            if let Some(pool) = &self.pool {
-              let pool = pool.clone();
-              match should_use_tx {
-                Ok(true) => {
-                  self.components.data.set_loading();
-                  let tx = pool.begin().await?;
-                  self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                    let (results, tx) = database::query_with_tx(tx, query_string.clone()).await;
-                    match results {
-                      Ok(rows_affected) => {
-                        log::info!("{:?} rows affected", rows_affected);
-                        let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
-                        (
-                          QueryResultsWithMetadata {
-                            results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
-                            statement_type,
-                          },
-                          tx,
-                        )
-                      },
-                      Err(e) => {
-                        log::error!("{e:?}");
-                        let statement_type = database::get_statement_type(&query_string).unwrap();
-                        (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
-                      },
-                    }
-                  })));
-                },
-                Ok(false) => {
-                  self.components.data.set_loading();
-                  self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                    let results = database::query(query_string.clone(), &pool).await;
-                    match &results {
-                      Ok(rows) => {
-                        log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
-                      },
-                      Err(e) => {
-                        log::error!("{e:?}");
-                      },
-                    };
-                    let statement_type = database::get_statement_type(&query_string).unwrap();
+            if !query_string.is_empty() {
+              self.add_to_history(query_lines.clone());
+              let should_use_tx = database::should_use_tx(&query_string);
+              let action_tx = action_tx.clone();
+              if let Some(pool) = &self.pool {
+                let pool = pool.clone();
+                match should_use_tx {
+                  Ok(true) => {
+                    self.components.data.set_loading();
+                    let tx = pool.begin().await?;
+                    self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
+                      let (results, tx) = database::query_with_tx(tx, query_string.clone()).await;
+                      match results {
+                        Ok(rows_affected) => {
+                          log::info!("{:?} rows affected", rows_affected);
+                          let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
+                          (
+                            QueryResultsWithMetadata {
+                              results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+                              statement_type,
+                            },
+                            tx,
+                          )
+                        },
+                        Err(e) => {
+                          log::error!("{e:?}");
+                          let statement_type = database::get_statement_type(&query_string).unwrap();
+                          (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
+                        },
+                      }
+                    })));
+                  },
+                  Ok(false) => {
+                    self.components.data.set_loading();
+                    self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
+                      let results = database::query(query_string.clone(), &pool).await;
+                      match &results {
+                        Ok(rows) => {
+                          log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
+                        },
+                        Err(e) => {
+                          log::error!("{e:?}");
+                        },
+                      };
+                      let statement_type = database::get_statement_type(&query_string).unwrap();
 
-                    QueryResultsWithMetadata { results, statement_type }
-                  })));
-                },
-                Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
+                      QueryResultsWithMetadata { results, statement_type }
+                    })));
+                  },
+                  Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
+                }
+              } else {
+                log::error!("No connection pool");
+                self.components.data.set_data_state(Some(Err(DbError::Left(sqlx::Error::PoolTimedOut))), None)
               }
-            } else {
-              log::error!("No connection pool");
-              self.components.data.set_data_state(Some(Err(DbError::Left(sqlx::Error::PoolTimedOut))), None)
             }
           },
           Action::AbortQuery => {
