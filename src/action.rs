@@ -40,6 +40,8 @@ pub enum Action {
   FocusEditor,
   FocusHistory,
   FocusData,
+  CycleFocusForwards,
+  CycleFocusBackwards,
   LoadMenu,
   CopyData(String),
 }
