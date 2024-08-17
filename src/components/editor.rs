@@ -156,7 +156,7 @@ impl<'a> Component for Editor<'a> {
           return Ok(None);
         }
         let query = match preview_type {
-          MenuPreview::Rows => format!("select * from {}.{} limit 100", schema, table),
+          MenuPreview::Rows => format!("select * from \"{}\".\"{}\" limit 100", schema, table),
           MenuPreview::Columns => {
             format!(
               "select column_name, * from information_schema.columns where table_schema = '{}' and table_name = '{}'",
