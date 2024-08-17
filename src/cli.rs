@@ -17,7 +17,7 @@ pub struct Cli {
     short = 'u',
     long = "url",
     value_name = "URL",
-    help = "Connection URL for the database, e.g. postgres://username::password@localhost:5432/dbname"
+    help = "Connection URL for the database, e.g. postgres://username:password@localhost:5432/dbname"
   )]
   pub connection_url: String,
 }
