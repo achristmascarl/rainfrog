@@ -337,7 +337,7 @@ impl<'a> App<'a> {
             }
           },
           Action::Query(query_lines) => {
-            let query_string = query_lines.clone().join(" ");
+            let query_string = query_lines.clone().join(" \n");
             if !query_string.is_empty() {
               self.add_to_history(query_lines.clone());
               let should_use_tx = database::should_use_tx(&query_string);
