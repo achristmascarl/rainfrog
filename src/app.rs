@@ -65,6 +65,7 @@ pub struct Components<'a> {
   pub data: Box<dyn DataComponent<'a>>,
 }
 
+#[derive(Debug)]
 pub struct QueryResultsWithMetadata {
   pub results: Result<Rows, DbError>,
   pub statement_type: Statement,
@@ -202,7 +203,14 @@ impl<'a> App<'a> {
                       };
                       self.components.data.set_data_state(
                         match result {
-                          Ok(_) => Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
+                          Ok(_) => {
+                            match results.statement_type {
+                              Statement::Explain { .. } if results.results.is_ok() => {
+                                Some(Ok(results.results.unwrap()))
+                              },
+                              _ => Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
+                            }
+                          },
                           Err(e) => Some(Err(Either::Left(e))),
                         },
                         Some(match key.code {
@@ -351,7 +359,7 @@ impl<'a> App<'a> {
                     self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
                       let (results, tx) = database::query_with_tx(tx, query_string.clone()).await;
                       match results {
-                        Ok(rows_affected) => {
+                        Ok(Either::Left(rows_affected)) => {
                           log::info!("{:?} rows affected", rows_affected);
                           let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
                           (
@@ -361,6 +369,11 @@ impl<'a> App<'a> {
                             },
                             tx,
                           )
+                        },
+                        Ok(Either::Right(rows)) => {
+                          log::info!("{:?} rows affected", rows.rows_affected);
+                          let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
+                          (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
                         },
                         Err(e) => {
                           log::error!("{e:?}");
@@ -436,6 +449,20 @@ impl<'a> App<'a> {
         })?;
       }
       if self.should_quit {
+        if let Some(query_task) = self.state.query_task.take() {
+          match query_task {
+            DbTask::Query(task) => {
+              task.abort();
+            },
+            DbTask::TxStart(task) => {
+              task.abort();
+            },
+            DbTask::TxCommit(task) => {
+              task.abort();
+            },
+            _ => {},
+          }
+        }
         tui.stop()?;
         break;
       }
@@ -574,12 +601,18 @@ impl<'a> App<'a> {
       Ok(Rows { rows_affected: Some(n), .. }) => n,
       _ => 0,
     };
-    let cta = match results.statement_type {
+    let cta = match results.statement_type.clone() {
       Statement::Delete(_) | Statement::Insert(_) | Statement::Update { .. } => {
         format!(
           "Are you sure you want to {} {} rows?",
           statement_type_string(&results.statement_type).to_uppercase(),
           rows_affected
+        )
+      },
+      Statement::Explain { statement, .. } => {
+        format!(
+          "Are you sure you want to run an EXPLAIN ANALYZE that will {} rows?",
+          statement_type_string(&statement).to_uppercase(),
         )
       },
       _ => {
@@ -589,11 +622,11 @@ impl<'a> App<'a> {
         )
       },
     };
-    let popup_cta = Paragraph::new(Line::from(cta).centered());
+    let popup_cta = Paragraph::new(Line::from(cta).centered()).wrap(Wrap { trim: false });
     let popup_actions = Paragraph::new(Line::from("[Y]es to confirm | [N]o to cancel").centered());
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
-    frame.render_widget(popup_cta, center(layout[0], Constraint::Fill(1), Constraint::Percentage(50)));
+    frame.render_widget(popup_cta, layout[0]);
     frame.render_widget(popup_actions, center(layout[1], Constraint::Fill(1), Constraint::Percentage(50)));
   }
 }
