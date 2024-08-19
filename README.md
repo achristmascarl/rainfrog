@@ -176,9 +176,9 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] shortcuts to view indexes, keys, etc.
   - [x] performant syntax highlighting
   - [x] session history
+  - [x] changelog, release script
   - [ ] handle explain / analyze output
   - [ ] unit / e2e tests
-  - [ ] changelog, release workflow
   - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
   - [ ] loading animation
 </details>
