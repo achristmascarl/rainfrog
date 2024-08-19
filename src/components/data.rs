@@ -25,16 +25,22 @@ use crate::{
 };
 
 #[derive(Default)]
-pub enum DataState {
+pub enum DataState<'a> {
   #[default]
   Blank,
   Loading,
   NoResults,
   HasResults(Rows),
+  Explain(Text<'a>),
   Error(DbError),
   Cancelled,
   RowsAffected(u64),
   StatementCompleted(Statement),
+}
+
+pub struct ParagraphScroll {
+  pub y_offset: u16,
+  pub x_offset: u16,
 }
 
 pub trait SettableDataTable<'a> {
@@ -53,7 +59,10 @@ pub struct Data<'a> {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   scrollable: ScrollTable<'a>,
-  data_state: DataState,
+  data_state: DataState<'a>,
+  paragraph_scroll: Option<ParagraphScroll>,
+  paragraph_width: u16,
+  paragraph_height: u16,
 }
 
 impl<'a> Data<'a> {
@@ -63,6 +72,9 @@ impl<'a> Data<'a> {
       config: Config::default(),
       scrollable: ScrollTable::default(),
       data_state: DataState::Blank,
+      paragraph_scroll: None,
+      paragraph_width: 0,
+      paragraph_height: 0,
     }
   }
 }
@@ -80,6 +92,8 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
           self.data_state = DataState::StatementCompleted(statement_type.unwrap());
         } else if rows.rows.is_empty() {
           self.data_state = DataState::NoResults;
+        } else if matches!(statement_type, Some(Statement::Explain { .. })) {
+          self.data_state = DataState::Explain(Text::from_iter(rows.rows.iter().map(|r| r.join(" "))));
         } else {
           let header_row = Row::new(
             rows.headers.iter().map(|h| Cell::from(format!("{}\n{}", h.name, h.type_name))).collect::<Vec<Cell>>(),
@@ -300,6 +314,10 @@ impl<'a> Component for Data<'a> {
       },
       DataState::Blank => {
         f.render_widget(Paragraph::new("").wrap(Wrap { trim: false }).block(block), area);
+      },
+      DataState::Explain(text) => {
+        let paragraph = Paragraph::new(text.clone()).block(block);
+        f.render_widget(paragraph, area)
       },
       DataState::HasResults(_) => {
         self.scrollable.block(block);
