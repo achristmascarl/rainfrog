@@ -1,5 +1,7 @@
+SHELL := /bin/bash
 port ?= 5499
 url ?= postgres://root:password@localhost:$(port)/rainfrog?sslmode=disable
+version ?= ""
 
 .DEFAULT_GOAL := restart
 
@@ -21,3 +23,24 @@ db-down:
 	PORT=$(port) docker compose rm -f -v
 
 restart: db-down db-up dev
+
+release:
+	@if [ -z "$(version)" ]; then echo "version is required"; exit 1; fi
+	git checkout main
+	git pull
+	@if [ $$(git tag -l "v$(version)") ]; then echo "version already exists"; exit 1; fi
+	git checkout -b release/v$(version) && git push -u origin release/v$(version)
+	sed -i "" "s/^version = .*/version = \"$(version)\"/" ./Cargo.toml
+	cargo build
+	git status
+	git add Cargo.toml
+	git add Cargo.lock
+	git commit -m "bump to v$(version)"
+	git push
+	gh pr create --fill
+	@read -n 1 -p "are you sure you want to release v$(version)? [Y/n] " confirmation && if [ "$$confirmation" = "Y" ]; then echo " continuing..."; else echo " aborting..."; exit 1; fi
+	gh pr merge --admin --squash
+	git checkout main
+	git pull
+	git tag "v$(version)" main
+	git push origin "v$(version)"
