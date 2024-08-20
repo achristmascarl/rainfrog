@@ -549,6 +549,7 @@ impl<'a> App<'a> {
     let state = &self.state;
 
     f.render_widget(tabs, tabs_layout[0]);
+    f.render_widget(Clear, tabs_layout[1]);
     if self.last_focused_tab == Focus::Editor {
       self.components.editor.draw(f, tabs_layout[1], state).unwrap();
     } else {
