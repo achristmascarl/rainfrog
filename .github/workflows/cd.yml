@@ -65,7 +65,7 @@ jobs:
             binary-name: rainfrog
             features: default
           - os: ubuntu-latest
-            os-name: linux
+            os-name: alpine
             target: i686-unknown-linux-musl 
             architecture: i686
             binary-postfix: ""
