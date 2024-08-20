@@ -57,6 +57,7 @@ impl Component for History {
     if app_state.focus != Focus::History {
       return Ok(None);
     }
+    self.copied = false;
     match mouse.kind {
       MouseEventKind::ScrollDown => {
         self.scroll_down(app_state.history.len());
