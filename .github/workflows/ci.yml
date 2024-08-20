@@ -27,6 +27,11 @@ jobs:
             os-name: android
             target: aarch64-linux-android
             features: termux --no-default-features
+          - os: ubuntu-latest 
+            os-name: ish
+            target: i686-unknown-linux-musl
+            features: default 
+
 
     steps:
       - name: Checkout repository

@@ -177,10 +177,10 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] performant syntax highlighting
   - [x] session history
   - [x] changelog, release script
-  - [ ] handle explain / analyze output
+  - [x] handle explain / analyze output
   - [ ] unit / e2e tests
-  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
   - [ ] loading animation
+  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
 </details>
 
 <details>
@@ -194,6 +194,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [ ] customization (keybindings, colors)
   - [ ] better vim multi-line selection emulation
   - [ ] handle more mouse events
+  - [ ] handle populoar postgres extensions (postgis, pgvector, etc.)
   - [ ] support mysql, sqlite, other sqlx adaptors
   - [ ] vhs in cd
 </details>

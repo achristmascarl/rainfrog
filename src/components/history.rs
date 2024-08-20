@@ -57,6 +57,7 @@ impl Component for History {
     if app_state.focus != Focus::History {
       return Ok(None);
     }
+    self.copied = false;
     match mouse.kind {
       MouseEventKind::ScrollDown => {
         self.scroll_down(app_state.history.len());
@@ -124,12 +125,16 @@ impl Component for History {
       .map(|(i, h)| {
         let selected = self.list_state.selected().map_or(false, |x| i == x);
         let color = if selected && focused { Color::Blue } else { Color::default() };
+        let max_lines = 1_usize.max(area.height.saturating_sub(6) as usize);
         let mut lines = h
-          .query_lines
-          .clone()
+          .query_lines[0..max_lines.min(h.query_lines.len())]
           .iter()
           .map(|s| Line::from(s.clone()).style(Style::default().fg(color)))
           .collect::<Vec<Line>>();
+        log::info!("{} {}", lines.len(), max_lines);
+        if h.query_lines.len() > max_lines {
+          lines.push(Line::from(format!("... and {} more lines", h.query_lines.len().saturating_sub(max_lines))).style(Style::default().fg(color)));
+        }
         lines.insert(
           0,
           Line::from(format!("{}{}", if self.copied && selected { " copied! - " } else { "" }, h.timestamp))

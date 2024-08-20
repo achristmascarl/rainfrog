@@ -13,7 +13,7 @@ use serde_json::Value as JsonValue;
 
 use crate::{action::Action, focus::Focus};
 
-const CONFIG: &str = include_str!("../.config/config.json5");
+const CONFIG: &str = include_str!("../.config/rainfrog_config.toml");
 
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct AppConfig {
@@ -35,7 +35,7 @@ pub struct Config {
 
 impl Config {
   pub fn new() -> Result<Self, config::ConfigError> {
-    let default_config: Config = json5::from_str(CONFIG).unwrap();
+    let default_config: Config = toml::from_str(CONFIG).unwrap();
     let data_dir = crate::utils::get_data_dir();
     let config_dir = crate::utils::get_config_dir();
     let mut builder = config::Config::builder()
@@ -43,11 +43,11 @@ impl Config {
       .set_default("_config_dir", config_dir.to_str().unwrap())?;
 
     let config_files = [
-      ("config.json5", config::FileFormat::Json5),
-      ("config.json", config::FileFormat::Json),
-      ("config.yaml", config::FileFormat::Yaml),
-      ("config.toml", config::FileFormat::Toml),
-      ("config.ini", config::FileFormat::Ini),
+      ("rainfrog_config.json5", config::FileFormat::Json5),
+      ("rainfrog_config.json", config::FileFormat::Json),
+      ("rainfrog_config.yaml", config::FileFormat::Yaml),
+      ("rainfrog_config.toml", config::FileFormat::Toml),
+      ("rainfrog_config.ini", config::FileFormat::Ini),
     ];
     let mut found_config = false;
     for (file, format) in &config_files {

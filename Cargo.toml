@@ -37,6 +37,7 @@ strip-ansi-escapes = "0.2.0"
 strum = { version = "0.26.1", features = ["derive"] }
 tokio = { version = "1.32.0", features = ["full"] }
 tokio-util = "0.7.9"
+toml = "0.8.19"
 tracing = "0.1.37"
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter", "serde"] }

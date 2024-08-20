@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fmt::Write, string::String};
+use std::{collections::HashMap, fmt::Write, pin::Pin, string::String};
 
-use futures::stream::StreamExt;
+use futures::stream::{BoxStream, StreamExt};
 use sqlparser::{
   ast::Statement,
   dialect::PostgreSqlDialect,
@@ -13,6 +13,7 @@ use sqlx::{
   Column, Database, Either, Error, Pool, Row, Transaction, ValueRef,
 };
 
+#[derive(Debug)]
 pub struct Header {
   pub name: String,
   pub type_name: String,
@@ -23,6 +24,7 @@ pub struct Value {
   pub string: String,
 }
 
+#[derive(Debug)]
 pub struct Rows {
   pub headers: Headers,
   pub rows: Vec<Vec<String>>,
@@ -44,20 +46,26 @@ pub async fn query(query: String, pool: &PgPool) -> Result<Rows, DbError> {
     Ok(b) => log::info!("Should use transaction: {}", b),
     Err(e) => return Err(e),
   }
-  let mut stream = sqlx::raw_sql(&first_query).fetch_many(pool);
-  let mut first_query_finished = false;
-  let mut first_query_rows = vec![];
-  let mut first_query_rows_affected: Option<u64> = None;
+  let stream = sqlx::raw_sql(&first_query).fetch_many(pool);
+  query_stream(stream).await
+}
+
+pub async fn query_stream(
+  mut stream: BoxStream<'_, Result<Either<PgQueryResult, PgRow>, Error>>,
+) -> Result<Rows, DbError> {
+  let mut query_finished = false;
+  let mut query_rows = vec![];
+  let mut query_rows_affected: Option<u64> = None;
   let mut headers: Headers = vec![];
-  while !first_query_finished {
+  while !query_finished {
     let next = stream.next().await;
     match next {
       Some(Ok(Either::Left(result))) => {
-        first_query_rows_affected = Some(result.rows_affected());
-        first_query_finished = true;
+        query_rows_affected = Some(result.rows_affected());
+        query_finished = true;
       },
       Some(Ok(Either::Right(row))) => {
-        first_query_rows.push(row_to_vec(&row));
+        query_rows.push(row_to_vec(&row));
         if headers.is_empty() {
           headers = get_headers(&row);
         }
@@ -66,18 +74,31 @@ pub async fn query(query: String, pool: &PgPool) -> Result<Rows, DbError> {
       None => return Err(Either::Left(Error::Protocol("Results stream empty".to_owned()))),
     };
   }
-  Ok(Rows { rows_affected: first_query_rows_affected, headers, rows: first_query_rows })
+  Ok(Rows { rows_affected: query_rows_affected, headers, rows: query_rows })
 }
 
 pub async fn query_with_tx<'a>(
   mut tx: Transaction<'_, Postgres>,
   query: String,
-) -> (Result<u64, DbError>, Transaction<'_, Postgres>) {
+) -> (Result<Either<u64, Rows>, DbError>, Transaction<'_, Postgres>) {
   let first_query = get_first_query(query);
-  let result = sqlx::query(&first_query).execute(&mut *tx).await;
-  match result {
-    Ok(result) => (Ok(result.rows_affected()), tx),
-    Err(e) => (Err(DbError::Left(e)), tx),
+  let statement_type = get_statement_type(&first_query);
+  match statement_type {
+    Ok(Statement::Explain { .. }) => {
+      let stream = sqlx::raw_sql(&first_query).fetch_many(&mut *tx);
+      let result = query_stream(stream).await;
+      match result {
+        Ok(result) => (Ok(Either::Right(result)), tx),
+        Err(e) => (Err(e), tx),
+      }
+    },
+    _ => {
+      let result = sqlx::query(&first_query).execute(&mut *tx).await;
+      match result {
+        Ok(result) => (Ok(Either::Left(result.rows_affected())), tx),
+        Err(e) => (Err(DbError::Left(e)), tx),
+      }
+    },
   }
 }
 
@@ -116,8 +137,18 @@ pub fn should_use_tx(query: &str) -> Result<bool, DbError> {
       if ast.len() > 1 {
         return Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())));
       }
-      match ast[0] {
-        Statement::Delete(_) | Statement::Drop { .. } => Ok(true),
+      match ast[0].clone() {
+        Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. } => Ok(true),
+        Statement::Explain { statement, analyze, .. } => {
+          if analyze {
+            match statement.as_ref() {
+              Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. } => Ok(true),
+              _ => Ok(false),
+            }
+          } else {
+            Ok(false)
+          }
+        },
         _ => Ok(false),
       }
     },

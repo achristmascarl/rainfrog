@@ -87,12 +87,18 @@ impl<'a> ScrollTable<'a> {
   }
 
   pub fn next_column(&mut self) -> &mut Self {
+    if self.column_width == 0 {
+      return self;
+    }
     let x_over = self.x_offset % self.column_width;
     self.x_offset = Ord::min(self.x_offset.saturating_add(self.column_width).saturating_sub(x_over), self.max_x_offset);
     self
   }
 
   pub fn prev_column(&mut self) -> &mut Self {
+    if self.column_width == 0 {
+      return self;
+    }
     let x_over = self.x_offset % self.column_width;
     match x_over {
       0 => {
