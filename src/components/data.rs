@@ -105,7 +105,7 @@ impl<'a> Data<'a> {
           },
         };
       }
-    } else {
+    } else if let DataState::HasResults(_) = self.data_state {
       self.scrollable.scroll(direction);
     }
   }
@@ -120,7 +120,7 @@ impl<'a> Data<'a> {
           self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset: 0 });
         },
       }
-    } else {
+    } else if let DataState::HasResults(_) = self.data_state {
       self.scrollable.top_row();
     }
   }
@@ -135,7 +135,7 @@ impl<'a> Data<'a> {
           self.explain_scroll = Some(ExplainOffsets { y_offset: self.explain_max_y_offset, x_offset: 0 });
         },
       }
-    } else {
+    } else if let DataState::HasResults(_) = self.data_state {
       self.scrollable.bottom_row();
     }
   }
@@ -150,7 +150,7 @@ impl<'a> Data<'a> {
           self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset: 0 });
         },
       }
-    } else {
+    } else if let DataState::HasResults(_) = self.data_state {
       self.scrollable.first_column();
     }
   }
@@ -165,7 +165,7 @@ impl<'a> Data<'a> {
           self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset: self.explain_max_x_offset });
         },
       }
-    } else {
+    } else if let DataState::HasResults(_) = self.data_state {
       self.scrollable.last_column();
     }
   }
@@ -178,6 +178,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
     self.explain_max_x_offset = 0;
     self.explain_max_y_offset = 0;
     self.explain_scroll = None;
+    self.scrollable = ScrollTable::default();
     match data {
       Some(Ok(rows)) => {
         if rows.rows.is_empty() && rows.rows_affected.is_some_and(|n| n > 0) {
@@ -472,7 +473,7 @@ impl<'a> Component for Data<'a> {
       },
       DataState::Error(e) => {
         f.render_widget(
-          Paragraph::new(e.to_string()).style(Style::default().fg(Color::Red)).wrap(Wrap { trim: false }).block(block),
+          Paragraph::new(e.to_string()).style(Style::default().fg(Color::Red)).wrap(Wrap { trim: true }).block(block),
           area,
         );
       },
