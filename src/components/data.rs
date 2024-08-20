@@ -82,6 +82,93 @@ impl<'a> Data<'a> {
       explain_max_y_offset: 0,
     }
   }
+
+  pub fn scroll(&mut self, direction: ScrollDirection) {
+    if let DataState::Explain(_) = self.data_state {
+      if let Some(offsets) = self.explain_scroll.clone() {
+        match direction {
+          ScrollDirection::Up => {
+            self.explain_scroll =
+              Some(ExplainOffsets { y_offset: offsets.y_offset.saturating_sub(1), x_offset: offsets.x_offset });
+          },
+          ScrollDirection::Down => {
+            self.explain_scroll =
+              Some(ExplainOffsets { y_offset: offsets.y_offset.saturating_add(1), x_offset: offsets.x_offset });
+          },
+          ScrollDirection::Left => {
+            self.explain_scroll =
+              Some(ExplainOffsets { y_offset: offsets.y_offset, x_offset: offsets.x_offset.saturating_sub(1) });
+          },
+          ScrollDirection::Right => {
+            self.explain_scroll =
+              Some(ExplainOffsets { y_offset: offsets.y_offset, x_offset: offsets.x_offset.saturating_add(1) });
+          },
+        };
+      }
+    } else {
+      self.scrollable.scroll(direction);
+    }
+  }
+
+  pub fn top(&mut self) {
+    if let DataState::Explain(_) = self.data_state {
+      match self.explain_scroll {
+        Some(ExplainOffsets { x_offset, .. }) => {
+          self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset });
+        },
+        _ => {
+          self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset: 0 });
+        },
+      }
+    } else {
+      self.scrollable.top_row();
+    }
+  }
+
+  pub fn bottom(&mut self) {
+    if let DataState::Explain(_) = self.data_state {
+      match self.explain_scroll {
+        Some(ExplainOffsets { x_offset, .. }) => {
+          self.explain_scroll = Some(ExplainOffsets { y_offset: self.explain_max_y_offset, x_offset });
+        },
+        _ => {
+          self.explain_scroll = Some(ExplainOffsets { y_offset: self.explain_max_y_offset, x_offset: 0 });
+        },
+      }
+    } else {
+      self.scrollable.bottom_row();
+    }
+  }
+
+  pub fn left(&mut self) {
+    if let DataState::Explain(_) = self.data_state {
+      match self.explain_scroll {
+        Some(ExplainOffsets { y_offset, .. }) => {
+          self.explain_scroll = Some(ExplainOffsets { y_offset, x_offset: 0 });
+        },
+        _ => {
+          self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset: 0 });
+        },
+      }
+    } else {
+      self.scrollable.first_column();
+    }
+  }
+
+  pub fn right(&mut self) {
+    if let DataState::Explain(_) = self.data_state {
+      match self.explain_scroll {
+        Some(ExplainOffsets { y_offset, .. }) => {
+          self.explain_scroll = Some(ExplainOffsets { y_offset, x_offset: self.explain_max_x_offset });
+        },
+        _ => {
+          self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset: self.explain_max_x_offset });
+        },
+      }
+    } else {
+      self.scrollable.last_column();
+    }
+  }
 }
 
 impl<'a> SettableDataTable<'a> for Data<'a> {
@@ -103,7 +190,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
         } else if rows.rows.is_empty() {
           self.data_state = DataState::NoResults;
         } else if matches!(statement_type, Some(Statement::Explain { .. })) {
-          self.explain_width = rows.rows.iter().fold(0_u16, |acc, r| acc.max(r.len() as u16));
+          self.explain_width = rows.rows.iter().fold(0_u16, |acc, r| acc.max(r.join(" ").len() as u16));
           self.explain_height = rows.rows.len() as u16;
           self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset: 0 });
           self.data_state = DataState::Explain(Text::from_iter(rows.rows.iter().map(|r| r.join(" "))));
@@ -163,16 +250,16 @@ impl<'a> Component for Data<'a> {
     }
     match mouse.kind {
       MouseEventKind::ScrollDown => {
-        self.scrollable.scroll(ScrollDirection::Down);
+        self.scroll(ScrollDirection::Down);
       },
       MouseEventKind::ScrollUp => {
-        self.scrollable.scroll(ScrollDirection::Up);
+        self.scroll(ScrollDirection::Up);
       },
       MouseEventKind::ScrollLeft => {
-        self.scrollable.scroll(ScrollDirection::Left);
+        self.scroll(ScrollDirection::Left);
       },
       MouseEventKind::ScrollRight => {
-        self.scrollable.scroll(ScrollDirection::Right);
+        self.scroll(ScrollDirection::Right);
       },
       _ => {},
     };
@@ -185,16 +272,16 @@ impl<'a> Component for Data<'a> {
     }
     match key.code {
       KeyCode::Right | KeyCode::Char('l') => {
-        self.scrollable.scroll(ScrollDirection::Right);
+        self.scroll(ScrollDirection::Right);
       },
       KeyCode::Left | KeyCode::Char('h') => {
-        self.scrollable.scroll(ScrollDirection::Left);
+        self.scroll(ScrollDirection::Left);
       },
       KeyCode::Down | KeyCode::Char('j') => {
-        self.scrollable.scroll(ScrollDirection::Down);
+        self.scroll(ScrollDirection::Down);
       },
       KeyCode::Up | KeyCode::Char('k') => {
-        self.scrollable.scroll(ScrollDirection::Up);
+        self.scroll(ScrollDirection::Up);
       },
       KeyCode::Char('e') | KeyCode::Char('w') => {
         self.scrollable.next_column();
@@ -203,16 +290,16 @@ impl<'a> Component for Data<'a> {
         self.scrollable.prev_column();
       },
       KeyCode::Char('g') => {
-        self.scrollable.top_row();
+        self.top();
       },
       KeyCode::Char('G') => {
-        self.scrollable.bottom_row();
+        self.bottom();
       },
       KeyCode::Char('0') => {
-        self.scrollable.first_column();
+        self.left();
       },
       KeyCode::Char('$') => {
-        self.scrollable.last_column();
+        self.right();
       },
       KeyCode::Char('v') => {
         self.scrollable.transition_selection_mode(Some(SelectionMode::Cell));
@@ -339,6 +426,8 @@ impl<'a> Component for Data<'a> {
       DataState::Explain(text) => {
         let mut paragraph = Paragraph::new(text.clone()).block(block);
         if let Some(offsets) = self.explain_scroll.clone() {
+          paragraph = paragraph.scroll((offsets.y_offset, offsets.x_offset));
+          f.render_widget(paragraph, area);
           let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight).symbols(scrollbar::VERTICAL);
           let mut vertical_scrollbar_state =
             ScrollbarState::new(self.explain_max_y_offset as usize).position(offsets.y_offset as usize);
@@ -375,9 +464,7 @@ impl<'a> Component for Data<'a> {
               );
             },
           };
-          paragraph = paragraph.scroll((offsets.y_offset, offsets.x_offset));
         }
-        f.render_widget(paragraph, area);
       },
       DataState::HasResults(_) => {
         self.scrollable.block(block);
