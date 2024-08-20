@@ -64,6 +64,14 @@ jobs:
             use-cross: true
             binary-name: rainfrog
             features: default
+          - os: ubuntu-latest
+            os-name: linux
+            target: i686-unknown-linux-musl 
+            architecture: i686
+            binary-postfix: ""
+            use-cross: true
+            binary-name: rainfrog
+            features: default
 
     steps:
       - name: Checkout repository
