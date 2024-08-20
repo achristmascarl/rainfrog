@@ -179,7 +179,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] changelog, release script
   - [x] handle explain / analyze output
   - [ ] unit / e2e tests
-  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
+  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist) / install script for bins
 </details>
 
 <details>
