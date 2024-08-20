@@ -5,7 +5,7 @@ use crossterm::{
   event::{KeyCode, KeyEvent, MouseEventKind},
   terminal::ScrollDown,
 };
-use ratatui::{prelude::*, widgets::*};
+use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::Statement;
 use tokio::sync::{mpsc::UnboundedSender, Mutex};
@@ -38,7 +38,8 @@ pub enum DataState<'a> {
   StatementCompleted(Statement),
 }
 
-pub struct ParagraphScroll {
+#[derive(Clone, Debug)]
+pub struct ExplainOffsets {
   pub y_offset: u16,
   pub x_offset: u16,
 }
@@ -60,9 +61,11 @@ pub struct Data<'a> {
   config: Config,
   scrollable: ScrollTable<'a>,
   data_state: DataState<'a>,
-  paragraph_scroll: Option<ParagraphScroll>,
-  paragraph_width: u16,
-  paragraph_height: u16,
+  explain_scroll: Option<ExplainOffsets>,
+  explain_width: u16,
+  explain_height: u16,
+  explain_max_x_offset: u16,
+  explain_max_y_offset: u16,
 }
 
 impl<'a> Data<'a> {
@@ -72,15 +75,22 @@ impl<'a> Data<'a> {
       config: Config::default(),
       scrollable: ScrollTable::default(),
       data_state: DataState::Blank,
-      paragraph_scroll: None,
-      paragraph_width: 0,
-      paragraph_height: 0,
+      explain_scroll: None,
+      explain_width: 0,
+      explain_height: 0,
+      explain_max_x_offset: 0,
+      explain_max_y_offset: 0,
     }
   }
 }
 
 impl<'a> SettableDataTable<'a> for Data<'a> {
   fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>, statement_type: Option<Statement>) {
+    self.explain_width = 0;
+    self.explain_height = 0;
+    self.explain_max_x_offset = 0;
+    self.explain_max_y_offset = 0;
+    self.explain_scroll = None;
     match data {
       Some(Ok(rows)) => {
         if rows.rows.is_empty() && rows.rows_affected.is_some_and(|n| n > 0) {
@@ -93,6 +103,9 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
         } else if rows.rows.is_empty() {
           self.data_state = DataState::NoResults;
         } else if matches!(statement_type, Some(Statement::Explain { .. })) {
+          self.explain_width = rows.rows.iter().fold(0_u16, |acc, r| acc.max(r.len() as u16));
+          self.explain_height = rows.rows.len() as u16;
+          self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset: 0 });
           self.data_state = DataState::Explain(Text::from_iter(rows.rows.iter().map(|r| r.join(" "))));
         } else {
           let header_row = Row::new(
@@ -266,6 +279,14 @@ impl<'a> Component for Data<'a> {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Data;
 
+    self.explain_max_x_offset = self.explain_width.saturating_sub(area.width);
+    self.explain_max_y_offset = self.explain_height.saturating_sub(area.height);
+    if let Some(ExplainOffsets { y_offset, x_offset }) = self.explain_scroll {
+      self.explain_scroll = Some(ExplainOffsets {
+        y_offset: y_offset.min(self.explain_max_y_offset),
+        x_offset: x_offset.min(self.explain_max_x_offset),
+      });
+    }
     let mut block = Block::default().borders(Borders::ALL).border_style(if focused {
       Style::new().green()
     } else {
@@ -316,8 +337,47 @@ impl<'a> Component for Data<'a> {
         f.render_widget(Paragraph::new("").wrap(Wrap { trim: false }).block(block), area);
       },
       DataState::Explain(text) => {
-        let paragraph = Paragraph::new(text.clone()).block(block);
-        f.render_widget(paragraph, area)
+        let mut paragraph = Paragraph::new(text.clone()).block(block);
+        if let Some(offsets) = self.explain_scroll.clone() {
+          let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight).symbols(scrollbar::VERTICAL);
+          let mut vertical_scrollbar_state =
+            ScrollbarState::new(self.explain_max_y_offset as usize).position(offsets.y_offset as usize);
+          let horizontal_scrollbar =
+            Scrollbar::new(ScrollbarOrientation::HorizontalBottom).symbols(scrollbar::HORIZONTAL).thumb_symbol("▀");
+          let mut horizontal_scrollbar_state =
+            ScrollbarState::new(self.explain_max_x_offset as usize).position(offsets.x_offset as usize);
+          match (self.explain_max_x_offset, self.explain_max_y_offset) {
+            (0, 0) => {},
+            (0, y) => {
+              f.render_stateful_widget(
+                vertical_scrollbar,
+                area.inner(Margin { vertical: 1, horizontal: 0 }),
+                &mut vertical_scrollbar_state,
+              );
+            },
+            (x, 0) => {
+              f.render_stateful_widget(
+                horizontal_scrollbar,
+                area.inner(Margin { vertical: 0, horizontal: 1 }),
+                &mut horizontal_scrollbar_state,
+              );
+            },
+            (x, y) => {
+              f.render_stateful_widget(
+                vertical_scrollbar,
+                area.inner(Margin { vertical: 1, horizontal: 0 }),
+                &mut vertical_scrollbar_state,
+              );
+              f.render_stateful_widget(
+                horizontal_scrollbar,
+                area.inner(Margin { vertical: 0, horizontal: 1 }),
+                &mut horizontal_scrollbar_state,
+              );
+            },
+          };
+          paragraph = paragraph.scroll((offsets.y_offset, offsets.x_offset));
+        }
+        f.render_widget(paragraph, area);
       },
       DataState::HasResults(_) => {
         self.scrollable.block(block);
