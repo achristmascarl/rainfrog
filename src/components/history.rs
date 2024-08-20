@@ -131,7 +131,6 @@ impl Component for History {
           .iter()
           .map(|s| Line::from(s.clone()).style(Style::default().fg(color)))
           .collect::<Vec<Line>>();
-        log::info!("{} {}", lines.len(), max_lines);
         if h.query_lines.len() > max_lines {
           lines.push(Line::from(format!("... and {} more lines", h.query_lines.len().saturating_sub(max_lines))).style(Style::default().fg(color)));
         }
