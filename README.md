@@ -178,6 +178,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] session history
   - [x] changelog, release script
   - [x] handle explain / analyze output
+  - [ ] show query duration
   - [ ] unit / e2e tests
   - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist) / install script for bins
 </details>
