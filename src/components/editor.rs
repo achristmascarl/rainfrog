@@ -64,13 +64,15 @@ impl<'a> Editor<'a> {
     }
   }
 
-  pub fn transition_vim_state(&mut self, input: Input) -> Result<()> {
+  pub fn transition_vim_state(&mut self, input: Input, app_state: &AppState) -> Result<()> {
     match input {
       Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
-        if let Some(sender) = &self.command_tx {
-          sender.send(Action::Query(self.textarea.lines().to_vec()))?;
-          self.vim_state = Vim::new(Mode::Normal);
-          self.cursor_style = Mode::Normal.cursor_style();
+        if app_state.query_task.is_none() {
+          if let Some(sender) = &self.command_tx {
+            sender.send(Action::Query(self.textarea.lines().to_vec()))?;
+            self.vim_state = Vim::new(Mode::Normal);
+            self.cursor_style = Mode::Normal.cursor_style();
+          }
         }
       },
       Input { key: Key::Tab, shift: false, .. } if self.vim_state.mode != Mode::Insert => {
@@ -117,10 +119,10 @@ impl<'a> Component for Editor<'a> {
         self.textarea.scroll((-1, 0));
       },
       MouseEventKind::ScrollLeft => {
-        self.transition_vim_state(Input { key: Key::Char('h'), ctrl: false, alt: false, shift: false })?;
+        self.transition_vim_state(Input { key: Key::Char('h'), ctrl: false, alt: false, shift: false }, app_state)?;
       },
       MouseEventKind::ScrollRight => {
-        self.transition_vim_state(Input { key: Key::Char('j'), ctrl: false, alt: false, shift: false })?;
+        self.transition_vim_state(Input { key: Key::Char('j'), ctrl: false, alt: false, shift: false }, app_state)?;
       },
       _ => {},
     };
@@ -141,10 +143,8 @@ impl<'a> Component for Editor<'a> {
     } else if let Some(Event::Mouse(event)) = event {
       self.handle_mouse_events(event, app_state).unwrap();
     } else if let Some(Event::Key(key)) = event {
-      if app_state.query_task.is_none() {
-        let input = Input::from(key);
-        self.transition_vim_state(input)?;
-      }
+      let input = Input::from(key);
+      self.transition_vim_state(input, app_state)?;
     };
     Ok(None)
   }
