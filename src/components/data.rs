@@ -97,11 +97,11 @@ impl<'a> Data<'a> {
           },
           ScrollDirection::Left => {
             self.explain_scroll =
-              Some(ExplainOffsets { y_offset: offsets.y_offset, x_offset: offsets.x_offset.saturating_sub(1) });
+              Some(ExplainOffsets { y_offset: offsets.y_offset, x_offset: offsets.x_offset.saturating_sub(2) });
           },
           ScrollDirection::Right => {
             self.explain_scroll =
-              Some(ExplainOffsets { y_offset: offsets.y_offset, x_offset: offsets.x_offset.saturating_add(1) });
+              Some(ExplainOffsets { y_offset: offsets.y_offset, x_offset: offsets.x_offset.saturating_add(2) });
           },
         };
       }
@@ -367,19 +367,22 @@ impl<'a> Component for Data<'a> {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Data;
 
-    self.explain_max_x_offset = self.explain_width.saturating_sub(area.width);
-    self.explain_max_y_offset = self.explain_height.saturating_sub(area.height);
+    let mut block = Block::default().borders(Borders::ALL).border_style(if focused {
+      Style::new().green()
+    } else {
+      Style::new().dim()
+    });
+
+    let inner_area = block.inner(area);
+
+    self.explain_max_x_offset = self.explain_width.saturating_sub(inner_area.width);
+    self.explain_max_y_offset = self.explain_height.saturating_sub(inner_area.height);
     if let Some(ExplainOffsets { y_offset, x_offset }) = self.explain_scroll {
       self.explain_scroll = Some(ExplainOffsets {
         y_offset: y_offset.min(self.explain_max_y_offset),
         x_offset: x_offset.min(self.explain_max_x_offset),
       });
     }
-    let mut block = Block::default().borders(Borders::ALL).border_style(if focused {
-      Style::new().green()
-    } else {
-      Style::new().dim()
-    });
 
     if let DataState::HasResults(Rows { rows, .. }) = &self.data_state {
       let (x, y) = self.scrollable.get_cell_offsets();

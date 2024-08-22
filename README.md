@@ -178,25 +178,26 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] session history
   - [x] changelog, release script
   - [x] handle explain / analyze output
+  - [x] show query duration
   - [ ] unit / e2e tests
-  - [ ] loading animation
-  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
+  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist) / install script for bins
 </details>
 
 <details>
   <summary><b>backburner</b></summary>
 
+  - [ ] handle popular postgres extensions (postgis, pgvector, etc.)
+  - [ ] support mysql, sqlite, other sqlx adapters
   - [ ] non-vim editor keybindings
-  - [ ] change cursor insert-mode style (not sure it's possible with tui-textarea)
   - [ ] editor auto-complete
   - [ ] live graphs / metrics (a la pgadmin)
   - [ ] more packaging 
   - [ ] customization (keybindings, colors)
+  - [ ] change cursor insert-mode style (not sure it's possible with tui-textarea)
   - [ ] better vim multi-line selection emulation
   - [ ] handle more mouse events
-  - [ ] handle populoar postgres extensions (postgis, pgvector, etc.)
-  - [ ] support mysql, sqlite, other sqlx adaptors
   - [ ] vhs in cd
+  - [ ] loading animation
 </details>
 
 ## known issues and limitations

@@ -16,7 +16,7 @@ use tui_textarea::{Input, Key, Scrolling, TextArea};
 use super::{Component, Frame};
 use crate::{
   action::{Action, MenuPreview},
-  app::{App, AppState},
+  app::{App, AppState, DbTask},
   config::{Config, KeyBindings},
   database::get_keywords,
   focus::Focus,
@@ -48,6 +48,7 @@ pub struct Editor<'a> {
   textarea: TextArea<'a>,
   vim_state: Vim,
   cursor_style: Style,
+  last_query_duration: Option<chrono::Duration>,
 }
 
 impl<'a> Editor<'a> {
@@ -61,16 +62,19 @@ impl<'a> Editor<'a> {
       textarea,
       vim_state: Vim::new(Mode::Normal),
       cursor_style: Mode::Normal.cursor_style(),
+      last_query_duration: None,
     }
   }
 
-  pub fn transition_vim_state(&mut self, input: Input) -> Result<()> {
+  pub fn transition_vim_state(&mut self, input: Input, app_state: &AppState) -> Result<()> {
     match input {
       Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
-        if let Some(sender) = &self.command_tx {
-          sender.send(Action::Query(self.textarea.lines().to_vec()))?;
-          self.vim_state = Vim::new(Mode::Normal);
-          self.cursor_style = Mode::Normal.cursor_style();
+        if app_state.query_task.is_none() {
+          if let Some(sender) = &self.command_tx {
+            sender.send(Action::Query(self.textarea.lines().to_vec()))?;
+            self.vim_state = Vim::new(Mode::Normal);
+            self.cursor_style = Mode::Normal.cursor_style();
+          }
         }
       },
       Input { key: Key::Tab, shift: false, .. } if self.vim_state.mode != Mode::Insert => {
@@ -117,10 +121,10 @@ impl<'a> Component for Editor<'a> {
         self.textarea.scroll((-1, 0));
       },
       MouseEventKind::ScrollLeft => {
-        self.transition_vim_state(Input { key: Key::Char('h'), ctrl: false, alt: false, shift: false })?;
+        self.transition_vim_state(Input { key: Key::Char('h'), ctrl: false, alt: false, shift: false }, app_state)?;
       },
       MouseEventKind::ScrollRight => {
-        self.transition_vim_state(Input { key: Key::Char('j'), ctrl: false, alt: false, shift: false })?;
+        self.transition_vim_state(Input { key: Key::Char('j'), ctrl: false, alt: false, shift: false }, app_state)?;
       },
       _ => {},
     };
@@ -141,10 +145,8 @@ impl<'a> Component for Editor<'a> {
     } else if let Some(Event::Mouse(event)) = event {
       self.handle_mouse_events(event, app_state).unwrap();
     } else if let Some(Event::Key(key)) = event {
-      if app_state.query_task.is_none() {
-        let input = Input::from(key);
-        self.transition_vim_state(input)?;
-      }
+      let input = Input::from(key);
+      self.transition_vim_state(input, app_state)?;
     };
     Ok(None)
   }
@@ -210,8 +212,31 @@ impl<'a> Component for Editor<'a> {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Editor;
-    let block =
-      self.vim_state.mode.block().border_style(if focused { Style::new().green() } else { Style::new().dim() });
+
+    if app_state.query_task.is_some() {
+      self.last_query_duration = match app_state.query_task {
+        Some(DbTask::Query(_, start)) | Some(DbTask::TxStart(_, start)) | Some(DbTask::TxCommit(_, start)) => {
+          Some(chrono::Utc::now().signed_duration_since(start))
+        },
+        _ => self.last_query_duration,
+      };
+    }
+
+    let duration_string = self.last_query_duration.map_or("".to_string(), |d| {
+      format!(
+        " {}{}:{}{:.3}s ",
+        if d.num_minutes() < 10 { "0" } else { "" },
+        d.num_minutes(),
+        if (d.num_milliseconds() as f64 / 1000_f64) < 10.0 { "0" } else { "" },
+        (d.num_milliseconds() as f64 / 1000_f64)
+      )
+    });
+    let block = self
+      .vim_state
+      .mode
+      .block()
+      .border_style(if focused { Style::new().green() } else { Style::new().dim() })
+      .title(Line::from(duration_string).right_aligned());
 
     self.textarea.set_cursor_style(self.cursor_style);
     self.textarea.set_block(block);
