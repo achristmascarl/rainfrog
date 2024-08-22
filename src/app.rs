@@ -40,10 +40,13 @@ use crate::{
 };
 
 pub enum DbTask<'a> {
-  Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
-  TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, Postgres>)>),
+  Query(tokio::task::JoinHandle<QueryResultsWithMetadata>, chrono::DateTime<chrono::Utc>),
+  TxStart(
+    tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, Postgres>)>,
+    chrono::DateTime<chrono::Utc>,
+  ),
   TxPending(Transaction<'a, Postgres>, QueryResultsWithMetadata),
-  TxCommit(tokio::task::JoinHandle<QueryResultsWithMetadata>),
+  TxCommit(tokio::task::JoinHandle<QueryResultsWithMetadata>, chrono::DateTime<chrono::Utc>),
 }
 
 pub struct HistoryEntry {
@@ -152,14 +155,14 @@ impl<'a> App<'a> {
 
     loop {
       match &mut self.state.query_task {
-        Some(DbTask::Query(task)) => {
+        Some(DbTask::Query(task, _)) => {
           if task.is_finished() {
             let results = task.await?;
             self.state.query_task = None;
             self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
           }
         },
-        Some(DbTask::TxStart(task)) => {
+        Some(DbTask::TxStart(task, _)) => {
           if task.is_finished() {
             let (results, tx) = task.await?;
             match results.results {
@@ -174,7 +177,7 @@ impl<'a> App<'a> {
             }
           }
         },
-        Some(DbTask::TxCommit(task)) => {},
+        Some(DbTask::TxCommit(task, _)) => {},
         _ => {},
       }
       if let Some(e) = tui.next().await {
@@ -356,49 +359,55 @@ impl<'a> App<'a> {
                   Ok(true) => {
                     self.components.data.set_loading();
                     let tx = pool.begin().await?;
-                    self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                      let (results, tx) = database::query_with_tx(tx, query_string.clone()).await;
-                      match results {
-                        Ok(Either::Left(rows_affected)) => {
-                          log::info!("{:?} rows affected", rows_affected);
-                          let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
-                          (
-                            QueryResultsWithMetadata {
-                              results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
-                              statement_type,
-                            },
-                            tx,
-                          )
-                        },
-                        Ok(Either::Right(rows)) => {
-                          log::info!("{:?} rows affected", rows.rows_affected);
-                          let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
-                          (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
-                        },
-                        Err(e) => {
-                          log::error!("{e:?}");
-                          let statement_type = database::get_statement_type(&query_string).unwrap();
-                          (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
-                        },
-                      }
-                    })));
+                    self.state.query_task = Some(DbTask::TxStart(
+                      tokio::spawn(async move {
+                        let (results, tx) = database::query_with_tx(tx, query_string.clone()).await;
+                        match results {
+                          Ok(Either::Left(rows_affected)) => {
+                            log::info!("{:?} rows affected", rows_affected);
+                            let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
+                            (
+                              QueryResultsWithMetadata {
+                                results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+                                statement_type,
+                              },
+                              tx,
+                            )
+                          },
+                          Ok(Either::Right(rows)) => {
+                            log::info!("{:?} rows affected", rows.rows_affected);
+                            let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
+                            (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
+                          },
+                          Err(e) => {
+                            log::error!("{e:?}");
+                            let statement_type = database::get_statement_type(&query_string).unwrap();
+                            (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
+                          },
+                        }
+                      }),
+                      chrono::Utc::now(),
+                    ));
                   },
                   Ok(false) => {
                     self.components.data.set_loading();
-                    self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                      let results = database::query(query_string.clone(), &pool).await;
-                      match &results {
-                        Ok(rows) => {
-                          log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
-                        },
-                        Err(e) => {
-                          log::error!("{e:?}");
-                        },
-                      };
-                      let statement_type = database::get_statement_type(&query_string).unwrap();
+                    self.state.query_task = Some(DbTask::Query(
+                      tokio::spawn(async move {
+                        let results = database::query(query_string.clone(), &pool).await;
+                        match &results {
+                          Ok(rows) => {
+                            log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
+                          },
+                          Err(e) => {
+                            log::error!("{e:?}");
+                          },
+                        };
+                        let statement_type = database::get_statement_type(&query_string).unwrap();
 
-                      QueryResultsWithMetadata { results, statement_type }
-                    })));
+                        QueryResultsWithMetadata { results, statement_type }
+                      }),
+                      chrono::Utc::now(),
+                    ));
                   },
                   Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
                 }
@@ -410,12 +419,12 @@ impl<'a> App<'a> {
           },
           Action::AbortQuery => {
             match &self.state.query_task {
-              Some(DbTask::Query(task)) => {
+              Some(DbTask::Query(task, _)) => {
                 task.abort();
                 self.state.query_task = None;
                 self.components.data.set_cancelled();
               },
-              Some(DbTask::TxStart(task)) => {
+              Some(DbTask::TxStart(task, _)) => {
                 task.abort();
                 self.state.query_task = None;
                 self.components.data.set_cancelled();
@@ -451,13 +460,13 @@ impl<'a> App<'a> {
       if self.should_quit {
         if let Some(query_task) = self.state.query_task.take() {
           match query_task {
-            DbTask::Query(task) => {
+            DbTask::Query(task, _) => {
               task.abort();
             },
-            DbTask::TxStart(task) => {
+            DbTask::TxStart(task, _) => {
               task.abort();
             },
-            DbTask::TxCommit(task) => {
+            DbTask::TxCommit(task, _) => {
               task.abort();
             },
             _ => {},
