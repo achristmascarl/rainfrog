@@ -199,16 +199,20 @@ impl<'a> App<'a> {
                   KeyCode::Char('Y') | KeyCode::Char('N') | KeyCode::Esc => {
                     let task = self.state.query_task.take();
                     if let Some(DbTask::TxPending(tx, results)) = task {
+                      let mut rolled_back = false;
                       let result = match key.code {
                         KeyCode::Char('Y') => tx.commit().await,
-                        KeyCode::Char('N') | KeyCode::Esc => tx.rollback().await,
+                        KeyCode::Char('N') | KeyCode::Esc => {
+                          rolled_back = true;
+                          tx.rollback().await
+                        },
                         _ => panic!("inconsistent key codes"),
                       };
                       self.components.data.set_data_state(
                         match result {
                           Ok(_) => {
                             match results.statement_type {
-                              Statement::Explain { .. } if results.results.is_ok() => {
+                              Statement::Explain { .. } if results.results.is_ok() && !rolled_back => {
                                 Some(Ok(results.results.unwrap()))
                               },
                               _ => Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
@@ -216,10 +220,14 @@ impl<'a> App<'a> {
                           },
                           Err(e) => Some(Err(Either::Left(e))),
                         },
-                        Some(match key.code {
-                          KeyCode::Char('Y') => Statement::Commit { chain: false },
-                          KeyCode::Char('N') | KeyCode::Esc => Statement::Rollback { chain: false, savepoint: None },
-                          _ => panic!("inconsistent key codes"),
+                        Some(match rolled_back {
+                          false => {
+                            match results.statement_type {
+                              Statement::Explain { .. } => results.statement_type,
+                              _ => Statement::Commit { chain: false },
+                            }
+                          },
+                          true => Statement::Rollback { chain: false, savepoint: None },
                         }),
                       );
                     }
