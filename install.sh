@@ -1,5 +1,3 @@
-#!/bin/bash
-
 main() {
   need_cmd "curl"
   need_cmd "jq"
