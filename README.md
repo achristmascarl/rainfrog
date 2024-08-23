@@ -44,8 +44,14 @@ and then make sure to install with termux features (and disable default features
 cargo install rainfrog --features termux --no-default-features
 ```
 
-### binaries
-1. download the appropriate binary for your os from the latest [release](https://github.com/achristmascarl/rainfrog/releases)
+### install script
+there is a simple install script that assists in downloading and unpacking a binary from the release page. you'll need to find out which binary is appropriate for your system, and also make sure to have [jq](https://github.com/jqlang/jq) and [fzf](https://github.com/junegunn/fzf) installed.
+```sh
+curl -Ssf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/install.sh | sh
+```
+
+### release page binaries
+1. download and unpack the appropriate binary for your os from the latest [release](https://github.com/achristmascarl/rainfrog/releases)
 2. move the binary to a folder in your `PATH` environment variable
 
 ## usage
@@ -179,8 +185,8 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] changelog, release script
   - [x] handle explain / analyze output
   - [x] show query duration
+  - [x] install script for bins
   - [ ] unit / e2e tests
-  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist) / install script for bins
 </details>
 
 <details>
@@ -198,6 +204,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [ ] handle more mouse events
   - [ ] vhs in cd
   - [ ] loading animation
+  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
 </details>
 
 ## known issues and limitations
