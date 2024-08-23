@@ -49,7 +49,6 @@ main() {
 
   # clean up and unpack
   rm -rf "$HOME/.local/rainfrog"
-  mkdir -p "$HOME/.local/rainfrog"
   tar -xzf "$temp/$binary.tar.gz" -C "$HOME/.local/"
   if [ $? -ne 0 ]; then
     echo "failed to unpack binary"
