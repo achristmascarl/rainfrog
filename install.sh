@@ -11,6 +11,10 @@ main() {
   echo "installing 🐸 rainfrog..."
   release_json=$(curl -s https://api.github.com/repos/achristmascarl/rainfrog/releases/latest | jq)
   binary=$(jq <<<$release_json | jq -r '.["assets"] | .[] | .name' | sed -u "s/^.*[.sha256]$//" | sed -u "s/[.]tar[.]gz//" | awk 'NF' | fzf --header "choose a binary from the latest rainfrog release:" --reverse)
+  if [ -z "$binary" ]; then
+    echo "no binary selected"
+    exit 1
+  fi
   echo "selected binary: $binary"
 
   # make sure local bin dir exists
