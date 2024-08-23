@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 main() {
   need_cmd "curl"
@@ -22,8 +22,8 @@ main() {
 
   # download binary and hash
   echo "downloading binary and hash..."
-  curl -fL $(jq <<<$release_json | jq -r ".assets[] | select(.name | contains(\"$binary.tar.gz\")) | .browser_download_url") > "$temp/$binary.tar.gz"
-  curl -fL $(jq <<<$release_json | jq -r ".assets[] | select(.name | contains(\"$binary.sha256\")) | .browser_download_url") > "$temp/$binary.sha256"
+  curl -fL $(jq <<<$release_json | jq -r ".assets[] | select(.name | contains(\"$binary.tar.gz\")) | .browser_download_url") >"$temp/$binary.tar.gz"
+  curl -fL $(jq <<<$release_json | jq -r ".assets[] | select(.name | contains(\"$binary.sha256\")) | .browser_download_url") >"$temp/$binary.sha256"
   current=$(pwd)
   cd $temp
   shasum -a 256 -c "$temp/$binary.sha256" --strict
@@ -45,11 +45,11 @@ main() {
   # check installation and PATH
   echo ""
   if [ "$(which "rainfrog")" = "$HOME/.local/bin/rainfrog" ]; then
-        echo "rainfrog was successfully installed! 🎊"
-    else
-        echo " to run rainfrog from the terminal, you must add ~/.local/bin to your PATH"
-        echo "you can run rainfrog now with '~/.local/bin/rainfrog'"
-    fi
+    echo "rainfrog was successfully installed! 🎊"
+  else
+    echo " to run rainfrog from the terminal, you must add ~/.local/bin to your PATH"
+    echo "you can run rainfrog now with '~/.local/bin/rainfrog'"
+  fi
 }
 
 # ty rustup for these
