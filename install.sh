@@ -51,16 +51,24 @@ main() {
   rm -rf "$HOME/.local/rainfrog"
   mkdir -p "$HOME/.local/rainfrog"
   tar -xzf "$temp/$binary.tar.gz" -C "$HOME/.local/"
+  if [ $? -ne 0 ]; then
+    echo "failed to unpack binary"
+    exit 1
+  fi
 
   # link binary
   ln -sf "$HOME/.local/rainfrog" "$HOME/.local/bin/rainfrog"
+  if [ $? -ne 0 ]; then
+    echo "failed to link binary"
+    exit 1
+  fi
 
   # check installation and PATH
   echo ""
   if [ "$(which "rainfrog")" = "$HOME/.local/bin/rainfrog" ]; then
     echo "rainfrog was successfully installed! 🎊"
   else
-    echo " to run rainfrog from the terminal, you must add ~/.local/bin to your PATH"
+    echo "⚠️ to run rainfrog from the terminal, you must add ~/.local/bin to your PATH"
     echo "you can run rainfrog now with '~/.local/bin/rainfrog'"
   fi
 }
