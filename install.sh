@@ -7,7 +7,7 @@ main() {
 
   if which shasum >/dev/null 2>&1; then
     shasum() {
-      command shasum "$@"
+      command shasum -a 256 "$@"
     }
   elif which sha256sum >/dev/null 2>&1; then
     shasum() {
@@ -39,7 +39,7 @@ main() {
   curl -fL $(jq <<<$release_json | jq -r ".assets[] | select(.name | contains(\"$binary.sha256\")) | .browser_download_url") >"$temp/$binary.sha256"
   current=$(pwd)
   cd $temp
-  shasum -a 256 -c "$temp/$binary.sha256" --strict
+  shasum -c "$temp/$binary.sha256"
   sha256check=$?
   cd $current
   if [ $sha256check -ne 0 ]; then

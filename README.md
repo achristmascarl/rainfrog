@@ -47,7 +47,7 @@ cargo install rainfrog --features termux --no-default-features
 ### install script
 there is a simple install script that assists in downloading and unpacking a binary from the release page. you'll need to find out which binary is appropriate for your system, and also make sure to have [jq](https://github.com/jqlang/jq) and [fzf](https://github.com/junegunn/fzf) installed.
 ```sh
-curl -Ssf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/install.sh | sh
+curl -Ssf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/install.sh | bash
 ```
 
 ### release page binaries
