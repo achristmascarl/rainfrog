@@ -94,7 +94,7 @@ jobs:
           - os: ubuntu-latest
             os-name: alpine
             target: i586-unknown-linux-musl
-            architecture: i686
+            architecture: i586
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
