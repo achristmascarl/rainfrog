@@ -1,7 +1,22 @@
+#!/bin/bash
+
 main() {
   need_cmd "curl"
   need_cmd "jq"
   need_cmd "fzf"
+
+  if which shasum >/dev/null 2>&1; then
+    shasum() {
+      command shasum "$@"
+    }
+  elif which sha256sum >/dev/null 2>&1; then
+    shasum() {
+      sha256sum "$@"
+    }
+  else
+    echo "Could not find 'shasum' or 'sha256sum' in your path"
+    exit 1
+  fi
 
   temp="$(mktemp -d "/tmp/rainfrog-install-XXXXXX")"
   echo "temp dir: $temp"
