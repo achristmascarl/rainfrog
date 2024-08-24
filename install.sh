@@ -5,11 +5,13 @@ main() {
   need_cmd "jq"
   need_cmd "fzf"
 
-  if which shasum >/dev/null 2>&1; then
+  has_shasum=$(which shasum)
+  has_sha256sum=$(which sha256sum)
+  if [ -z "$has_shasum" ]; then
     shasum() {
       command shasum -a 256 "$@"
     }
-  elif which sha256sum >/dev/null 2>&1; then
+  elif [ -z "$has_sha256sum" ]; then
     shasum() {
       sha256sum "$@"
     }
@@ -18,7 +20,8 @@ main() {
     exit 1
   fi
 
-  temp="$(mktemp -d "/tmp/rainfrog-install-XXXXXX")"
+  mkdir -p "$HOME/tmp"
+  temp="$(mktemp -d "$HOME/tmp/rainfrog-install-XXXXXX")"
   echo "temp dir: $temp"
 
   echo "installing 🐸 rainfrog..."
