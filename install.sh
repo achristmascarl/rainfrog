@@ -7,11 +7,11 @@ main() {
 
   has_shasum=$(which shasum)
   has_sha256sum=$(which sha256sum)
-  if [ -z "$has_shasum" ]; then
+  if [ ${#has_shasum} -ge 1 ]; then
     shasum() {
       command shasum -a 256 "$@"
     }
-  elif [ -z "$has_sha256sum" ]; then
+  elif [ ${#has_sha256sum} -ge 1 ]; then
     shasum() {
       sha256sum "$@"
     }
