@@ -5,13 +5,11 @@ main() {
   need_cmd "jq"
   need_cmd "fzf"
 
-  has_shasum=$(which shasum)
-  has_sha256sum=$(which sha256sum)
-  if [ ${#has_shasum} -ge 1 ]; then
+  if check_cmd "shasum"; then
     shasum() {
       command shasum -a 256 "$@"
     }
-  elif [ ${#has_sha256sum} -ge 1 ]; then
+  elif check_cmd "sha256sum"; then
     shasum() {
       sha256sum "$@"
     }
