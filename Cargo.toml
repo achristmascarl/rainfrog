@@ -31,7 +31,7 @@ ratatui = { version = "0.28.0", features = ["serde", "macros", "unstable-widget-
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.107"
 signal-hook = "0.3.17"
-sqlx = { version = "0.7", features = [ "runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "ipnetwork" ] }
+sqlx = { version = "0.8", features = [ "runtime-tokio", "tls-native-tls", "postgres", "uuid", "chrono", "json", "ipnetwork" ] }
 strip-ansi-escapes = "0.2.0"
 strum = { version = "0.26.1", features = ["derive"] }
 tokio = { version = "1.32.0", features = ["full"] }
