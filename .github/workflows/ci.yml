@@ -11,6 +11,9 @@ jobs:
   test:
     name: Test Suite (${{ matrix.os-name }})
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+sse2
+
     strategy:
       matrix:
         include:
@@ -29,9 +32,8 @@ jobs:
             features: termux --no-default-features
           - os: ubuntu-latest 
             os-name: ish
-            target: i686-unknown-linux-musl
+            target: i586-unknown-linux-musl
             features: default 
-
 
     steps:
       - name: Checkout repository
@@ -56,6 +58,8 @@ jobs:
   rustfmt:
     name: Rustfmt
     runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+sse2
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -70,6 +74,8 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+sse2
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

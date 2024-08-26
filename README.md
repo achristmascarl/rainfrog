@@ -13,7 +13,7 @@ the goal for rainfrog is to provide a lightweight, terminal-based alternative to
 - query editor with keyword highlighting and session history
 - quickly copy data, filter tables, and switch between schemas
 - shortcuts to view table metadata and properties
-- cross-platform (macOS, linux, windows, android via termux)
+- cross-platform (macOS, linux, windows, android via termux, ios via ish)
 
 ### why "rainfrog"?
 > [frogs find refuge in elephant tracks](https://www.sciencedaily.com/releases/2019/06/190604131157.htm) 
@@ -44,8 +44,14 @@ and then make sure to install with termux features (and disable default features
 cargo install rainfrog --features termux --no-default-features
 ```
 
-### binaries
-1. download the appropriate binary for your os from the latest [release](https://github.com/achristmascarl/rainfrog/releases)
+### install script
+there is a simple install script that assists in downloading and unpacking a binary from the release page to `~/.local/bin/`, which you might want to add to your `PATH` variable if it isn't already there. you'll need to select which binary is appropriate for your system (if you're not sure, you can find out by installing rust and running `rustc -vV` to see the "host" target), and the script also needs [jq](https://github.com/jqlang/jq) and [fzf](https://github.com/junegunn/fzf) installed to run.
+```sh
+curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/install.sh | bash
+```
+
+### release page binaries
+1. manually download and unpack the appropriate binary for your os from the latest [release](https://github.com/achristmascarl/rainfrog/releases) (if you're not sure which binary to pick, you can find out by installing rust and running `rustc -vV` to see the "host" target)
 2. move the binary to a folder in your `PATH` environment variable
 
 ## usage
@@ -179,8 +185,8 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] changelog, release script
   - [x] handle explain / analyze output
   - [x] show query duration
+  - [x] install script for bins
   - [ ] unit / e2e tests
-  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist) / install script for bins
 </details>
 
 <details>
@@ -198,6 +204,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [ ] handle more mouse events
   - [ ] vhs in cd
   - [ ] loading animation
+  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
 </details>
 
 ## known issues and limitations
