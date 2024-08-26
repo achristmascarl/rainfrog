@@ -8,8 +8,10 @@ on:
 jobs:
   publish:
 
-    name: Publishing for ${{ matrix.os-name }}-${{ matrix.architecture }}
+    name: Publishing for ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+sse2
     permissions:
       contents: write
 
@@ -17,64 +19,47 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            os-name: macos
             target: x86_64-apple-darwin
-            architecture: x86_64
             binary-postfix: ""
             binary-name: rainfrog
             use-cross: false
             features: default
           - os: macos-latest
-            os-name: macos
             target: aarch64-apple-darwin
-            architecture: arm64
             binary-postfix: ""
             use-cross: false
             binary-name: rainfrog
             features: default
           - os: ubuntu-latest
-            os-name: linux
             target: x86_64-unknown-linux-gnu
-            architecture: x86_64
             binary-postfix: ""
             use-cross: false
             binary-name: rainfrog
             features: default
           - os: windows-latest
-            os-name: windows
             target: x86_64-pc-windows-msvc
-            architecture: x86_64
             binary-postfix: ".exe"
             use-cross: false
             binary-name: rainfrog
             features: default
           - os: ubuntu-latest
-            os-name: linux
             target: aarch64-unknown-linux-gnu
-            architecture: arm64
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
             features: default
           - os: ubuntu-latest
-            os-name: linux
             target: i686-unknown-linux-gnu
-            architecture: i686
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
             features: default
           - os: ubuntu-latest
-            os-name: alpine
             target: i586-unknown-linux-musl
-            architecture: i586
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
             features: default
-
-    env:
-      - CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+sse2
 
     steps:
       - name: Checkout repository
@@ -139,7 +124,7 @@ jobs:
           ########## create tar.gz ##########
 
           BINARY_NAME=${{ matrix.binary-name }}${{ matrix.binary-postfix }}
-          RELEASE_NAME=${{ matrix.binary-name }}-${GITHUB_REF/refs\/tags\//}-${{ matrix.os-name }}-${{ matrix.architecture }}
+          RELEASE_NAME=${{ matrix.binary-name }}-${GITHUB_REF/refs\/tags\//}-${{ matrix.target }}
 
           tar czvf $RELEASE_NAME.tar.gz $BINARY_NAME
 
