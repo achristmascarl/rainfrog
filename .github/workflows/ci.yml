@@ -11,6 +11,9 @@ jobs:
   test:
     name: Test Suite (${{ matrix.os-name }})
     runs-on: ${{ matrix.os }}
+    env:
+      - CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+sse2
+
     strategy:
       matrix:
         include:
@@ -31,8 +34,7 @@ jobs:
             os-name: ish
             target: i586-unknown-linux-musl
             features: default 
-    env:
-      - CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+sse2
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -88,6 +90,8 @@ jobs:
   publish:
     name: Publishing for ${{ matrix.os-name }}-${{ matrix.architecture }}
     runs-on: ${{ matrix.os }}
+    env:
+      - CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+sse2
     permissions:
       contents: write
     strategy:
@@ -101,8 +105,7 @@ jobs:
             use-cross: true
             binary-name: rainfrog
             features: default
-    env:
-      - CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+sse2
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
