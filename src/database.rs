@@ -349,7 +349,9 @@ mod tests {
 
   #[test]
   fn test_get_first_query() {
-    let test_cases: Vec<(&str, Result<(String, Box<dyn Fn(Statement) -> bool>), DbError>)> = vec![
+    type TestCase = (&'static str, Result<(String, Box<dyn Fn(Statement) -> bool>), DbError>);
+
+    let test_cases: Vec<TestCase> = vec![
       // single query
       ("SELECT * FROM users;", Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_)))))),
       // multiple queries
