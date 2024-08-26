@@ -359,12 +359,14 @@ impl<'a> App<'a> {
             let query_string = query_lines.clone().join(" \n");
             if !query_string.is_empty() {
               self.add_to_history(query_lines.clone());
-              let should_use_tx = database::should_use_tx(&query_string);
+              let first_query = database::get_first_query(query_string.clone());
+              let should_use_tx = first_query
+                .map(|(_, statement_type)| (database::should_use_tx(statement_type.clone()), statement_type));
               let action_tx = action_tx.clone();
               if let Some(pool) = &self.pool {
                 let pool = pool.clone();
                 match should_use_tx {
-                  Ok(true) => {
+                  Ok((true, statement_type)) => {
                     self.components.data.set_loading();
                     let tx = pool.begin().await?;
                     self.state.query_task = Some(DbTask::TxStart(
@@ -373,7 +375,6 @@ impl<'a> App<'a> {
                         match results {
                           Ok(Either::Left(rows_affected)) => {
                             log::info!("{:?} rows affected", rows_affected);
-                            let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
                             (
                               QueryResultsWithMetadata {
                                 results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
@@ -384,12 +385,10 @@ impl<'a> App<'a> {
                           },
                           Ok(Either::Right(rows)) => {
                             log::info!("{:?} rows affected", rows.rows_affected);
-                            let statement_type = database::get_statement_type(query_string.clone().as_str()).unwrap();
                             (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
                           },
                           Err(e) => {
                             log::error!("{e:?}");
-                            let statement_type = database::get_statement_type(&query_string).unwrap();
                             (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
                           },
                         }
@@ -397,7 +396,7 @@ impl<'a> App<'a> {
                       chrono::Utc::now(),
                     ));
                   },
-                  Ok(false) => {
+                  Ok((false, statement_type)) => {
                     self.components.data.set_loading();
                     self.state.query_task = Some(DbTask::Query(
                       tokio::spawn(async move {
@@ -410,7 +409,6 @@ impl<'a> App<'a> {
                             log::error!("{e:?}");
                           },
                         };
-                        let statement_type = database::get_statement_type(&query_string).unwrap();
 
                         QueryResultsWithMetadata { results, statement_type }
                       }),

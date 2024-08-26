@@ -42,12 +42,13 @@ pub async fn init_pool(url: String) -> Result<PgPool, Error> {
 // we only execute the first one and then drop the rest.
 pub async fn query(query: String, pool: &PgPool) -> Result<Rows, DbError> {
   let first_query = get_first_query(query);
-  match should_use_tx(&first_query) {
-    Ok(b) => log::info!("Should use transaction: {}", b),
-    Err(e) => return Err(e),
+  match first_query {
+    Ok((first_query, _)) => {
+      let stream = sqlx::raw_sql(&first_query).fetch_many(pool);
+      query_stream(stream).await
+    },
+    Err(e) => Err(e),
   }
-  let stream = sqlx::raw_sql(&first_query).fetch_many(pool);
-  query_stream(stream).await
 }
 
 pub async fn query_stream(
@@ -82,40 +83,41 @@ pub async fn query_with_tx<'a>(
   query: String,
 ) -> (Result<Either<u64, Rows>, DbError>, Transaction<'_, Postgres>) {
   let first_query = get_first_query(query);
-  let statement_type = get_statement_type(&first_query);
-  match statement_type {
-    Ok(Statement::Explain { .. }) => {
-      let stream = sqlx::raw_sql(&first_query).fetch_many(&mut *tx);
-      let result = query_stream(stream).await;
-      match result {
-        Ok(result) => (Ok(Either::Right(result)), tx),
-        Err(e) => (Err(e), tx),
+  match first_query {
+    Ok((first_query, statement_type)) => {
+      match statement_type {
+        Statement::Explain { .. } => {
+          let stream = sqlx::raw_sql(&first_query).fetch_many(&mut *tx);
+          let result = query_stream(stream).await;
+          match result {
+            Ok(result) => (Ok(Either::Right(result)), tx),
+            Err(e) => (Err(e), tx),
+          }
+        },
+        _ => {
+          let result = sqlx::query(&first_query).execute(&mut *tx).await;
+          match result {
+            Ok(result) => (Ok(Either::Left(result.rows_affected())), tx),
+            Err(e) => (Err(DbError::Left(e)), tx),
+          }
+        },
       }
     },
-    _ => {
-      let result = sqlx::query(&first_query).execute(&mut *tx).await;
-      match result {
-        Ok(result) => (Ok(Either::Left(result.rows_affected())), tx),
-        Err(e) => (Err(DbError::Left(e)), tx),
-      }
-    },
+    Err(e) => (Err(e), tx),
   }
 }
 
-pub fn get_first_query(query: String) -> String {
-  let queries = query.split(';').collect::<Vec<&str>>();
-  queries[0].to_string()
-}
-
-pub fn get_statement_type(query: &str) -> Result<Statement, DbError> {
+pub fn get_first_query(query: String) -> Result<(String, Statement), DbError> {
   let dialect = PostgreSqlDialect {};
-  let ast = Parser::parse_sql(&dialect, query);
+  let ast = Parser::parse_sql(&dialect, &query);
   match ast {
+    Ok(ast) if ast.len() > 1 => {
+      Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())))
+    },
+    Ok(ast) if ast.is_empty() => Err(Either::Right(ParserError::ParserError("Parsed query is empty".to_owned()))),
     Ok(ast) => {
-      if ast.len() > 1 {
-        return Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())));
-      }
-      Ok(ast[0].clone())
+      let statement = ast[0].clone();
+      Ok((statement.to_string(), statement))
     },
     Err(e) => Err(Either::Right(e)),
   }
@@ -129,30 +131,17 @@ pub fn statement_type_string(statement: &Statement) -> String {
     .to_string()
 }
 
-pub fn should_use_tx(query: &str) -> Result<bool, DbError> {
-  let dialect = PostgreSqlDialect {};
-  let ast = Parser::parse_sql(&dialect, query);
-  match ast {
-    Ok(ast) => {
-      if ast.len() > 1 {
-        return Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())));
-      }
-      match ast[0].clone() {
-        Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. } => Ok(true),
-        Statement::Explain { statement, analyze, .. } => {
-          if analyze {
-            match statement.as_ref() {
-              Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. } => Ok(true),
-              _ => Ok(false),
-            }
-          } else {
-            Ok(false)
-          }
-        },
-        _ => Ok(false),
-      }
+pub fn should_use_tx(statement: Statement) -> bool {
+  match statement {
+    Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. } => true,
+    Statement::Explain { statement, analyze, .. }
+      if analyze
+        && matches!(statement.as_ref(), Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. }) =>
+    {
+      true
     },
-    Err(e) => Err(Either::Right(e)),
+    Statement::Explain { .. } => false,
+    _ => false,
   }
 }
 
