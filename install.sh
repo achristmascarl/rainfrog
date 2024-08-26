@@ -5,11 +5,11 @@ main() {
   need_cmd "jq"
   need_cmd "fzf"
 
-  if which shasum >/dev/null 2>&1; then
+  if check_cmd "shasum"; then
     shasum() {
       command shasum -a 256 "$@"
     }
-  elif which sha256sum >/dev/null 2>&1; then
+  elif check_cmd "sha256sum"; then
     shasum() {
       sha256sum "$@"
     }
@@ -18,7 +18,8 @@ main() {
     exit 1
   fi
 
-  temp="$(mktemp -d "/tmp/rainfrog-install-XXXXXX")"
+  mkdir -p "$HOME/tmp"
+  temp="$(mktemp -d "$HOME/tmp/rainfrog-install-XXXXXX")"
   echo "temp dir: $temp"
 
   echo "installing 🐸 rainfrog..."
@@ -64,7 +65,7 @@ main() {
 
   # check installation and PATH
   echo ""
-  if [ "$(which "rainfrog")" = "$HOME/.local/bin/rainfrog" ]; then
+  if [ "$(which rainfrog)" = "$HOME/.local/bin/rainfrog" ]; then
     echo "rainfrog was successfully installed! 🎊"
   else
     echo "⚠️ to run rainfrog from the terminal, you must add ~/.local/bin to your PATH"
