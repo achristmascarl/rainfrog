@@ -90,7 +90,6 @@ jobs:
   release-commenter:
     name: Commenting on Issues and PRs
     runs-on: ubuntu-latest
-    needs: publish-cargo
     permissions:
       pull-requests: write
       issues: write
