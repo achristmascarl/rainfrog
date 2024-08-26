@@ -32,6 +32,8 @@ jobs:
             target: i586-unknown-linux-musl
             features: default 
 
+    env:
+      - CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+sse2"
 
     steps:
       - name: Checkout repository
