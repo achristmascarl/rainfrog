@@ -65,7 +65,7 @@ main() {
 
   # check installation and PATH
   echo ""
-  if [ "$(which "rainfrog")" = "$HOME/.local/bin/rainfrog" ]; then
+  if [ "$(which rainfrog)" = "$HOME/.local/bin/rainfrog" ]; then
     echo "rainfrog was successfully installed! 🎊"
   else
     echo "⚠️ to run rainfrog from the terminal, you must add ~/.local/bin to your PATH"
