@@ -31,10 +31,8 @@ jobs:
             os-name: ish
             target: i586-unknown-linux-musl
             features: default 
-
     env:
       - CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+sse2"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -58,6 +56,8 @@ jobs:
   rustfmt:
     name: Rustfmt
     runs-on: ubuntu-latest
+    env:
+      - CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+sse2"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -72,6 +72,8 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    env:
+      - CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+sse2"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -84,12 +86,10 @@ jobs:
         run: cargo clippy --all-targets --all-features --workspace -- -D warnings
 
   publish:
-
     name: Publishing for ${{ matrix.os-name }}-${{ matrix.architecture }}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
-
     strategy:
       matrix:
         include:
@@ -101,7 +101,8 @@ jobs:
             use-cross: true
             binary-name: rainfrog
             features: default
-
+    env:
+      - CARGO_TARGET_I586_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+sse2"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
