@@ -13,7 +13,7 @@ the goal for rainfrog is to provide a lightweight, terminal-based alternative to
 - query editor with keyword highlighting and session history
 - quickly copy data, filter tables, and switch between schemas
 - shortcuts to view table metadata and properties
-- cross-platform (macOS, linux, windows, android via termux, ios via ish)
+- cross-platform (macOS, linux, windows, android via termux)
 
 ### why "rainfrog"?
 > [frogs find refuge in elephant tracks](https://www.sciencedaily.com/releases/2019/06/190604131157.htm) 
