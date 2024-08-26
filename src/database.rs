@@ -42,12 +42,13 @@ pub async fn init_pool(url: String) -> Result<PgPool, Error> {
 // we only execute the first one and then drop the rest.
 pub async fn query(query: String, pool: &PgPool) -> Result<Rows, DbError> {
   let first_query = get_first_query(query);
-  match should_use_tx(&first_query) {
-    Ok(b) => log::info!("Should use transaction: {}", b),
-    Err(e) => return Err(e),
+  match first_query {
+    Ok((first_query, _)) => {
+      let stream = sqlx::raw_sql(&first_query).fetch_many(pool);
+      query_stream(stream).await
+    },
+    Err(e) => Err(e),
   }
-  let stream = sqlx::raw_sql(&first_query).fetch_many(pool);
-  query_stream(stream).await
 }
 
 pub async fn query_stream(
@@ -82,40 +83,41 @@ pub async fn query_with_tx<'a>(
   query: String,
 ) -> (Result<Either<u64, Rows>, DbError>, Transaction<'_, Postgres>) {
   let first_query = get_first_query(query);
-  let statement_type = get_statement_type(&first_query);
-  match statement_type {
-    Ok(Statement::Explain { .. }) => {
-      let stream = sqlx::raw_sql(&first_query).fetch_many(&mut *tx);
-      let result = query_stream(stream).await;
-      match result {
-        Ok(result) => (Ok(Either::Right(result)), tx),
-        Err(e) => (Err(e), tx),
+  match first_query {
+    Ok((first_query, statement_type)) => {
+      match statement_type {
+        Statement::Explain { .. } => {
+          let stream = sqlx::raw_sql(&first_query).fetch_many(&mut *tx);
+          let result = query_stream(stream).await;
+          match result {
+            Ok(result) => (Ok(Either::Right(result)), tx),
+            Err(e) => (Err(e), tx),
+          }
+        },
+        _ => {
+          let result = sqlx::query(&first_query).execute(&mut *tx).await;
+          match result {
+            Ok(result) => (Ok(Either::Left(result.rows_affected())), tx),
+            Err(e) => (Err(DbError::Left(e)), tx),
+          }
+        },
       }
     },
-    _ => {
-      let result = sqlx::query(&first_query).execute(&mut *tx).await;
-      match result {
-        Ok(result) => (Ok(Either::Left(result.rows_affected())), tx),
-        Err(e) => (Err(DbError::Left(e)), tx),
-      }
-    },
+    Err(e) => (Err(e), tx),
   }
 }
 
-pub fn get_first_query(query: String) -> String {
-  let queries = query.split(';').collect::<Vec<&str>>();
-  queries[0].to_string()
-}
-
-pub fn get_statement_type(query: &str) -> Result<Statement, DbError> {
+pub fn get_first_query(query: String) -> Result<(String, Statement), DbError> {
   let dialect = PostgreSqlDialect {};
-  let ast = Parser::parse_sql(&dialect, query);
+  let ast = Parser::parse_sql(&dialect, &query);
   match ast {
+    Ok(ast) if ast.len() > 1 => {
+      Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())))
+    },
+    Ok(ast) if ast.is_empty() => Err(Either::Right(ParserError::ParserError("Parsed query is empty".to_owned()))),
     Ok(ast) => {
-      if ast.len() > 1 {
-        return Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())));
-      }
-      Ok(ast[0].clone())
+      let statement = ast[0].clone();
+      Ok((statement.to_string(), statement))
     },
     Err(e) => Err(Either::Right(e)),
   }
@@ -129,30 +131,17 @@ pub fn statement_type_string(statement: &Statement) -> String {
     .to_string()
 }
 
-pub fn should_use_tx(query: &str) -> Result<bool, DbError> {
-  let dialect = PostgreSqlDialect {};
-  let ast = Parser::parse_sql(&dialect, query);
-  match ast {
-    Ok(ast) => {
-      if ast.len() > 1 {
-        return Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())));
-      }
-      match ast[0].clone() {
-        Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. } => Ok(true),
-        Statement::Explain { statement, analyze, .. } => {
-          if analyze {
-            match statement.as_ref() {
-              Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. } => Ok(true),
-              _ => Ok(false),
-            }
-          } else {
-            Ok(false)
-          }
-        },
-        _ => Ok(false),
-      }
+pub fn should_use_tx(statement: Statement) -> bool {
+  match statement {
+    Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. } => true,
+    Statement::Explain { statement, analyze, .. }
+      if analyze
+        && matches!(statement.as_ref(), Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. }) =>
+    {
+      true
     },
-    Err(e) => Err(Either::Right(e)),
+    Statement::Explain { .. } => false,
+    _ => false,
   }
 }
 
@@ -350,4 +339,111 @@ pub fn row_to_vec(row: &PgRow) -> Vec<String> {
 
 pub fn get_keywords() -> Vec<String> {
   keywords::ALL_KEYWORDS.iter().map(|k| k.to_string()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+  use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
+
+  use super::*;
+
+  #[test]
+  fn test_get_first_query() {
+    type TestCase = (&'static str, Result<(String, Box<dyn Fn(Statement) -> bool>), DbError>);
+
+    let test_cases: Vec<TestCase> = vec![
+      // single query
+      ("SELECT * FROM users;", Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      // multiple queries
+      (
+        "SELECT * FROM users; DELETE FROM posts;",
+        Err(DbError::Right(ParserError::ParserError("Only one statement allowed per query".to_owned()))),
+      ),
+      // empty query
+      ("", Err(DbError::Right(ParserError::ParserError("Parsed query is empty".to_owned())))),
+      // syntax error
+      (
+        "SELEC * FORM users;",
+        Err(DbError::Right(ParserError::ParserError(
+          "Expected: an SQL statement, found: SELEC at Line: 1, Column: 1".to_owned(),
+        ))),
+      ),
+      // lowercase
+      (
+        "select * from \"public\".\"users\"",
+        Ok(("SELECT * FROM \"public\".\"users\"".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
+      // newlines
+      ("select *\nfrom users;", Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      // comment-only
+      ("-- select * from users;", Err(DbError::Right(ParserError::ParserError("Parsed query is empty".to_owned())))),
+      // commented line(s)
+      (
+        "-- select blah;\nselect * from users",
+        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
+      (
+        "-- select blah;\nselect * from users\n-- insert blah",
+        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
+      // update
+      (
+        "UPDATE users SET name = 'John' WHERE id = 1",
+        Ok((
+          "UPDATE users SET name = 'John' WHERE id = 1".to_owned(),
+          Box::new(|s| matches!(s, Statement::Update { .. })),
+        )),
+      ),
+      // delete
+      (
+        "DELETE FROM users WHERE id = 1",
+        Ok(("DELETE FROM users WHERE id = 1".to_owned(), Box::new(|s| matches!(s, Statement::Delete(_))))),
+      ),
+      // drop
+      ("DROP TABLE users", Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. }))))),
+      // explain
+      (
+        "EXPLAIN SELECT * FROM users",
+        Ok(("EXPLAIN SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Explain { .. })))),
+      ),
+    ];
+
+    for (input, expected_output) in test_cases {
+      let result = get_first_query(input.to_string());
+      match (result, expected_output) {
+        (Ok((query, statement_type)), Ok((expected_query, match_statement))) => {
+          assert_eq!(query, expected_query);
+          assert!(match_statement(statement_type));
+        },
+        (
+          Err(Either::Right(ParserError::ParserError(msg))),
+          Err(Either::Right(ParserError::ParserError(expected_msg))),
+        ) => {
+          assert_eq!(msg, expected_msg)
+        },
+        _ => panic!("Unexpected result for input: {}", input),
+      }
+    }
+  }
+
+  #[test]
+  fn test_should_use_tx() {
+    let dialect = PostgreSqlDialect {};
+    let test_cases = vec![
+      ("DELETE FROM users WHERE id = 1", true),
+      ("DROP TABLE users", true),
+      ("UPDATE users SET name = 'John' WHERE id = 1", true),
+      ("SELECT * FROM users", false),
+      ("INSERT INTO users (name) VALUES ('John')", false),
+      ("EXPLAIN ANALYZE DELETE FROM users WHERE id = 1", true),
+      ("EXPLAIN SELECT * FROM users", false),
+      ("EXPLAIN ANALYZE SELECT * FROM users WHERE id = 1", false),
+    ];
+
+    for (query, expected) in test_cases {
+      let ast = Parser::parse_sql(&dialect, query).unwrap();
+      let statement = ast[0].clone();
+      assert_eq!(should_use_tx(statement), expected, "Failed for query: {}", query);
+    }
+  }
 }
