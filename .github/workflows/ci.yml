@@ -119,22 +119,30 @@ jobs:
           profile: minimal
           override: true
       - uses: Swatinem/rust-cache@v2
-      - name: Cargo build
-        uses: actions-rs/cargo@v1
+      - name: Cross build
+        if: ${{ matrix.use-cross == true }}
+        uses: houseabsolute/actions-rust-cross@v0
         with:
           command: build
-
-          use-cross: ${{ matrix.use-cross }}
-
-          toolchain: stable
-
-          args: --release --target ${{ matrix.target }} --features ${{ matrix.features }}
+          target: ${{ matrix.target }}
+          args: "--release --features ${{ matrix.features }}"
+          cross-version: 7b79041c9278769eca57fae10c74741f5aa5c14b
+      # - name: Cargo build
+      #   uses: actions-rs/cargo@v1
+      #   with:
+      #     command: build
+      #
+      #     use-cross: ${{ matrix.use-cross }}
+      #
+      #     toolchain: stable
+      #
+      #     args: --release --target ${{ matrix.target }} --features ${{ matrix.features }}
 
 
       - name: install strip command
         shell: bash
         run: |
-
+          ls -a
           if [[ ${{ matrix.target }} == aarch64-unknown-linux-gnu ]]; then
 
               sudo apt update
