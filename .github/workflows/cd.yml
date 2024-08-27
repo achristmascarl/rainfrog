@@ -55,7 +55,7 @@ jobs:
             binary-name: rainfrog
             features: default
           - os: ubuntu-latest
-            target: i586-unknown-linux-musl
+            target: i686-unknown-linux-musl
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
