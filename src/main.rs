@@ -18,15 +18,18 @@ use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre::Result;
 
-use crate::{
-  app::App,
-  utils::{initialize_logging, initialize_panic_handler, version},
-};
+#[cfg(not(feature = "ish"))]
+use crate::utils::initialize_logging;
+#[cfg(not(feature = "ish"))]
+use crate::utils::initialize_panic_handler;
+use crate::{app::App, utils::version};
 
 async fn tokio_main() -> Result<()> {
-  initialize_logging()?;
-
-  initialize_panic_handler()?;
+  #[cfg(not(feature = "ish"))]
+  {
+    initialize_logging()?;
+    initialize_panic_handler()?;
+  }
 
   let args = Cli::parse();
   let mut app = App::new(args.connection_url, args.tick_rate, args.frame_rate)?;
