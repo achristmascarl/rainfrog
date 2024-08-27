@@ -18,9 +18,11 @@ use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre::Result;
 
+#[cfg(not(feature = "ish"))]
+use crate::utils::initialize_logging;
 use crate::{
   app::App,
-  utils::{initialize_logging, initialize_panic_handler, version},
+  utils::{initialize_panic_handler, version},
 };
 
 async fn tokio_main() -> Result<()> {
