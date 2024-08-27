@@ -99,6 +99,18 @@ jobs:
     strategy:
       matrix:
         include:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            binary-postfix: ""
+            binary-name: rainfrog
+            use-cross: false
+            features: default
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary-postfix: ""
+            use-cross: false
+            binary-name: rainfrog
+            features: default
           - os: ubuntu-latest
             target: aarch64-linux-android
             features: termux --no-default-features
@@ -139,35 +151,38 @@ jobs:
           target: ${{ matrix.target }}
           args: "--release --features ${{ matrix.features }}"
           cross-version: 7b79041c9278769eca57fae10c74741f5aa5c14b
-      # - name: Cargo build
-      #   uses: actions-rs/cargo@v1
-      #   with:
-      #     command: build
-      #
-      #     use-cross: ${{ matrix.use-cross }}
-      #
-      #     toolchain: stable
-      #
-      #     args: --release --target ${{ matrix.target }} --features ${{ matrix.features }}
-
+      - name: Cargo build
+        if: ${{ matrix.use-cross != true }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          toolchain: stable
+          args: --release --target ${{ matrix.target }} --features ${{ matrix.features }}
 
       - name: install strip command
+        if: ${{ matrix.target != "aarch64-unknown-linux-gnu" }}
         shell: bash
         run: |
-          ls -a
-          if [[ ${{ matrix.target }} == aarch64-unknown-linux-gnu ]]; then
-
               sudo apt update
               sudo apt-get install -y binutils-aarch64-linux-gnu
-          fi
 
       - name: Strip binary
+        if: ${{ matrix.target != "aarch64-linux-android" }}
         shell: bash
         run: |
 
           cd target/${{ matrix.target }}/release
 
-          ls -a
+          ####### reduce binary size by removing debug symbols #######
+
+          BINARY_NAME=${{ matrix.binary-name }}${{ matrix.binary-postfix }}
+          if [[ ${{ matrix.target }} == aarch64-unknown-linux-gnu ]]; then
+
+            GCC_PREFIX="aarch64-linux-gnu-"
+          else
+            GCC_PREFIX=""
+          fi
+          "$GCC_PREFIX"strip $BINARY_NAME
 
           cd ../../../
 
