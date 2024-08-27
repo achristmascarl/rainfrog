@@ -32,8 +32,8 @@ jobs:
             features: termux --no-default-features
           - os: ubuntu-latest 
             os-name: ish
-            target: i586-unknown-linux-musl
-            features: default 
+            target: i686-unknown-linux-musl
+            features: default
 
     steps:
       - name: Checkout repository
@@ -86,3 +86,4 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Clippy check
         run: cargo clippy --all-targets --all-features --workspace -- -D warnings
+
