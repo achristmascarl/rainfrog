@@ -162,5 +162,5 @@ jobs:
       - name: Archive test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rainfrog-bin-{{ matrix.target }}
+          name: rainfrog-bin-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/${{ matrix.binary-name }}${{ matrix.binary-postfix }}
