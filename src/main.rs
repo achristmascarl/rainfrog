@@ -24,6 +24,7 @@ use crate::{
 };
 
 async fn tokio_main() -> Result<()> {
+  #[cfg(not(feature = "ish"))]
   initialize_logging()?;
 
   initialize_panic_handler()?;

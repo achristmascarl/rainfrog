@@ -94,6 +94,7 @@ pub fn get_config_dir() -> PathBuf {
   directory
 }
 
+#[cfg(not(feature = "ish"))]
 pub fn initialize_logging() -> Result<()> {
   let directory = get_data_dir();
   std::fs::create_dir_all(directory.clone())?;

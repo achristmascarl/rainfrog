@@ -59,13 +59,13 @@ jobs:
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
-            features: default
+            features: ish --no-default-features
           - os: ubuntu-latest
             target: aarch64-linux-android
-            features: termux --no-default-features
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
+            features: termux --no-default-features
 
     steps:
       - name: Checkout repository
