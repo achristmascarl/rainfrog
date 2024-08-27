@@ -160,14 +160,14 @@ jobs:
           args: --release --target ${{ matrix.target }} --features ${{ matrix.features }}
 
       - name: install strip command
-        if: ${{ matrix.target != "aarch64-unknown-linux-gnu" }}
+        if: ${{ matrix.target != 'aarch64-unknown-linux-gnu' }}
         shell: bash
         run: |
               sudo apt update
               sudo apt-get install -y binutils-aarch64-linux-gnu
 
       - name: Strip binary
-        if: ${{ matrix.target != "aarch64-linux-android" }}
+        if: ${{ matrix.target != 'aarch64-linux-android' }}
         shell: bash
         run: |
 
