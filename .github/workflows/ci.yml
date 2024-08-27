@@ -33,7 +33,7 @@ jobs:
           - os: ubuntu-latest 
             os-name: ish
             target: i686-unknown-linux-musl
-            features: ish --no-default-features
+            features: default
 
     steps:
       - name: Checkout repository

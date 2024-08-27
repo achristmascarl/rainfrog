@@ -59,7 +59,7 @@ jobs:
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
-            features: ish --no-default-features
+            features: default
           - os: ubuntu-latest
             target: aarch64-linux-android
             binary-postfix: ""
