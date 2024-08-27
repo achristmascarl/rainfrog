@@ -24,7 +24,6 @@ fn project_directory() -> Option<ProjectDirs> {
   ProjectDirs::from("dev", "rainfrog", env!("CARGO_PKG_NAME"))
 }
 
-#[cfg(not(feature = "ish"))]
 pub fn initialize_panic_handler() -> Result<()> {
   let (panic_hook, eyre_hook) = color_eyre::config::HookBuilder::default()
     .panic_section(format!("This is a bug. Consider reporting it at {}", env!("CARGO_PKG_REPOSITORY")))
@@ -95,7 +94,6 @@ pub fn get_config_dir() -> PathBuf {
   directory
 }
 
-#[cfg(not(feature = "ish"))]
 pub fn initialize_logging() -> Result<()> {
   let directory = get_data_dir();
   std::fs::create_dir_all(directory.clone())?;
