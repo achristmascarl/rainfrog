@@ -186,8 +186,30 @@ jobs:
 
           cd ../../../
 
+      - name: Packaging final binary
+        shell: bash
+        run: |
+
+          cd target/${{ matrix.target }}/release
+
+          ########## create tar.gz ##########
+
+          BINARY_NAME=${{ matrix.binary-name }}${{ matrix.binary-postfix }}
+          RELEASE_NAME=${{ matrix.binary-name }}-test-${{ matrix.target }}
+
+          tar czvf $RELEASE_NAME.tar.gz $BINARY_NAME
+
+          ########## create sha256 ##########
+
+          if [[ ${{ runner.os }} == 'Windows' ]]; then
+
+            certutil -hashfile $RELEASE_NAME.tar.gz sha256 | grep -E [A-Fa-f0-9]{64} > $RELEASE_NAME.sha256
+          else
+            shasum -a 256 $RELEASE_NAME.tar.gz > $RELEASE_NAME.sha256
+          fi
+
       - name: Archive test artifacts
         uses: actions/upload-artifact@v4
         with:
           name: rainfrog-bin-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary-name }}${{ matrix.binary-postfix }}
+          path: target/${{ matrix.target }}/release/${{ matrix.binary-name }}-test-${{ matrix.target }}
