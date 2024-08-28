@@ -227,8 +227,16 @@ impl<'a> Component for Editor<'a> {
         " {}{}:{}{:.3}s ",
         if d.num_minutes() < 10 { "0" } else { "" },
         d.num_minutes(),
-        if (d.num_milliseconds() as f64 / 1000_f64) < 10.0 { "0" } else { "" },
-        (d.num_milliseconds() as f64 / 1000_f64)
+        if ((d.num_milliseconds() % std::cmp::max(1, d.num_minutes()).saturating_mul(60).saturating_mul(1000)) as f64
+          / 1000_f64)
+          < 10.0
+        {
+          "0"
+        } else {
+          ""
+        },
+        ((d.num_milliseconds() % std::cmp::max(1, d.num_minutes()).saturating_mul(60).saturating_mul(1000)) as f64
+          / 1000_f64)
       )
     });
     let block = self
