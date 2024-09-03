@@ -213,13 +213,8 @@ impl<'a> Component for Editor<'a> {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Editor;
 
-    if app_state.query_task.is_some() {
-      self.last_query_duration = match app_state.query_task {
-        Some(DbTask::Query(_, start)) | Some(DbTask::TxStart(_, start)) | Some(DbTask::TxCommit(_, start)) => {
-          Some(chrono::Utc::now().signed_duration_since(start))
-        },
-        _ => self.last_query_duration,
-      };
+    if let Some(query_start) = app_state.last_query_start {
+      self.last_query_duration = Some(chrono::Utc::now().signed_duration_since(query_start));
     }
 
     let duration_string = self.last_query_duration.map_or("".to_string(), |d| {

@@ -40,13 +40,10 @@ use crate::{
 };
 
 pub enum DbTask<'a> {
-  Query(tokio::task::JoinHandle<QueryResultsWithMetadata>, chrono::DateTime<chrono::Utc>),
-  TxStart(
-    tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, Postgres>)>,
-    chrono::DateTime<chrono::Utc>,
-  ),
+  Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
+  TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, Postgres>)>),
   TxPending(Transaction<'a, Postgres>, QueryResultsWithMetadata),
-  TxCommit(tokio::task::JoinHandle<QueryResultsWithMetadata>, chrono::DateTime<chrono::Utc>),
+  TxCommit(tokio::task::JoinHandle<QueryResultsWithMetadata>),
 }
 
 pub struct HistoryEntry {
@@ -59,6 +56,7 @@ pub struct AppState<'a> {
   pub focus: Focus,
   pub query_task: Option<DbTask<'a>>,
   pub history: Vec<HistoryEntry>,
+  pub last_query_start: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub struct Components<'a> {
@@ -109,7 +107,7 @@ impl<'a> App<'a> {
       last_tick_key_events: Vec::new(),
       last_frame_mouse_event: None,
       pool: None,
-      state: AppState { connection_string, focus, query_task: None, history: vec![] },
+      state: AppState { connection_string, focus, query_task: None, history: vec![], last_query_start: None },
       last_focused_tab: Focus::Editor,
     })
   }
@@ -155,14 +153,14 @@ impl<'a> App<'a> {
 
     loop {
       match &mut self.state.query_task {
-        Some(DbTask::Query(task, _)) => {
+        Some(DbTask::Query(task)) => {
           if task.is_finished() {
             let results = task.await?;
             self.state.query_task = None;
             self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
           }
         },
-        Some(DbTask::TxStart(task, _)) => {
+        Some(DbTask::TxStart(task)) => {
           if task.is_finished() {
             let (results, tx) = task.await?;
             match results.results {
@@ -177,7 +175,7 @@ impl<'a> App<'a> {
             }
           }
         },
-        Some(DbTask::TxCommit(task, _)) => {},
+        Some(DbTask::TxCommit(task)) => {},
         _ => {},
       }
       if let Some(e) = tui.next().await {
@@ -210,22 +208,18 @@ impl<'a> App<'a> {
                       };
                       self.components.data.set_data_state(
                         match result {
-                          Ok(_) => {
-                            match results.statement_type {
-                              Statement::Explain { .. } if results.results.is_ok() && !rolled_back => {
-                                Some(Ok(results.results.unwrap()))
-                              },
-                              _ => Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
-                            }
+                          Ok(_) => match results.statement_type {
+                            Statement::Explain { .. } if results.results.is_ok() && !rolled_back => {
+                              Some(Ok(results.results.unwrap()))
+                            },
+                            _ => Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
                           },
                           Err(e) => Some(Err(Either::Left(e))),
                         },
                         Some(match rolled_back {
-                          false => {
-                            match results.statement_type {
-                              Statement::Explain { .. } => results.statement_type,
-                              _ => Statement::Commit { chain: false },
-                            }
+                          false => match results.statement_type {
+                            Statement::Explain { .. } => results.statement_type,
+                            _ => Statement::Commit { chain: false },
                           },
                           true => Statement::Rollback { chain: false, savepoint: None },
                         }),
@@ -307,35 +301,31 @@ impl<'a> App<'a> {
             self.state.focus = Focus::History;
             self.last_focused_tab = Focus::History;
           },
-          Action::CycleFocusForwards => {
-            match self.state.focus {
-              Focus::Menu => {
-                self.state.focus = Focus::Editor;
-                self.last_focused_tab = Focus::Editor;
-              },
-              Focus::Editor => {
-                self.state.focus = Focus::History;
-                self.last_focused_tab = Focus::History;
-              },
-              Focus::History => self.state.focus = Focus::Data,
-              Focus::Data => self.state.focus = Focus::Menu,
-              _ => {},
-            }
+          Action::CycleFocusForwards => match self.state.focus {
+            Focus::Menu => {
+              self.state.focus = Focus::Editor;
+              self.last_focused_tab = Focus::Editor;
+            },
+            Focus::Editor => {
+              self.state.focus = Focus::History;
+              self.last_focused_tab = Focus::History;
+            },
+            Focus::History => self.state.focus = Focus::Data,
+            Focus::Data => self.state.focus = Focus::Menu,
+            _ => {},
           },
-          Action::CycleFocusBackwards => {
-            match self.state.focus {
-              Focus::History => {
-                self.state.focus = Focus::Editor;
-                self.last_focused_tab = Focus::Editor;
-              },
-              Focus::Data => {
-                self.state.focus = Focus::History;
-                self.last_focused_tab = Focus::History;
-              },
-              Focus::Menu => self.state.focus = Focus::Data,
-              Focus::Editor => self.state.focus = Focus::Menu,
-              _ => {},
-            }
+          Action::CycleFocusBackwards => match self.state.focus {
+            Focus::History => {
+              self.state.focus = Focus::Editor;
+              self.last_focused_tab = Focus::Editor;
+            },
+            Focus::Data => {
+              self.state.focus = Focus::History;
+              self.last_focused_tab = Focus::History;
+            },
+            Focus::Menu => self.state.focus = Focus::Data,
+            Focus::Editor => self.state.focus = Focus::Menu,
+            _ => {},
           },
           Action::FocusData => self.state.focus = Focus::Data,
           Action::LoadMenu => {
@@ -369,51 +359,47 @@ impl<'a> App<'a> {
                   Ok((true, statement_type)) => {
                     self.components.data.set_loading();
                     let tx = pool.begin().await?;
-                    self.state.query_task = Some(DbTask::TxStart(
-                      tokio::spawn(async move {
-                        let (results, tx) = database::query_with_tx(tx, query_string.clone()).await;
-                        match results {
-                          Ok(Either::Left(rows_affected)) => {
-                            log::info!("{:?} rows affected", rows_affected);
-                            (
-                              QueryResultsWithMetadata {
-                                results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
-                                statement_type,
-                              },
-                              tx,
-                            )
-                          },
-                          Ok(Either::Right(rows)) => {
-                            log::info!("{:?} rows affected", rows.rows_affected);
-                            (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
-                          },
-                          Err(e) => {
-                            log::error!("{e:?}");
-                            (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
-                          },
-                        }
-                      }),
-                      chrono::Utc::now(),
-                    ));
+                    self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
+                      let (results, tx) = database::query_with_tx(tx, query_string.clone()).await;
+                      match results {
+                        Ok(Either::Left(rows_affected)) => {
+                          log::info!("{:?} rows affected", rows_affected);
+                          (
+                            QueryResultsWithMetadata {
+                              results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+                              statement_type,
+                            },
+                            tx,
+                          )
+                        },
+                        Ok(Either::Right(rows)) => {
+                          log::info!("{:?} rows affected", rows.rows_affected);
+                          (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
+                        },
+                        Err(e) => {
+                          log::error!("{e:?}");
+                          (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
+                        },
+                      }
+                    })));
+                    self.state.last_query_start = Some(chrono::Utc::now());
                   },
                   Ok((false, statement_type)) => {
                     self.components.data.set_loading();
-                    self.state.query_task = Some(DbTask::Query(
-                      tokio::spawn(async move {
-                        let results = database::query(query_string.clone(), &pool).await;
-                        match &results {
-                          Ok(rows) => {
-                            log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
-                          },
-                          Err(e) => {
-                            log::error!("{e:?}");
-                          },
-                        };
+                    self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
+                      let results = database::query(query_string.clone(), &pool).await;
+                      match &results {
+                        Ok(rows) => {
+                          log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
+                        },
+                        Err(e) => {
+                          log::error!("{e:?}");
+                        },
+                      };
 
-                        QueryResultsWithMetadata { results, statement_type }
-                      }),
-                      chrono::Utc::now(),
-                    ));
+                      QueryResultsWithMetadata { results, statement_type }
+                    })));
+                    self.state.last_query_start = Some(chrono::Utc::now());
                   },
                   Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
                 }
@@ -423,20 +409,18 @@ impl<'a> App<'a> {
               }
             }
           },
-          Action::AbortQuery => {
-            match &self.state.query_task {
-              Some(DbTask::Query(task, _)) => {
-                task.abort();
-                self.state.query_task = None;
-                self.components.data.set_cancelled();
-              },
-              Some(DbTask::TxStart(task, _)) => {
-                task.abort();
-                self.state.query_task = None;
-                self.components.data.set_cancelled();
-              },
-              _ => {},
-            }
+          Action::AbortQuery => match &self.state.query_task {
+            Some(DbTask::Query(task)) => {
+              task.abort();
+              self.state.query_task = None;
+              self.components.data.set_cancelled();
+            },
+            Some(DbTask::TxStart(task)) => {
+              task.abort();
+              self.state.query_task = None;
+              self.components.data.set_cancelled();
+            },
+            _ => {},
           },
           Action::ClearHistory => {
             self.clear_history();
@@ -466,13 +450,13 @@ impl<'a> App<'a> {
       if self.should_quit {
         if let Some(query_task) = self.state.query_task.take() {
           match query_task {
-            DbTask::Query(task, _) => {
+            DbTask::Query(task) => {
               task.abort();
             },
-            DbTask::TxStart(task, _) => {
+            DbTask::TxStart(task) => {
               task.abort();
             },
-            DbTask::TxCommit(task, _) => {
+            DbTask::TxCommit(task) => {
               task.abort();
             },
             _ => {},
