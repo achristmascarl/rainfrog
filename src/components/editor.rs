@@ -214,7 +214,10 @@ impl<'a> Component for Editor<'a> {
     let focused = app_state.focus == Focus::Editor;
 
     if let Some(query_start) = app_state.last_query_start {
-      self.last_query_duration = Some(chrono::Utc::now().signed_duration_since(query_start));
+      self.last_query_duration = match app_state.last_query_end {
+        Some(end) => Some(end.signed_duration_since(query_start)),
+        None => Some(chrono::Utc::now().signed_duration_since(query_start)),
+      };
     }
 
     let duration_string = self.last_query_duration.map_or("".to_string(), |d| {

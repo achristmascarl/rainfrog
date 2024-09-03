@@ -57,6 +57,7 @@ pub struct AppState<'a> {
   pub query_task: Option<DbTask<'a>>,
   pub history: Vec<HistoryEntry>,
   pub last_query_start: Option<chrono::DateTime<chrono::Utc>>,
+  pub last_query_end: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub struct Components<'a> {
@@ -107,7 +108,14 @@ impl<'a> App<'a> {
       last_tick_key_events: Vec::new(),
       last_frame_mouse_event: None,
       pool: None,
-      state: AppState { connection_string, focus, query_task: None, history: vec![], last_query_start: None },
+      state: AppState {
+        connection_string,
+        focus,
+        query_task: None,
+        history: vec![],
+        last_query_start: None,
+        last_query_end: None,
+      },
       last_focused_tab: Focus::Editor,
     })
   }
@@ -158,6 +166,7 @@ impl<'a> App<'a> {
             let results = task.await?;
             self.state.query_task = None;
             self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
+            self.state.last_query_end = Some(chrono::Utc::now());
           }
         },
         Some(DbTask::TxStart(task)) => {
@@ -173,6 +182,7 @@ impl<'a> App<'a> {
                 self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
               },
             }
+            self.state.last_query_end = Some(chrono::Utc::now());
           }
         },
         Some(DbTask::TxCommit(task)) => {},
@@ -383,6 +393,7 @@ impl<'a> App<'a> {
                       }
                     })));
                     self.state.last_query_start = Some(chrono::Utc::now());
+                    self.state.last_query_end = None;
                   },
                   Ok((false, statement_type)) => {
                     self.components.data.set_loading();
@@ -400,6 +411,7 @@ impl<'a> App<'a> {
                       QueryResultsWithMetadata { results, statement_type }
                     })));
                     self.state.last_query_start = Some(chrono::Utc::now());
+                    self.state.last_query_end = None;
                   },
                   Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
                 }
