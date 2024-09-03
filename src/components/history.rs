@@ -20,11 +20,18 @@ pub struct History {
   config: Config,
   list_state: ListState,
   copied: bool,
+  last_query_duration: Option<chrono::Duration>,
 }
 
 impl History {
   pub fn new() -> Self {
-    History { command_tx: None, config: Config::default(), list_state: ListState::default(), copied: false }
+    History {
+      command_tx: None,
+      config: Config::default(),
+      list_state: ListState::default(),
+      copied: false,
+      last_query_duration: None,
+    }
   }
 
   pub fn scroll_up(&mut self) {
@@ -111,11 +118,29 @@ impl Component for History {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::History;
-    let block = Block::default().borders(Borders::ALL).border_style(if focused {
-      Style::new().green()
-    } else {
-      Style::new().dim()
+    if let Some(query_start) = app_state.last_query_start {
+      self.last_query_duration = match app_state.last_query_end {
+        Some(end) => Some(end.signed_duration_since(query_start)),
+        None => Some(chrono::Utc::now().signed_duration_since(query_start)),
+      };
+    }
+
+    let duration_string = self.last_query_duration.map_or("".to_string(), |d| {
+      let seconds: f64 = (d.num_milliseconds()
+        % std::cmp::max(1, d.num_minutes()).saturating_mul(60).saturating_mul(1000)) as f64
+        / 1000_f64;
+      format!(
+        " {}{}:{}{:.3}s ",
+        if d.num_minutes() < 10 { "0" } else { "" },
+        d.num_minutes(),
+        if seconds < 10.0 { "0" } else { "" },
+        seconds
+      )
     });
+    let block = Block::default()
+      .borders(Borders::ALL)
+      .border_style(if focused { Style::new().green() } else { Style::new().dim() })
+      .title(Line::from(duration_string).right_aligned());
     let scrollbar_margin = area.inner(Margin { vertical: 1, horizontal: 0 });
 
     let items = app_state
