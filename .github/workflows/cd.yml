@@ -96,33 +96,6 @@ jobs:
           toolchain: stable
           args: --release --target ${{ matrix.target }} --features ${{ matrix.features }}
 
-      - name: install strip command
-        if: ${{ matrix.target == 'aarch64-unknown-linux-gnu' }}
-        shell: bash
-        run: |
-              sudo apt update
-              sudo apt-get install -y binutils-aarch64-linux-gnu
-
-      - name: Strip binary
-        if: ${{ matrix.target != 'aarch64-linux-android' }}
-        shell: bash
-        run: |
-
-          cd target/${{ matrix.target }}/release
-
-          ####### reduce binary size by removing debug symbols #######
-
-          BINARY_NAME=${{ matrix.binary-name }}${{ matrix.binary-postfix }}
-          if [[ ${{ matrix.target }} == aarch64-unknown-linux-gnu ]]; then
-
-            GCC_PREFIX="aarch64-linux-gnu-"
-          else
-            GCC_PREFIX=""
-          fi
-          "$GCC_PREFIX"strip $BINARY_NAME
-
-          cd ../../../
-
       - name: Packaging final binary
         shell: bash
         run: |
