@@ -181,4 +181,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: rainfrog-pr 
-          path: target/${{ matrix.target }}/release/
+          path: target/${{ matrix.target }}/release/${{ matrix.binary-name }}${{ matrix.binary-postfix }}
