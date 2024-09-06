@@ -13,6 +13,10 @@ exclude = [".github/*", "demo.gif", "demo.tape", "00_init.sql", ".git/*", "Makef
 [profile.dev]
 opt-level = 2 # very slow on 1, basically as fast as --release on 2
 
+[profile.release]
+strip = "debuginfo"
+lto = "fat"
+
 [dependencies]
 better-panic = "0.3.0"
 clap = { version = "4.4.5", features = ["derive", "cargo", "wrap_help", "unicode", "string", "unstable-styles"] }
