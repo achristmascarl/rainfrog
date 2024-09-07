@@ -435,11 +435,13 @@ impl<'a> App<'a> {
                 task.abort();
                 self.state.query_task = None;
                 self.components.data.set_cancelled();
+                self.state.last_query_end = Some(chrono::Utc::now());
               },
               Some(DbTask::TxStart(task)) => {
                 task.abort();
                 self.state.query_task = None;
                 self.components.data.set_cancelled();
+                self.state.last_query_end = Some(chrono::Utc::now());
               },
               _ => {},
             }
