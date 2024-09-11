@@ -347,6 +347,9 @@ impl<'a> Component for Data<'a> {
             },
             _ => {},
           }
+        } else if let DataState::Explain(text) = &self.data_state {
+          self.command_tx.clone().unwrap().send(Action::CopyData(text.to_string()))?;
+          self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
         }
       },
       KeyCode::Esc => {
@@ -398,6 +401,12 @@ impl<'a> Component for Data<'a> {
           format!(" 󰆼 results <alt+4> ({} rows) - copied! ", rows.len())
         },
         _ => format!(" 󰆼 results <alt+4> ({} rows)", rows.len()),
+      };
+      block = block.title(title_string);
+    } else if let DataState::Explain(_) = &self.data_state {
+      let title_string = match self.scrollable.get_selection_mode() {
+        Some(SelectionMode::Copied) => " 󰆼 results <alt+4> - copied! ",
+        _ => " 󰆼 results <alt+4>",
       };
       block = block.title(title_string);
     } else {
