@@ -28,10 +28,10 @@ after installing rust (recommended to do so via [rustup](https://www.rust-lang.o
 cargo install rainfrog
 ```
 
-### aur
-arch linux users can install [from the AUR](https://aur.archlinux.org/packages/rainfrog) with an [AUR helper](https://wiki.archlinux.org/title/AUR_helpers):
+### arch linux
+arch linux users can install from the [official repositories](https://archlinux.org/packages/extra/x86_64/rainfrog) using [pacman](https://wiki.archlinux.org/title/pacman):
 ```sh
-paru -S rainfrog
+pacman -S rainfrog
 ```
 
 ### termux
