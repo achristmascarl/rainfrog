@@ -82,6 +82,11 @@ impl<'a> Editor<'a> {
           sender.send(Action::CycleFocusForwards)?;
         }
       },
+      Input { key: Key::Char('c'), ctrl: true, .. } if matches!(self.vim_state.mode, Mode::Normal) => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::Quit)?;
+        }
+      },
       _ => {
         let new_vim_state = self.vim_state.clone();
         self.vim_state = match new_vim_state.transition(input, &mut self.textarea) {

@@ -234,7 +234,11 @@ impl Vim {
             textarea.move_cursor(CursorMove::End);
             return Transition::Mode(Mode::Visual);
           },
-          Input { key: Key::Esc, .. } | Input { key: Key::Char('v'), ctrl: false, .. } if self.mode == Mode::Visual => {
+          Input { key: Key::Esc, .. }
+          | Input { key: Key::Char('c'), ctrl: true, .. }
+          | Input { key: Key::Char('v'), ctrl: false, .. }
+            if self.mode == Mode::Visual =>
+          {
             textarea.cancel_selection();
             return Transition::Mode(Mode::Normal);
           },
