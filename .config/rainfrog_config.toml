@@ -13,7 +13,6 @@
 "<Backtab>" = "CycleFocusBackwards"
 
 [keybindings.Editor]
-"<Ctrl-c>" = "Quit"
 "q" = "AbortQuery"
 "<F5>" = "SubmitEditorQuery"
 "<Alt-1>" = "FocusMenu"
