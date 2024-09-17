@@ -4,7 +4,7 @@ a database management tui for postgres
 ![rainfrog demo](demo.gif)
 
 > [!WARNING]
-> rainfrog is currently in alpha. 
+> rainfrog is currently in beta. 
 
 the goal for rainfrog is to provide a lightweight, terminal-based alternative to pgadmin/dbeaver. 
 
@@ -156,7 +156,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 
 ## roadmap
 <details>
-  <summary><b>v0.1.0 (alpha)</b></summary>
+  <summary><b>🏁 v0.1.0 – alpha</b></summary>
   
   - [x] scrollable table 
   - [x] cancellable async querying (spawn tokio task)
@@ -175,7 +175,7 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 </details>
 
 <details>
-  <summary><b>v0.2.0 (beta)</b></summary>
+  <summary><b>🏁 v0.2.0 – beta</b></summary>
 
   - [x] vhs explainer gifs
   - [x] upgrade ratatui and tui-textarea 
@@ -186,26 +186,9 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
   - [x] handle explain / analyze output
   - [x] show query duration
   - [x] install script for bins
-  - [ ] unit / e2e tests
 </details>
 
-<details>
-  <summary><b>backburner</b></summary>
-
-  - [ ] handle popular postgres extensions (postgis, pgvector, etc.)
-  - [ ] support mysql, sqlite, other sqlx adapters
-  - [ ] non-vim editor keybindings
-  - [ ] editor auto-complete
-  - [ ] live graphs / metrics (a la pgadmin)
-  - [ ] more packaging 
-  - [ ] customization (keybindings, colors)
-  - [ ] change cursor insert-mode style (not sure it's possible with tui-textarea)
-  - [ ] better vim multi-line selection emulation
-  - [ ] handle more mouse events
-  - [ ] vhs in cd
-  - [ ] loading animation
-  - [ ] homebrew / [cargo-dist](https://github.com/axodotdev/cargo-dist)
-</details>
+now that rainfrog is in beta, check out the [issues tab](https://github.com/achristmascarl/rainfrog/issues) for planned features
 
 ## known issues and limitations
 - in addition to the experience being subpar if the terminal window is too small, if the terminal window is too large, rainfrog will crash due to the maximum area of ratatui buffers being `u16::MAX` (65,535). more details in https://github.com/achristmascarl/rainfrog/issues/60
