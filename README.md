@@ -202,3 +202,4 @@ now that rainfrog is in beta, check out the [issues tab](https://github.com/achr
 - [tui-textarea](https://github.com/rhysd/tui-textarea) (used in the query editor)
 - [gobang](https://github.com/TaKO8Ki/gobang) (a rust db tui i drew inspiration from)
 - [ricky rainfrog](https://us.jellycat.com/ricky-rain-frog/)
+- [rainfroggg](https://www.rainfrog.gg/) (my wife's tattoo studio)
