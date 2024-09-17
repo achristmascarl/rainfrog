@@ -208,7 +208,8 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 </details>
 
 ## known issues and limitations
-- for query results with many columns, the height of the rendered `Table` widget may be limited, as the maximum area of the underlying buffer is `u16::MAX` (65,535). Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
+- in addition to the experience being subpar if the terminal window is too small, if the terminal window is too large, rainfrog will crash due to the maximum area of ratatui buffers being `u16::MAX` (65,535). more details in https://github.com/achristmascarl/rainfrog/issues/60
+- for query results with many columns, the height of the rendered `Table` widget may be limited due to the same limitation mentioned above. Could be fixed by https://github.com/ratatui-org/ratatui/issues/1250
 - on mac, for VS Code and terminal (and perhaps other editors), a setting for "use option as meta key" needs to be turned on for Alt/Opt keybindings to work. (In VS Code, it's `"terminal.integrated.macOptionIsMeta": true`; in kitty, it's `macos_option_as_alt yes` in the config.)
 - in visual mode, when selecting an entire line, the behavior is not the same as vim's, as it simply moves starts the selection at the head of the line, so moving up or down in lines will break the selection. 
 - mouse events are only used for changing focus and scrolling; the editor does not currently support mouse events, and menu items cannot be selected using the mouse
