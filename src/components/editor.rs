@@ -198,8 +198,18 @@ impl<'a> Component for Editor<'a> {
       Action::CopyData(data) => {
         #[cfg(not(feature = "termux"))]
         {
-          let mut clipboard = Clipboard::new().unwrap();
-          clipboard.set_text(data).unwrap();
+          Clipboard::new().map_or_else(
+            |e| {
+              log::error!("{e:?}");
+            },
+            |mut clipboard| {
+              clipboard.set_text(data.clone()).unwrap_or_else(|e| {
+                log::error!("{e:?}");
+              })
+            },
+          );
+          // also set textarea buffer as a fallback
+          self.textarea.set_yank_text(data.clone());
         }
         #[cfg(feature = "termux")]
         {
