@@ -9,6 +9,7 @@ use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::Statement;
 use tokio::sync::{mpsc::UnboundedSender, Mutex};
+use tui_textarea::Input;
 
 use super::{scroll_table::SelectionMode, Frame};
 use crate::{
@@ -271,7 +272,8 @@ impl<'a> Component for Data<'a> {
     if app_state.focus != Focus::Data {
       return Ok(None);
     }
-    match key.code {
+    let input = Input::from(key);
+    match input {
       KeyCode::Right | KeyCode::Char('l') => {
         self.scroll(ScrollDirection::Right);
       },
@@ -301,6 +303,12 @@ impl<'a> Component for Data<'a> {
       },
       KeyCode::Char('$') => {
         self.right();
+      },
+      KeyCode::Char('[') | KeyCode::Enter => {
+        self.scrollable.pg_up();
+      },
+      KeyCode::Char(']') => {
+        self.scrollable.pg_down();
       },
       KeyCode::Char('v') => {
         self.scrollable.transition_selection_mode(Some(SelectionMode::Cell));
