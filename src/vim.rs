@@ -139,9 +139,12 @@ impl Vim {
           Input { key: Key::Char('p'), .. } => {
             #[cfg(not(feature = "termux"))]
             {
-              let mut clipboard = Clipboard::new().unwrap();
-              let text = clipboard.get_text().unwrap();
-              textarea.set_yank_text(text);
+              Clipboard::new().map_or_else(
+                |e| log::error!("{e:?}"),
+                |mut clipboard| {
+                  clipboard.get_text().map_or_else(|e| log::error!("{e:?}"), |text| textarea.set_yank_text(text))
+                },
+              );
             }
             textarea.paste();
             return Transition::Mode(Mode::Normal);
@@ -174,8 +177,16 @@ impl Vim {
             let text = textarea.yank_text();
             #[cfg(not(feature = "termux"))]
             {
-              let mut clipboard = Clipboard::new().unwrap();
-              clipboard.set_text(text).unwrap();
+              Clipboard::new().map_or_else(
+                |e| {
+                  log::error!("{e:?}");
+                },
+                |mut clipboard| {
+                  clipboard.set_text(text).unwrap_or_else(|e| {
+                    log::error!("{e:?}");
+                  })
+                },
+              );
             }
             return Transition::Mode(Mode::Normal);
           },
@@ -276,8 +287,16 @@ impl Vim {
             let text = textarea.yank_text();
             #[cfg(not(feature = "termux"))]
             {
-              let mut clipboard = Clipboard::new().unwrap();
-              clipboard.set_text(text).unwrap();
+              Clipboard::new().map_or_else(
+                |e| {
+                  log::error!("{e:?}");
+                },
+                |mut clipboard| {
+                  clipboard.set_text(text).unwrap_or_else(|e| {
+                    log::error!("{e:?}");
+                  })
+                },
+              );
             }
             return Transition::Mode(Mode::Normal);
           },
@@ -308,8 +327,16 @@ impl Vim {
             let text = textarea.yank_text();
             #[cfg(not(feature = "termux"))]
             {
-              let mut clipboard = Clipboard::new().unwrap();
-              clipboard.set_text(text).unwrap();
+              Clipboard::new().map_or_else(
+                |e| {
+                  log::error!("{e:?}");
+                },
+                |mut clipboard| {
+                  clipboard.set_text(text).unwrap_or_else(|e| {
+                    log::error!("{e:?}");
+                  })
+                },
+              );
             }
             return Transition::Mode(Mode::Insert);
           },
@@ -327,8 +354,16 @@ impl Vim {
             let text = textarea.yank_text();
             #[cfg(not(feature = "termux"))]
             {
-              let mut clipboard = Clipboard::new().unwrap();
-              clipboard.set_text(text).unwrap();
+              Clipboard::new().map_or_else(
+                |e| {
+                  log::error!("{e:?}");
+                },
+                |mut clipboard| {
+                  clipboard.set_text(text).unwrap_or_else(|e| {
+                    log::error!("{e:?}");
+                  })
+                },
+              );
             }
             Transition::Mode(Mode::Normal)
           },
@@ -341,8 +376,16 @@ impl Vim {
             let text = textarea.yank_text();
             #[cfg(not(feature = "termux"))]
             {
-              let mut clipboard = Clipboard::new().unwrap();
-              clipboard.set_text(text).unwrap();
+              Clipboard::new().map_or_else(
+                |e| {
+                  log::error!("{e:?}");
+                },
+                |mut clipboard| {
+                  clipboard.set_text(text).unwrap_or_else(|e| {
+                    log::error!("{e:?}");
+                  })
+                },
+              );
             }
             Transition::Mode(Mode::Insert)
           },
