@@ -233,8 +233,12 @@ impl Vim {
           Input { key: Key::Char('y'), ctrl: true, .. } => textarea.scroll((-1, 0)),
           Input { key: Key::Char('d'), ctrl: true, .. } => textarea.scroll(Scrolling::HalfPageDown),
           Input { key: Key::Char('u'), ctrl: true, .. } => textarea.scroll(Scrolling::HalfPageUp),
-          Input { key: Key::Char('f'), ctrl: true, .. } => textarea.scroll(Scrolling::PageDown),
-          Input { key: Key::Char('b'), ctrl: true, .. } => textarea.scroll(Scrolling::PageUp),
+          Input { key: Key::Char('f'), ctrl: true, .. } | Input { key: Key::PageDown, .. } => {
+            textarea.scroll(Scrolling::PageDown)
+          },
+          Input { key: Key::Char('b'), ctrl: true, .. } | Input { key: Key::PageUp, .. } => {
+            textarea.scroll(Scrolling::PageUp)
+          },
           Input { key: Key::Char('v'), ctrl: false, .. } if self.mode == Mode::Normal => {
             textarea.start_selection();
             return Transition::Mode(Mode::Visual);
@@ -401,15 +405,13 @@ impl Vim {
           },
         }
       },
-      Mode::Replace => {
-        match input {
-          Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
-          input => {
-            textarea.delete_str(1);
-            textarea.input(input);
-            Transition::Mode(Mode::Normal)
-          },
-        }
+      Mode::Replace => match input {
+        Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
+        input => {
+          textarea.delete_str(1);
+          textarea.input(input);
+          Transition::Mode(Mode::Normal)
+        },
       },
     }
   }

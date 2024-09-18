@@ -115,16 +115,22 @@ impl<'a> ScrollTable<'a> {
   }
 
   pub fn pg_up(&mut self) -> &mut Self {
-    self.y_offset = self
-      .y_offset
-      .saturating_sub(self.pg_height.saturating_div(2).saturating_sub(u16::from(self.pg_height % 2 == 0)) as usize); // always round down
+    self.y_offset = self.y_offset.saturating_sub(std::cmp::max(
+      1,
+      self.pg_height.saturating_div(2).saturating_sub(
+        u16::from(self.pg_height % 2 == 0), // always round down
+      ) as usize,
+    ));
     self
   }
 
   pub fn pg_down(&mut self) -> &mut Self {
-    let new_y_offset = self
-      .y_offset
-      .saturating_add(self.pg_height.saturating_div(2).saturating_sub(u16::from(self.pg_height % 2 == 0)) as usize); // always round down
+    let new_y_offset = self.y_offset.saturating_add(std::cmp::max(
+      1,
+      self.pg_height.saturating_div(2).saturating_sub(
+        u16::from(self.pg_height % 2 == 0), // always rounds down
+      ) as usize,
+    ));
     self.y_offset = std::cmp::min(self.max_y_offset, new_y_offset);
     self
   }
