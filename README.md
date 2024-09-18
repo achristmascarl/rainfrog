@@ -72,7 +72,7 @@ rainfrog --url $(connection_url)
 | `Alt+4`, `Ctrl+g`               | change focus to results                |
 | `Tab`                         | cycle focus forwards                   |
 | `Shift+Tab`                   | cycle focus backwards                  |
-| `q`                           | abort current query                    |
+| `q`, `Alt+q` in query editor    | abort current query                    |
 
 ### menu (list of schemas and tables)
 | keybinding                  | description                            |

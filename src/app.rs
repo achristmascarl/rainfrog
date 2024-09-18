@@ -593,6 +593,7 @@ impl<'a> App<'a> {
         "{}{}",
         match self.state.query_task {
             None => "",
+            _ if self.state.focus == Focus::Editor => "[<alt + q>] abort ",
             _ if self.state.focus != Focus::PopUp => "[q] abort ",
             _ => ""
         },
