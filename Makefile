@@ -38,7 +38,7 @@ release:
 	git commit -m "bump to v$(version)"
 	git push
 	gh pr create --fill --label no-release-notes
-	echo $(gh pr diff)
+	gh pr diff | cat
 	@read -n 1 -p "are you sure you want to release v$(version)? [Y/n] " confirmation && if [ "$$confirmation" = "Y" ]; then echo " continuing..."; else echo " aborting..."; exit 1; fi
 	gh pr merge --admin --squash --delete-branch
 	git checkout main
