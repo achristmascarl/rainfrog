@@ -35,7 +35,9 @@ pub trait SettableTableList<'a> {
 }
 
 pub trait MenuComponent<'a>: Component + SettableTableList<'a> {}
-impl<'a, T> MenuComponent<'a> for T where T: Component + SettableTableList<'a> {}
+impl<'a, T> MenuComponent<'a> for T where T: Component + SettableTableList<'a>
+{
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct Menu {
@@ -324,9 +326,11 @@ impl Component for Menu {
     let stable_keys = self.table_map.keys().enumerate();
     let mut constraints: Vec<Constraint> = stable_keys
       .clone()
-      .map(|(i, k)| match i {
-        x if x == self.schema_index => Constraint::Min(5),
-        _ => Constraint::Length(1),
+      .map(|(i, k)| {
+        match i {
+          x if x == self.schema_index => Constraint::Min(5),
+          _ => Constraint::Length(1),
+        }
       })
       .collect();
     if let Some(search) = self.search.as_ref() {
@@ -445,13 +449,15 @@ impl Component for Menu {
             layout[layout_index],
           );
         },
-        _ => f.render_widget(
-          Text::styled(
-            "├ ".to_owned() + k.to_owned().as_str(),
-            if focused { Style::default() } else { Style::new().dim() },
-          ),
-          layout[layout_index],
-        ),
+        _ => {
+          f.render_widget(
+            Text::styled(
+              "├ ".to_owned() + k.to_owned().as_str(),
+              if focused { Style::default() } else { Style::new().dim() },
+            ),
+            layout[layout_index],
+          )
+        },
       };
     });
 

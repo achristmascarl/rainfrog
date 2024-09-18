@@ -405,13 +405,15 @@ impl Vim {
           },
         }
       },
-      Mode::Replace => match input {
-        Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
-        input => {
-          textarea.delete_str(1);
-          textarea.input(input);
-          Transition::Mode(Mode::Normal)
-        },
+      Mode::Replace => {
+        match input {
+          Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
+          input => {
+            textarea.delete_str(1);
+            textarea.input(input);
+            Transition::Mode(Mode::Normal)
+          },
+        }
       },
     }
   }

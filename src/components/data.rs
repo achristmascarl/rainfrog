@@ -52,7 +52,9 @@ pub trait SettableDataTable<'a> {
 }
 
 pub trait DataComponent<'a>: Component + SettableDataTable<'a> {}
-impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a> {}
+impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a>
+{
+}
 
 #[derive(Default)]
 pub struct Data<'a> {
