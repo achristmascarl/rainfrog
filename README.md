@@ -66,8 +66,8 @@ rainfrog --url $(connection_url)
 | keybinding                  | description                            |
 |-----------------------------|----------------------------------------|
 | `Ctrl+c`                      | quit program                           |
-| `Alt+1`, `Ctrl+n`               | change focus to menu                   |
-| `Alt+2`, `Ctrl+b`               | change focus to query editor           |
+| `Alt+1`, `Ctrl+k`               | change focus to menu                   |
+| `Alt+2`, `Ctrl+j`               | change focus to query editor           |
 | `Alt+3`, `Ctrl+h`               | change focus to query history          |
 | `Alt+4`, `Ctrl+g`               | change focus to results                |
 | `Tab`                         | cycle focus forwards                   |
@@ -143,6 +143,8 @@ keybindings may not behave exactly like vim. the full list of active vim keybind
 | `l`, `→`                   | scroll right by 1 cell                 |
 | `b`                      | scroll right by 1 cell                 |
 | `e`, `w`                   | scroll left by 1 column                |
+| `{`, `PageUp`, `Ctrl+b`      | jump up one page                       |
+| `}`, `PageDown`, `Ctrl+f`    | jump down one page                     |
 | `g`                      | jump to top of table                   |
 | `G`                      | jump to bottom of table                |
 | `0`                      | jump to first column                   |

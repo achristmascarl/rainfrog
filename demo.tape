@@ -56,7 +56,7 @@ Type "e"
 Sleep 1s
 Type "y"
 Sleep 2s
-Ctrl+B
+Ctrl+J
 Sleep 1s
 Type "dd"
 Sleep 1s

@@ -33,6 +33,7 @@ pub struct ScrollTable<'a> {
   table: Table<'a>,
   parent_area: Rect,
   block: Option<Block<'a>>,
+  pg_height: u16,
   requested_width: u16,
   column_width: u16,
   max_height: u16,
@@ -49,6 +50,7 @@ impl<'a> ScrollTable<'a> {
       table: Table::default(),
       parent_area: Rect::new(0, 0, 0, 0),
       block: None,
+      pg_height: 0,
       requested_width: 0,
       column_width: 0,
       max_height: 0,
@@ -79,9 +81,9 @@ impl<'a> ScrollTable<'a> {
   pub fn scroll(&mut self, direction: ScrollDirection) -> &mut Self {
     match direction {
       ScrollDirection::Left => self.x_offset = self.x_offset.saturating_sub(2),
-      ScrollDirection::Right => self.x_offset = Ord::min(self.x_offset.saturating_add(2), self.max_x_offset),
+      ScrollDirection::Right => self.x_offset = std::cmp::min(self.x_offset.saturating_add(2), self.max_x_offset),
       ScrollDirection::Up => self.y_offset = self.y_offset.saturating_sub(1),
-      ScrollDirection::Down => self.y_offset = Ord::min(self.y_offset.saturating_add(1), self.max_y_offset),
+      ScrollDirection::Down => self.y_offset = std::cmp::min(self.y_offset.saturating_add(1), self.max_y_offset),
     }
     self
   }
@@ -91,7 +93,8 @@ impl<'a> ScrollTable<'a> {
       return self;
     }
     let x_over = self.x_offset % self.column_width;
-    self.x_offset = Ord::min(self.x_offset.saturating_add(self.column_width).saturating_sub(x_over), self.max_x_offset);
+    self.x_offset =
+      std::cmp::min(self.x_offset.saturating_add(self.column_width).saturating_sub(x_over), self.max_x_offset);
     self
   }
 
@@ -108,6 +111,27 @@ impl<'a> ScrollTable<'a> {
         self.x_offset = self.x_offset.saturating_sub(x);
       },
     }
+    self
+  }
+
+  pub fn pg_up(&mut self) -> &mut Self {
+    self.y_offset = self.y_offset.saturating_sub(std::cmp::max(
+      1,
+      self.pg_height.saturating_div(2).saturating_sub(
+        u16::from(self.pg_height % 2 == 0), // always round down
+      ) as usize,
+    ));
+    self
+  }
+
+  pub fn pg_down(&mut self) -> &mut Self {
+    let new_y_offset = self.y_offset.saturating_add(std::cmp::max(
+      1,
+      self.pg_height.saturating_div(2).saturating_sub(
+        u16::from(self.pg_height % 2 == 0), // always rounds down
+      ) as usize,
+    ));
+    self.y_offset = std::cmp::min(self.max_y_offset, new_y_offset);
     self
   }
 
@@ -169,6 +193,8 @@ impl<'a> ScrollTable<'a> {
 impl<'a> Component for ScrollTable<'a> {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     self.parent_area = area;
+    let render_area = self.block.inner_if_some(area);
+    self.pg_height = std::cmp::min(self.max_height, render_area.height).saturating_sub(3);
     self.max_x_offset = self.get_max_x_offset(&self.parent_area, &self.block);
     let max_x_offset = self.max_x_offset;
     let x_offset = self.x_offset;
@@ -249,8 +275,8 @@ impl<'a> Widget for Renderer<'a> {
     ratatui::widgets::StatefulWidgetRef::render_ref(table, content_buf.area, &mut content_buf, &mut table_state);
     let content_width = content_buf.area.width;
     let content_height = content_buf.area.height;
-    let max_x = Ord::min(area.x.saturating_add(area.width), area.x.saturating_add(content_width));
-    let max_y = Ord::min(area.y.saturating_add(area.height), area.y.saturating_add(content_height));
+    let max_x = std::cmp::min(area.x.saturating_add(area.width), area.x.saturating_add(content_width));
+    let max_y = std::cmp::min(area.y.saturating_add(area.height), area.y.saturating_add(content_height));
     for y in area.y..max_y {
       let content_y = y - area.y;
       let row = get_row(&content_buf.content, content_y, content_width);
