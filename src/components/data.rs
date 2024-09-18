@@ -9,7 +9,7 @@ use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::Statement;
 use tokio::sync::{mpsc::UnboundedSender, Mutex};
-use tui_textarea::Input;
+use tui_textarea::{Input, Key};
 
 use super::{scroll_table::SelectionMode, Frame};
 use crate::{
@@ -52,9 +52,7 @@ pub trait SettableDataTable<'a> {
 }
 
 pub trait DataComponent<'a>: Component + SettableDataTable<'a> {}
-impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a>
-{
-}
+impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a> {}
 
 #[derive(Default)]
 pub struct Data<'a> {
@@ -274,49 +272,53 @@ impl<'a> Component for Data<'a> {
     }
     let input = Input::from(key);
     match input {
-      KeyCode::Right | KeyCode::Char('l') => {
+      Input { key: Key::Right, .. } | Input { key: Key::Char('l'), .. } => {
         self.scroll(ScrollDirection::Right);
       },
-      KeyCode::Left | KeyCode::Char('h') => {
+      Input { key: Key::Left, .. } | Input { key: Key::Char('h'), .. } => {
         self.scroll(ScrollDirection::Left);
       },
-      KeyCode::Down | KeyCode::Char('j') => {
+      Input { key: Key::Down, .. } | Input { key: Key::Char('j'), .. } => {
         self.scroll(ScrollDirection::Down);
       },
-      KeyCode::Up | KeyCode::Char('k') => {
+      Input { key: Key::Up, .. } | Input { key: Key::Char('k'), .. } => {
         self.scroll(ScrollDirection::Up);
       },
-      KeyCode::Char('e') | KeyCode::Char('w') => {
+      Input { key: Key::Char('e'), .. } | Input { key: Key::Char('w'), .. } => {
         self.scrollable.next_column();
       },
-      KeyCode::Char('b') => {
+      Input { key: Key::Char('b'), ctrl: false, .. } => {
         self.scrollable.prev_column();
       },
-      KeyCode::Char('g') => {
+      Input { key: Key::Char('g'), .. } => {
         self.top();
       },
-      KeyCode::Char('G') => {
+      Input { key: Key::Char('G'), .. } => {
         self.bottom();
       },
-      KeyCode::Char('0') => {
+      Input { key: Key::Char('0'), .. } => {
         self.left();
       },
-      KeyCode::Char('$') => {
+      Input { key: Key::Char('$'), .. } => {
         self.right();
       },
-      KeyCode::Char('[') | KeyCode::Enter => {
+      Input { key: Key::Char('{'), .. }
+      | Input { key: Key::Char('b'), ctrl: true, .. }
+      | Input { key: Key::PageUp, .. } => {
         self.scrollable.pg_up();
       },
-      KeyCode::Char(']') => {
+      Input { key: Key::Char('}'), .. }
+      | Input { key: Key::Char('f'), ctrl: true, .. }
+      | Input { key: Key::PageDown, .. } => {
         self.scrollable.pg_down();
       },
-      KeyCode::Char('v') => {
+      Input { key: Key::Char('v'), .. } => {
         self.scrollable.transition_selection_mode(Some(SelectionMode::Cell));
       },
-      KeyCode::Char('V') => {
+      Input { key: Key::Char('V'), .. } => {
         self.scrollable.transition_selection_mode(Some(SelectionMode::Row));
       },
-      KeyCode::Enter => {
+      Input { key: Key::Enter, .. } => {
         match self.scrollable.get_selection_mode() {
           Some(SelectionMode::Row) => {
             self.scrollable.transition_selection_mode(Some(SelectionMode::Cell));
@@ -327,7 +329,7 @@ impl<'a> Component for Data<'a> {
           _ => {},
         };
       },
-      KeyCode::Backspace => {
+      Input { key: Key::Backspace, .. } => {
         match self.scrollable.get_selection_mode() {
           Some(SelectionMode::Row) => {
             self.scrollable.transition_selection_mode(None);
@@ -338,7 +340,7 @@ impl<'a> Component for Data<'a> {
           _ => {},
         };
       },
-      KeyCode::Char('y') => {
+      Input { key: Key::Char('y'), .. } => {
         if let DataState::HasResults(Rows { rows, .. }) = &self.data_state {
           let (x, y) = self.scrollable.get_cell_offsets();
           let row = &rows[y];
@@ -360,7 +362,7 @@ impl<'a> Component for Data<'a> {
           self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
         }
       },
-      KeyCode::Esc => {
+      Input { key: Key::Esc, .. } => {
         self.scrollable.transition_selection_mode(None);
       },
       _ => {},
