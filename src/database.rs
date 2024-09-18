@@ -84,24 +84,22 @@ pub async fn query_with_tx<'a>(
 ) -> (Result<Either<u64, Rows>, DbError>, Transaction<'_, Postgres>) {
   let first_query = get_first_query(query);
   match first_query {
-    Ok((first_query, statement_type)) => {
-      match statement_type {
-        Statement::Explain { .. } => {
-          let stream = sqlx::raw_sql(&first_query).fetch_many(&mut *tx);
-          let result = query_stream(stream).await;
-          match result {
-            Ok(result) => (Ok(Either::Right(result)), tx),
-            Err(e) => (Err(e), tx),
-          }
-        },
-        _ => {
-          let result = sqlx::query(&first_query).execute(&mut *tx).await;
-          match result {
-            Ok(result) => (Ok(Either::Left(result.rows_affected())), tx),
-            Err(e) => (Err(DbError::Left(e)), tx),
-          }
-        },
-      }
+    Ok((first_query, statement_type)) => match statement_type {
+      Statement::Explain { .. } => {
+        let stream = sqlx::raw_sql(&first_query).fetch_many(&mut *tx);
+        let result = query_stream(stream).await;
+        match result {
+          Ok(result) => (Ok(Either::Right(result)), tx),
+          Err(e) => (Err(e), tx),
+        }
+      },
+      _ => {
+        let result = sqlx::query(&first_query).execute(&mut *tx).await;
+        match result {
+          Ok(result) => (Ok(Either::Left(result.rows_affected())), tx),
+          Err(e) => (Err(DbError::Left(e)), tx),
+        }
+      },
     },
     Err(e) => (Err(e), tx),
   }

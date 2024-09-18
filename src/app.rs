@@ -218,22 +218,18 @@ impl<'a> App<'a> {
                       };
                       self.components.data.set_data_state(
                         match result {
-                          Ok(_) => {
-                            match results.statement_type {
-                              Statement::Explain { .. } if results.results.is_ok() && !rolled_back => {
-                                Some(Ok(results.results.unwrap()))
-                              },
-                              _ => Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
-                            }
+                          Ok(_) => match results.statement_type {
+                            Statement::Explain { .. } if results.results.is_ok() && !rolled_back => {
+                              Some(Ok(results.results.unwrap()))
+                            },
+                            _ => Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
                           },
                           Err(e) => Some(Err(Either::Left(e))),
                         },
                         Some(match rolled_back {
-                          false => {
-                            match results.statement_type {
-                              Statement::Explain { .. } => results.statement_type,
-                              _ => Statement::Commit { chain: false },
-                            }
+                          false => match results.statement_type {
+                            Statement::Explain { .. } => results.statement_type,
+                            _ => Statement::Commit { chain: false },
                           },
                           true => Statement::Rollback { chain: false, savepoint: None },
                         }),
@@ -315,35 +311,31 @@ impl<'a> App<'a> {
             self.state.focus = Focus::History;
             self.last_focused_tab = Focus::History;
           },
-          Action::CycleFocusForwards => {
-            match self.state.focus {
-              Focus::Menu => {
-                self.state.focus = Focus::Editor;
-                self.last_focused_tab = Focus::Editor;
-              },
-              Focus::Editor => {
-                self.state.focus = Focus::History;
-                self.last_focused_tab = Focus::History;
-              },
-              Focus::History => self.state.focus = Focus::Data,
-              Focus::Data => self.state.focus = Focus::Menu,
-              _ => {},
-            }
+          Action::CycleFocusForwards => match self.state.focus {
+            Focus::Menu => {
+              self.state.focus = Focus::Editor;
+              self.last_focused_tab = Focus::Editor;
+            },
+            Focus::Editor => {
+              self.state.focus = Focus::History;
+              self.last_focused_tab = Focus::History;
+            },
+            Focus::History => self.state.focus = Focus::Data,
+            Focus::Data => self.state.focus = Focus::Menu,
+            _ => {},
           },
-          Action::CycleFocusBackwards => {
-            match self.state.focus {
-              Focus::History => {
-                self.state.focus = Focus::Editor;
-                self.last_focused_tab = Focus::Editor;
-              },
-              Focus::Data => {
-                self.state.focus = Focus::History;
-                self.last_focused_tab = Focus::History;
-              },
-              Focus::Menu => self.state.focus = Focus::Data,
-              Focus::Editor => self.state.focus = Focus::Menu,
-              _ => {},
-            }
+          Action::CycleFocusBackwards => match self.state.focus {
+            Focus::History => {
+              self.state.focus = Focus::Editor;
+              self.last_focused_tab = Focus::Editor;
+            },
+            Focus::Data => {
+              self.state.focus = Focus::History;
+              self.last_focused_tab = Focus::History;
+            },
+            Focus::Menu => self.state.focus = Focus::Data,
+            Focus::Editor => self.state.focus = Focus::Menu,
+            _ => {},
           },
           Action::FocusData => self.state.focus = Focus::Data,
           Action::LoadMenu => {
@@ -429,22 +421,20 @@ impl<'a> App<'a> {
               }
             }
           },
-          Action::AbortQuery => {
-            match &self.state.query_task {
-              Some(DbTask::Query(task)) => {
-                task.abort();
-                self.state.query_task = None;
-                self.components.data.set_cancelled();
-                self.state.last_query_end = Some(chrono::Utc::now());
-              },
-              Some(DbTask::TxStart(task)) => {
-                task.abort();
-                self.state.query_task = None;
-                self.components.data.set_cancelled();
-                self.state.last_query_end = Some(chrono::Utc::now());
-              },
-              _ => {},
-            }
+          Action::AbortQuery => match &self.state.query_task {
+            Some(DbTask::Query(task)) => {
+              task.abort();
+              self.state.query_task = None;
+              self.components.data.set_cancelled();
+              self.state.last_query_end = Some(chrono::Utc::now());
+            },
+            Some(DbTask::TxStart(task)) => {
+              task.abort();
+              self.state.query_task = None;
+              self.components.data.set_cancelled();
+              self.state.last_query_end = Some(chrono::Utc::now());
+            },
+            _ => {},
           },
           Action::ClearHistory => {
             self.clear_history();
