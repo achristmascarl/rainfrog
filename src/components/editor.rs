@@ -87,6 +87,11 @@ impl<'a> Editor<'a> {
           sender.send(Action::Quit)?;
         }
       },
+      Input { key: Key::Char('q'), .. } if matches!(self.vim_state.mode, Mode::Normal) => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::AbortQuery)?;
+        }
+      },
       _ => {
         let new_vim_state = self.vim_state.clone();
         self.vim_state = match new_vim_state.transition(input, &mut self.textarea) {
