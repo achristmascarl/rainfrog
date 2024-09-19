@@ -63,7 +63,9 @@ jobs:
         uses: actions/checkout@v4
       - name: build docker image
         run: |
-          docker build . -t rainfrog_test
+          docker build . -t rainfrog_test \
+            --cache-to type=gha \
+            --cache-from type=gha
       - name: init db for docker test
         run: make db-up
       - name: docker run
