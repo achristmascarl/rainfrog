@@ -64,7 +64,7 @@ jobs:
       - name: build docker image
         run: |
           docker build . -t rainfrog_test \
-            --cache-to type=gha \
+            --cache-to type=gha,mode=max \
             --cache-from type=gha
       - name: init db for docker test
         run: |
