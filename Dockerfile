@@ -16,7 +16,7 @@ WORKDIR /usr/src/app
 RUN useradd -m -s /bin/bash rainfrog
 
 # Copy the binary from the builder image
-COPY --chmod=755 --from=builder /app/target/release/rainfrog /usr/local/bin/rainfrog
+COPY --from=builder /app/target/release/rainfrog /usr/local/bin/rainfrog
 
 # Change ownership of the files to the non-root user
 RUN chown -R rainfrog:rainfrog /usr/src/app
