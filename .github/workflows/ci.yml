@@ -75,7 +75,7 @@ jobs:
             -e db_port="5499" \
             -e db_name="rainfrog" rainfrog_test
 
-          sleep 5  # wait for run
+          sleep 10  # wait for container
       - name: check container status
         run: |
           container_status=$(docker ps -f name=rainfrog_test --format "{{.Status}}")
