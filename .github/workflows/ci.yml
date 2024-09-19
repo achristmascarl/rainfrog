@@ -85,6 +85,8 @@ jobs:
             echo "container did not start"
             exit 1
           fi
+      - name: clean up
+        run: docker rm -f rainfrog_test
 
   rustfmt:
     name: Rustfmt
