@@ -79,7 +79,7 @@ jobs:
       - name: check container status
         run: |
           container_status=$(docker ps -f name=rainfrog_test --format "{{.Status}}")
-          make db-down 
+          echo "$container_status"
           if [[ "$container_status" == "Up"* ]]; then
             echo "container started"
           else
