@@ -64,10 +64,13 @@ jobs:
       - name: Set up Docker CLI
         uses: docker/setup-buildx-action@v3
       - name: build docker image
-        run: |
-          docker buildx build --output type=docker . -t rainfrog_test \
-            --cache-to type=gha,mode=max \
-            --cache-from type=gha
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          tags: rainfrog_test
+          outputs: type=docker
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: init db for docker test
         run: |
           make db-up
