@@ -68,28 +68,24 @@ jobs:
         run: make db-up
       - name: docker run
         run: |
-          docker run -d --name rainfrog_test \
+          docker run -dit --rm --name rainfrog_test \
             -e username="root" \
             -e password="password" \
             -e hostname="host.docker.internal" \
             -e db_port="5499" \
             -e db_name="rainfrog" rainfrog_test
 
-          sleep 10  # wait for container
+          sleep 5  # wait for container
       - name: check container status
         run: |
           container_status=$(docker ps -f name=rainfrog_test --format "{{.Status}}")
-          echo "$container_status"
+          make db-down 
           if [[ "$container_status" == "Up"* ]]; then
             echo "container started"
           else
             echo "container did not start"
             exit 1
           fi
-      - name: clean up
-        run: |
-          docker rm -f rainfrog_test
-          make db-down 
 
   rustfmt:
     name: Rustfmt
