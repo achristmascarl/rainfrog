@@ -4,7 +4,8 @@ a database management tui for postgres
 
 ![rainfrog demo](demo.gif)
 
-> [!WARNING] rainfrog is currently in beta.
+> [!WARNING]
+> rainfrog is currently in beta.
 
 the goal for rainfrog is to provide a lightweight, terminal-based alternative to
 pgadmin/dbeaver.
@@ -88,11 +89,30 @@ curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/instal
 
 ## usage
 
-> [!NOTE] > `connection_url` must include your credentials for accessing the
-> database (ex. `postgres://username:password@localhost:5432/postgres`)
+> [!NOTE]
+> `connection_url` must include your credentials for accessing the database (ex. `postgres://username:password@localhost:5432/postgres`) 
 
 ```sh
 rainfrog --url $(connection_url)
+```
+
+### `docker run`
+
+> [!NOTE]
+> For now we build the image locally until the image is available in Docker Hub
+
+```sh
+docker build . -t rainfrog
+```
+
+```sh
+docker run -it --rm --name rainfrog \
+  -p <db_port>:<db_port> \
+  -e username="<username>" \
+  -e password="<password>" \
+  -e hostname="host.docker.internal" \
+  -e db_port="<db_port>" \
+  -e dbname="<dbname>" rainfrog
 ```
 
 ## keybindings
@@ -130,23 +150,37 @@ rainfrog --url $(connection_url)
 
 ### query editor
 
-keybindings may not behave exactly like vim. the full list of active vim
-keybindings in rainfrog can be found at [vim.rs](./src/vim.rs). | keybinding |
-description |
-|------------------------|----------------------------------------| |
-`Alt+Enter`, `F5` | execute query | | `j`, `↓` | move cursor down 1 line | |
-`k`, `↑` | move cursor up 1 line | | `h`, `←` | move cursor left 1 char | | `l`,
-`→` | move cursor right 1 char | | `w` | move cursor to next start of word | |
-`e` | move cursor to next end of word | | `b` | move cursor to prev start of
-word | | `0` | move cursor to beginning of line | | `$` | move cursor to end of
-line | | `gg` | jump to top of editor | | `G` | jump to bottom of current list |
-| `Esc` | return to normal mode | | `i` | enter insert (edit) mode | | `I` |
-enter insert mode at beginning of line | | `A` | enter insert mode at end of
-line | | `o` | insert new line below and insert | | `v` | enter visual (select)
-mode | | `V` | enter visual mode and select line | | `r` | begin replace
-operation | | `y` | begin yank (copy) operation | | `x` | begin cut operation |
-| `p` | paste from clipboard | | `u` | undo | | `Ctrl+r` | redo | | `Ctrl+e` |
-scroll down | | `Ctrl+y` | scroll up |
+Keybindings may not behave exactly like Vim. The full list of active Vim keybindings in Rainfrog can be found at [vim.rs](./src/vim.rs).
+
+| Keybinding                | Description                            |
+|---------------------------|----------------------------------------|
+| `Alt+Enter`, `F5`         | Execute query                          |
+| `j`, `↓`                  | Move cursor down 1 line                |
+| `k`, `↑`                  | Move cursor up 1 line                  |
+| `h`, `←`                  | Move cursor left 1 char                |
+| `l`, `→`                  | Move cursor right 1 char               |
+| `w`                       | Move cursor to next start of word      |
+| `e`                       | Move cursor to next end of word        |
+| `b`                       | Move cursor to previous start of word  |
+| `0`                       | Move cursor to beginning of line       |
+| `$`                       | Move cursor to end of line             |
+| `gg`                      | Jump to top of editor                  |
+| `G`                       | Jump to bottom of current list         |
+| `Esc`                     | Return to normal mode                  |
+| `i`                       | Enter insert (edit) mode               |
+| `I`                       | Enter insert mode at beginning of line | 
+| `A`                       | Enter insert mode at end of line       |
+| `o`                       | Insert new line below and enter insert |
+| `v`                       | Enter visual (select) mode             |
+| `V`                       | Enter visual mode and select line      |
+| `r`                       | Begin replace operation                |
+| `y`                       | Begin yank (copy) operation            |
+| `x`                       | Begin cut operation                    |
+| `p`                       | Paste from clipboard                   |
+| `u`                       | Undo                                   |
+| `Ctrl+r`                  | Redo                                   |
+| `Ctrl+e`                  | Scroll down                            |
+| `Ctrl+y`                  | Scroll up                              |
 
 ### query history
 
