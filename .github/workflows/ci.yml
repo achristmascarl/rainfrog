@@ -86,7 +86,9 @@ jobs:
             exit 1
           fi
       - name: clean up
-        run: docker rm -f rainfrog_test
+        run: |
+          docker rm -f rainfrog_test
+          make db-down 
 
   rustfmt:
     name: Rustfmt
