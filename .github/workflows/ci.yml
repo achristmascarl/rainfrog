@@ -56,13 +56,14 @@ jobs:
         run: cargo test --features ${{ matrix.features }} --workspace
 
   docker:
+    name: Test Docker
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: build docker image
         run: |
-          docker build . rainfrog_test
+          docker build . -t rainfrog_test
       - name: init db for docker test
         run: make db-up
       - name: docker run
