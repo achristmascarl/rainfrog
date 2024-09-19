@@ -67,7 +67,9 @@ jobs:
             --cache-to type=gha \
             --cache-from type=gha
       - name: init db for docker test
-        run: make db-up
+        run: |
+          make db-up
+          sleep 5 # wait for db container
       - name: docker run
         run: |
           docker run -dit --rm --name rainfrog_test \
