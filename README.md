@@ -107,12 +107,11 @@ docker build . -t rainfrog
 
 ```sh
 docker run -it --rm --name rainfrog \
-  -p <db_port>:<db_port> \
   -e username="<username>" \
   -e password="<password>" \
   -e hostname="host.docker.internal" \
   -e db_port="<db_port>" \
-  -e dbname="<dbname>" rainfrog
+  -e db_name="<db_name>" rainfrog
 ```
 
 ## keybindings

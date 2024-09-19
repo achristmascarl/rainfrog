@@ -24,4 +24,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD pidof rainfrog || exit 1
 
 # Command to construct the full connection URL using environment variables
-CMD ["bash", "-c", "rainfrog --url postgres://$username:$password@$hostname:$db_port/$dbname"]
+CMD ["bash", "-c", "rainfrog --url postgres://$username:$password@$hostname:$db_port/$db_name"]
