@@ -99,21 +99,14 @@ rainfrog --url $(connection_url)
 
 ### `docker run`
 
-> [!NOTE]
-> For now we build the image locally until the image is available in Docker Hub
-
 ```sh
-docker build . -t rainfrog
-```
-
-```sh
-docker run -it --rm --name rainfrog \
+docker run --platform linux/amd64 -it --rm --name rainfrog \
   --add-host host.docker.internal:host-gateway \
   -e username="<username>" \
   -e password="<password>" \
   -e hostname="host.docker.internal" \
   -e db_port="<db_port>" \
-  -e db_name="<db_name>" rainfrog
+  -e db_name="<db_name>" achristmascarl/rainfrog:latest
 ```
 
 ## keybindings
