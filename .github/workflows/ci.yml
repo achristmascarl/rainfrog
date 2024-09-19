@@ -61,16 +61,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Set up Docker CLI
-        uses: docker/setup-buildx-action@v3
       - name: build docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          tags: rainfrog_test
-          outputs: type=docker
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          docker build . -t rainfrog_test
       - name: init db for docker test
         run: |
           make db-up
@@ -87,14 +80,13 @@ jobs:
           sleep 5  # wait for container
       - name: check container status
         run: |
-          docker ps
-          docker logs -t rainfrog_test
           container_status=$(docker ps -f name=rainfrog_test --format "{{.Status}}")
-          echo "$container_status"
           if [[ "$container_status" == "Up"* ]]; then
             echo "container started"
           else
             echo "container did not start"
+            echo "logs: "
+            docker logs -t rainfrog_test
             exit 1
           fi
 
