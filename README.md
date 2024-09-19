@@ -108,7 +108,7 @@ docker build . -t rainfrog
 
 ```sh
 docker run -it --rm --name rainfrog \
-  --add-host host.docker.internal:host-gateway \ # needed on linux
+  --add-host host.docker.internal:host-gateway \
   -e username="<username>" \
   -e password="<password>" \
   -e hostname="host.docker.internal" \
