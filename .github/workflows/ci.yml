@@ -82,6 +82,7 @@ jobs:
           sleep 5  # wait for container
       - name: check container status
         run: |
+          docker ps
           docker logs -t rainfrog_test
           container_status=$(docker ps -f name=rainfrog_test --format "{{.Status}}")
           echo "$container_status"
