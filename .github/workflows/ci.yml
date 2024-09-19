@@ -108,7 +108,7 @@ jobs:
         with:
           push: true
           context: .
-          tags: achristmascarl/rainfrog:latest,achristmascarl/rainfrog:${{ github.ref }}
+          tags: achristmascarl/rainfrog:latest,achristmascarl/rainfrog:v0.0.1-test
           cache-from: type=gha
           cache-to: type=gha,mode=max`
 
