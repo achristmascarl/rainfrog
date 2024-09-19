@@ -90,7 +90,8 @@ curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/instal
 ## usage
 
 > [!NOTE]
-> `connection_url` must include your credentials for accessing the database (ex. `postgres://username:password@localhost:5432/postgres`) 
+> the `connection_url` must include your credentials for accessing
+> the database (ex. `postgres://username:password@localhost:5432/postgres`)
 
 ```sh
 rainfrog --url $(connection_url)
@@ -151,35 +152,35 @@ docker run -it --rm --name rainfrog \
 
 Keybindings may not behave exactly like Vim. The full list of active Vim keybindings in Rainfrog can be found at [vim.rs](./src/vim.rs).
 
-| Keybinding                | Description                            |
-|---------------------------|----------------------------------------|
-| `Alt+Enter`, `F5`         | Execute query                          |
-| `j`, `↓`                  | Move cursor down 1 line                |
-| `k`, `↑`                  | Move cursor up 1 line                  |
-| `h`, `←`                  | Move cursor left 1 char                |
-| `l`, `→`                  | Move cursor right 1 char               |
-| `w`                       | Move cursor to next start of word      |
-| `e`                       | Move cursor to next end of word        |
-| `b`                       | Move cursor to previous start of word  |
-| `0`                       | Move cursor to beginning of line       |
-| `$`                       | Move cursor to end of line             |
-| `gg`                      | Jump to top of editor                  |
-| `G`                       | Jump to bottom of current list         |
-| `Esc`                     | Return to normal mode                  |
-| `i`                       | Enter insert (edit) mode               |
-| `I`                       | Enter insert mode at beginning of line | 
-| `A`                       | Enter insert mode at end of line       |
-| `o`                       | Insert new line below and enter insert |
-| `v`                       | Enter visual (select) mode             |
-| `V`                       | Enter visual mode and select line      |
-| `r`                       | Begin replace operation                |
-| `y`                       | Begin yank (copy) operation            |
-| `x`                       | Begin cut operation                    |
-| `p`                       | Paste from clipboard                   |
-| `u`                       | Undo                                   |
-| `Ctrl+r`                  | Redo                                   |
-| `Ctrl+e`                  | Scroll down                            |
-| `Ctrl+y`                  | Scroll up                              |
+| Keybinding        | Description                            |
+| ----------------- | -------------------------------------- |
+| `Alt+Enter`, `F5` | Execute query                          |
+| `j`, `↓`          | Move cursor down 1 line                |
+| `k`, `↑`          | Move cursor up 1 line                  |
+| `h`, `←`          | Move cursor left 1 char                |
+| `l`, `→`          | Move cursor right 1 char               |
+| `w`               | Move cursor to next start of word      |
+| `e`               | Move cursor to next end of word        |
+| `b`               | Move cursor to previous start of word  |
+| `0`               | Move cursor to beginning of line       |
+| `$`               | Move cursor to end of line             |
+| `gg`              | Jump to top of editor                  |
+| `G`               | Jump to bottom of current list         |
+| `Esc`             | Return to normal mode                  |
+| `i`               | Enter insert (edit) mode               |
+| `I`               | Enter insert mode at beginning of line |
+| `A`               | Enter insert mode at end of line       |
+| `o`               | Insert new line below and enter insert |
+| `v`               | Enter visual (select) mode             |
+| `V`               | Enter visual mode and select line      |
+| `r`               | Begin replace operation                |
+| `y`               | Begin yank (copy) operation            |
+| `x`               | Begin cut operation                    |
+| `p`               | Paste from clipboard                   |
+| `u`               | Undo                                   |
+| `Ctrl+r`          | Redo                                   |
+| `Ctrl+e`          | Scroll down                            |
+| `Ctrl+y`          | Scroll up                              |
 
 ### query history
 
