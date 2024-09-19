@@ -78,6 +78,7 @@ jobs:
       - name: docker run
         run: |
           docker run -dit --name rainfrog_test \
+            --add-host host.docker.internal:host-gateway \
             -e username="root" \
             -e password="password" \
             -e hostname="host.docker.internal" \
