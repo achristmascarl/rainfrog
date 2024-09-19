@@ -18,12 +18,10 @@ RUN useradd -m -s /bin/bash rainfrog
 # Copy the binary from the builder image
 COPY --from=builder /app/target/release/rainfrog /usr/local/bin/rainfrog
 
-# Change ownership of the files to the non-root user
-RUN chown -R rainfrog:rainfrog /usr/src/app
 USER rainfrog
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD pidof rainfrog || exit 1
 
 # Command to construct the full connection URL using environment variables
-CMD ["bash", "-c", "rainfrog --url postgres://$username:$password@$hostname:$db_port/$dbname"]
+CMD ["bash", "-c", "rainfrog --url postgres://$username:$password@$hostname:$db_port/$db_name"]

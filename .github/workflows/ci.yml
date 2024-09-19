@@ -55,6 +55,41 @@ jobs:
         if: ${{ matrix.target == null }}
         run: cargo test --features ${{ matrix.features }} --workspace
 
+  docker:
+    name: Test Docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: build docker image
+        run: |
+          docker build . -t rainfrog_test
+      - name: init db for docker test
+        run: |
+          make db-up
+          sleep 5 # wait for db container
+      - name: docker run
+        run: |
+          docker run -dit --name rainfrog_test \
+            --add-host host.docker.internal:host-gateway \
+            -e username="root" \
+            -e password="password" \
+            -e hostname="host.docker.internal" \
+            -e db_port="5499" \
+            -e db_name="rainfrog" rainfrog_test
+          sleep 5  # wait for container
+      - name: check container status
+        run: |
+          container_status=$(docker ps -f name=rainfrog_test --format "{{.Status}}")
+          if [[ "$container_status" == "Up"* ]]; then
+            echo "container started"
+          else
+            echo "container did not start"
+            echo "logs: "
+            docker logs -t rainfrog_test
+            exit 1
+          fi
+
   rustfmt:
     name: Rustfmt
     runs-on: ubuntu-latest
