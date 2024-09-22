@@ -16,7 +16,7 @@ profile:
 
 db-up:
 	PORT=$(port) docker compose up -d --wait
-	sleep .25
+	sleep 1
 
 db-down:
 	PORT=$(port) docker compose kill
