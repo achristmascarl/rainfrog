@@ -8,7 +8,10 @@ use sqlparser::{
   parser::{Parser, ParserError},
 };
 use sqlx::{
-  postgres::{PgColumn, PgPool, PgPoolOptions, PgQueryResult, PgRow, PgTypeInfo, PgTypeKind, PgValueRef, Postgres},
+  postgres::{
+    PgColumn, PgConnectOptions, PgPool, PgPoolOptions, PgQueryResult, PgRow, PgTypeInfo, PgTypeKind, PgValueRef,
+    Postgres,
+  },
   types::Uuid,
   Column, Database, Either, Error, Pool, Row, Transaction, ValueRef,
 };
@@ -34,8 +37,8 @@ pub type Headers = Vec<Header>;
 pub type DbPool = PgPool;
 pub type DbError = sqlx::Either<Error, ParserError>;
 
-pub async fn init_pool(url: String) -> Result<PgPool, Error> {
-  PgPoolOptions::new().max_connections(5).connect(&url).await
+pub async fn init_pool(opts: PgConnectOptions) -> Result<PgPool, Error> {
+  PgPoolOptions::new().max_connections(5).connect_with(opts).await
 }
 
 // since it's possible for raw_sql to execute multiple queries in a single string,
