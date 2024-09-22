@@ -104,9 +104,9 @@ default to what is in your environment variables.
 ```sh
 rainfrog \
   --username <username> \
-  --host <host> \
-  --port <port> \
-  --database <database>
+  --host <hostname> \
+  --port <db_port> \
+  --database <db_name>
 ```
 
 ### with connection url
