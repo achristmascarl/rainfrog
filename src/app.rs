@@ -14,7 +14,10 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 use sqlparser::{ast::Statement, keywords::DELETE};
-use sqlx::{postgres::Postgres, Either, Transaction};
+use sqlx::{
+  postgres::{PgConnectOptions, Postgres},
+  Either, Transaction,
+};
 use tokio::{
   sync::{
     mpsc::{self},
@@ -52,7 +55,7 @@ pub struct HistoryEntry {
 }
 
 pub struct AppState<'a> {
-  pub connection_string: String,
+  pub connection_opts: PgConnectOptions,
   pub focus: Focus,
   pub query_task: Option<DbTask<'a>>,
   pub history: Vec<HistoryEntry>,
@@ -75,8 +78,6 @@ pub struct QueryResultsWithMetadata {
 
 pub struct App<'a> {
   pub config: Config,
-  pub tick_rate: Option<f64>,
-  pub frame_rate: Option<f64>,
   pub components: Components<'static>,
   pub should_quit: bool,
   pub last_tick_key_events: Vec<KeyEvent>,
@@ -87,7 +88,7 @@ pub struct App<'a> {
 }
 
 impl<'a> App<'a> {
-  pub fn new(connection_string: String, tick_rate: Option<f64>, frame_rate: Option<f64>) -> Result<Self> {
+  pub fn new(connection_opts: PgConnectOptions) -> Result<Self> {
     let focus = Focus::Menu;
     let menu = Menu::new();
     let editor = Editor::new();
@@ -95,8 +96,6 @@ impl<'a> App<'a> {
     let data = Data::new();
     let config = Config::new()?;
     Ok(Self {
-      tick_rate,
-      frame_rate,
       components: Components {
         menu: Box::new(menu),
         editor: Box::new(editor),
@@ -109,7 +108,7 @@ impl<'a> App<'a> {
       last_frame_mouse_event: None,
       pool: None,
       state: AppState {
-        connection_string,
+        connection_opts,
         focus,
         query_task: None,
         history: vec![],
@@ -133,12 +132,12 @@ impl<'a> App<'a> {
 
   pub async fn run(&mut self) -> Result<()> {
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
-    let connection_url = self.state.connection_string.clone();
-    let pool = database::init_pool(connection_url).await?;
+    let connection_opts = self.state.connection_opts.clone();
+    let pool = database::init_pool(connection_opts).await?;
     log::info!("{pool:?}");
     self.pool = Some(pool);
 
-    let mut tui = tui::Tui::new()?.tick_rate(self.tick_rate).frame_rate(self.frame_rate);
+    let mut tui = tui::Tui::new()?;
     tui.enter()?;
 
     self.components.menu.register_action_handler(action_tx.clone())?;
