@@ -89,9 +89,30 @@ curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/instal
 
 ## usage
 
-> [!NOTE]
-> the `connection_url` must include your credentials for accessing
-> the database (ex. `postgres://username:password@localhost:5432/postgres`)
+all arguments are optional; you will be prompted to provide any missing information.
+
+```sh
+rainfrog
+```
+
+### with individual options
+
+if any options are not provided, you will be prompted to input them.
+if you do not provide an input, that option will
+default to what is in your environment variables.
+
+```sh
+rainfrog \
+  --username <username> \
+  --host <host> \
+  --port <port> \
+  --database <database>
+```
+
+### with connection url
+
+the `connection_url` must include all the necessary options for connecting
+to the database (ex. `postgres://username:password@localhost:5432/postgres`)
 
 ```sh
 rainfrog --url $(connection_url)
