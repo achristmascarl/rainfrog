@@ -54,6 +54,11 @@ jobs:
       - name: Run tests (default)
         if: ${{ matrix.target == null }}
         run: cargo test --features ${{ matrix.features }} --workspace
+      - name: Setup docker (mac)
+        if: ${{ matrix.os-name == 'mac' }}
+        run: |
+          brew install docker
+          colima start
       - name: Test start (default)
         if: ${{ matrix.target == null }}
         run: make
