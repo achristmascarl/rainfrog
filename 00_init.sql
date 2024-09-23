@@ -83,6 +83,56 @@ INSERT INTO "sensor_data" (robot_id, temperature, humidity, pressure, coordinate
 (2, 45.2, 0.08, 1015.10, '(40.7, -74.0)', '09:15:00', E'\\xCAFEBABE', 'WARNING', ARRAY[512, 1024, 2048]),
 (3, 28.7, 0.22, 1010.50, '(51.5, -0.1)', '18:45:00', E'\\xFACEFEED', 'CRITICAL', ARRAY[2048, 4096, 8192]);
 
+-- Additional test data for "user" table
+INSERT INTO "user" (email, nicknames, age, height, is_active, last_login) VALUES
+('chani@fremen.com', ARRAY['Sihaya'], 16, 165.5, true, '2023-03-20 12:00:00+00'),
+('stilgar@sietch.com', ARRAY['Naib'], 40, 178.0, true, '2023-03-18 09:30:00+00'),
+('jessica@bene-gesserit.com', ARRAY['Reverend Mother'], 45, 175.0, true, '2023-03-17 14:45:00+00'),
+('thufir@mentat.com', ARRAY['Master of Assassins'], 54, 180.0, false, '2023-03-16 11:20:00+00'),
+('gurney@warrior.com', NULL, 35, 183.0, true, '2023-03-19 16:15:00+00'),
+('duncan@swordmaster.com', ARRAY['Ghola', 'Swordmaster'], 30, 182.0, true, '2023-03-22 08:45:00+00'),
+('irulan@corrino.com', ARRAY['Princess', 'Historian'], 25, 170.5, true, '2023-03-21 17:30:00+00'),
+('feyd@harkonnen.com', NULL, 20, 175.5, true, '2023-03-23 11:15:00+00'),
+('liet@ecologist.com', ARRAY['Planetologist', 'Judge'], 50, 176.0, false, '2023-03-20 14:00:00+00'),
+('alia@child.com', ARRAY['Abomination', 'St. Alia of the Knife'], 4, 100.0, true, '2023-03-24 09:00:00+00');
+
+-- Additional test data for "robot" table
+INSERT INTO "robot" (name, manufacture_date, specifications, serial_number) VALUES
+('Sandworm Detector', '2023-03-10', '{"range": 100, "accuracy": 0.99, "power_source": "solar"}', gen_random_uuid()),
+('Spice Refinery', '2023-03-05', '{"capacity": 10000, "purity": 0.98, "automation_level": "high"}', gen_random_uuid()),
+('Weather Control', '2023-02-28', '{"range": 500, "precision": 0.95, "energy_consumption": "moderate"}', gen_random_uuid()),
+('Shield Wall Generator', '2023-02-25', '{"coverage": 1000, "strength": 0.97, "recharge_rate": "fast"}', gen_random_uuid()),
+('Distrans Communicator', '2023-03-15', '{"range": 1000, "encryption": "high", "battery_life": "1 week"}', gen_random_uuid());
+
+-- Additional test data for "part" table
+INSERT INTO "part" (name, cost, weight, dimensions, previous_prices, description) VALUES
+('Thumper', 500.00, 10.5, '(30,10)', ARRAY[480.00, 490.00, 495.00], 'Rhythmic sand pounder'),
+('Fremkit', 200.00, 2.0, '(20,15)', ARRAY[180.00, 190.00], 'Fremen desert survival kit'),
+('Stillsuit', 1500.00, 3.5, '(5,5)', ARRAY[1400.00, 1450.00], 'Water-recycling body suit'),
+('Crysknife', 3000.00, 0.5, '(2,20)', ARRAY[2900.00, 2950.00], 'Weapon made from sandworm tooth'),
+('Ornithopter Wing', 4000.00, 100.0, '(200,50)', ARRAY[3800.00, 3900.00], 'Flexible aircraft wing');
+
+-- Additional test data for "robot_parts" table
+INSERT INTO "robot_parts" (robot_id, part_id, part_quantity, installation_date) VALUES
+(4, 4, 2, '2023-03-11'),
+(4, 5, 1, '2023-03-12'),
+(5, 1, 3, '2023-03-06'),
+(5, 3, 1, '2023-03-07'),
+(6, 2, 4, '2023-03-01'),
+(6, 5, 2, '2023-03-02'),
+(7, 1, 1, '2023-02-26'),
+(7, 4, 3, '2023-02-27'),
+(8, 2, 2, '2023-03-16'),
+(8, 3, 1, '2023-03-17');
+
+-- Additional test data for "sensor_data" table
+INSERT INTO "sensor_data" (robot_id, temperature, humidity, pressure, coordinates, measurement_time, data_blob, status, readings) VALUES
+(4, 38.2, 0.05, 1012.75, '(35.6, -115.1)', '10:45:00', E'\\xBEEFCAFE', 'NORMAL', ARRAY[2048, 4096, 8192]),
+(5, 42.8, 0.03, 1014.30, '(36.1, -115.2)', '13:20:00', E'\\xDEADC0DE', 'WARNING', ARRAY[1024, 2048, 4096]),
+(6, 36.5, 0.07, 1013.80, '(35.9, -115.0)', '16:00:00', E'\\xFEEDBEEF', 'NORMAL', ARRAY[512, 1024, 2048]),
+(7, 39.7, 0.04, 1011.90, '(36.0, -115.3)', '19:30:00', E'\\xCAFEBABE', 'CRITICAL', ARRAY[4096, 8192, 16384]),
+(8, 37.1, 0.06, 1012.50, '(35.8, -115.1)', '22:15:00', E'\\xFACEFEED', 'WARNING', ARRAY[2048, 4096, 8192]);
+
 -- additional schema for testing
 CREATE SCHEMA "etl";
 
