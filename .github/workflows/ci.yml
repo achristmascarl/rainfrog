@@ -54,6 +54,21 @@ jobs:
       - name: Run tests (default)
         if: ${{ matrix.target == null }}
         run: cargo test --features ${{ matrix.features }} --workspace
+      - name: Test start (default)
+        if: ${{ matrix.target == null }}
+        run: make
+      - name: Init db (cross)
+        if: ${{ matrix.target != null }}
+        run: |
+          make db-up
+      - name: Test start (cross)
+        if: ${{ matrix.target != null }}
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          command: run
+          target: ${{ matrix.target }}
+          args: "--features ${{ matrix.features }} -- -u postgres://root:password@localhost:5499/rainfrog"
+          cross-version: 7b79041c9278769eca57fae10c74741f5aa5c14b
 
   docker:
     name: Test Docker
