@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use sqlparser::{ast::Statement, keywords::DELETE};
 use sqlx::{
   postgres::{PgConnectOptions, Postgres},
-  Either, Transaction,
+  Connection, Database, Either, Executor, Pool, Transaction,
 };
 use tokio::{
   sync::{
@@ -38,14 +38,21 @@ use crate::{
   config::Config,
   database::{self, statement_type_string, DbError, DbPool, Rows},
   focus::Focus,
-  tui,
+  generic_database, tui,
   ui::center,
 };
 
-pub enum DbTask<'a> {
+pub enum DbTask<'a, DB>
+where
+  DB: Database + generic_database::ValueParser,
+  DB::QueryResult: generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
+{
   Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
-  TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, Postgres>)>),
-  TxPending(Transaction<'a, Postgres>, QueryResultsWithMetadata),
+  TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, DB>)>),
+  TxPending(Transaction<'a, DB>, QueryResultsWithMetadata),
   TxCommit(tokio::task::JoinHandle<QueryResultsWithMetadata>),
 }
 
@@ -54,20 +61,34 @@ pub struct HistoryEntry {
   pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
-pub struct AppState<'a> {
-  pub connection_opts: PgConnectOptions,
+pub struct AppState<'a, DB: Database>
+where
+  DB: Database + generic_database::ValueParser,
+  DB::QueryResult: generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
+{
+  pub connection_opts: <DB::Connection as Connection>::Options,
   pub focus: Focus,
-  pub query_task: Option<DbTask<'a>>,
+  pub query_task: Option<DbTask<'a, DB>>,
   pub history: Vec<HistoryEntry>,
   pub last_query_start: Option<chrono::DateTime<chrono::Utc>>,
   pub last_query_end: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-pub struct Components<'a> {
-  pub menu: Box<dyn MenuComponent<'a>>,
-  pub editor: Box<dyn Component>,
-  pub history: Box<dyn Component>,
-  pub data: Box<dyn DataComponent<'a>>,
+pub struct Components<'a, DB: Database + generic_database::ValueParser>
+where
+  DB: Database + generic_database::ValueParser,
+  DB::QueryResult: generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
+{
+  pub menu: Box<dyn MenuComponent<'a, DB>>,
+  pub editor: Box<dyn Component<DB>>,
+  pub history: Box<dyn Component<DB>>,
+  pub data: Box<dyn DataComponent<'a, DB>>,
 }
 
 #[derive(Debug)]
@@ -76,19 +97,33 @@ pub struct QueryResultsWithMetadata {
   pub statement_type: Statement,
 }
 
-pub struct App<'a> {
+pub struct App<'a, DB: Database + generic_database::ValueParser>
+where
+  DB: Database + generic_database::ValueParser,
+  DB::QueryResult: generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
+{
   pub config: Config,
-  pub components: Components<'static>,
+  pub components: Components<'static, DB>,
   pub should_quit: bool,
   pub last_tick_key_events: Vec<KeyEvent>,
   pub last_frame_mouse_event: Option<MouseEvent>,
-  pub pool: Option<DbPool>,
-  pub state: AppState<'a>,
+  pub pool: Option<generic_database::DbPool<DB>>,
+  pub state: AppState<'a, DB>,
   last_focused_tab: Focus,
 }
 
-impl<'a> App<'a> {
-  pub fn new(connection_opts: PgConnectOptions) -> Result<Self> {
+impl<'a, DB> App<'a, DB>
+where
+  DB: Database + generic_database::ValueParser,
+  DB::QueryResult: generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
+{
+  pub fn new(connection_opts: <DB::Connection as Connection>::Options) -> Result<Self> {
     let focus = Focus::Menu;
     let menu = Menu::new();
     let editor = Editor::new();
@@ -133,7 +168,7 @@ impl<'a> App<'a> {
   pub async fn run(&mut self) -> Result<()> {
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
     let connection_opts = self.state.connection_opts.clone();
-    let pool = database::init_pool(connection_opts).await?;
+    let pool = generic_database::init_pool::<DB>(connection_opts).await?;
     log::info!("{pool:?}");
     self.pool = Some(pool);
 
@@ -348,7 +383,7 @@ impl<'a> App<'a> {
           Action::LoadMenu => {
             log::info!("LoadMenu");
             if let Some(pool) = &self.pool {
-              let results = database::query(
+              let results = generic_database::query(
                 "select table_schema, table_name
                         from information_schema.tables
                         where table_schema != 'pg_catalog'
@@ -377,7 +412,7 @@ impl<'a> App<'a> {
                     self.components.data.set_loading();
                     let tx = pool.begin().await?;
                     self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                      let (results, tx) = database::query_with_tx(tx, query_string.clone()).await;
+                      let (results, tx) = generic_database::query_with_tx::<DB>(tx, query_string.clone()).await;
                       match results {
                         Ok(Either::Left(rows_affected)) => {
                           log::info!("{:?} rows affected", rows_affected);
@@ -405,7 +440,7 @@ impl<'a> App<'a> {
                   Ok((false, statement_type)) => {
                     self.components.data.set_loading();
                     self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                      let results = database::query(query_string.clone(), &pool).await;
+                      let results = generic_database::query(query_string.clone(), &pool).await;
                       match &results {
                         Ok(rows) => {
                           log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);

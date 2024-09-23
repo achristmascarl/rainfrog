@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, marker::PhantomData, sync::Arc, time::Duration};
 
 use color_eyre::eyre::Result;
 use crossterm::{
@@ -8,6 +8,7 @@ use crossterm::{
 use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::Statement;
+use sqlx::{Database, Executor, Pool};
 use tokio::sync::{mpsc::UnboundedSender, Mutex};
 use tui_textarea::{Input, Key};
 
@@ -51,8 +52,23 @@ pub trait SettableDataTable<'a> {
   fn set_cancelled(&mut self);
 }
 
-pub trait DataComponent<'a>: Component + SettableDataTable<'a> {}
-impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a>
+pub trait DataComponent<'a, DB>: Component<DB> + SettableDataTable<'a>
+where
+  DB: Database + crate::generic_database::ValueParser,
+  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
+{
+}
+impl<'a, T, DB> DataComponent<'a, DB> for T
+where
+  T: Component<DB> + SettableDataTable<'a>,
+  DB: Database + crate::generic_database::ValueParser,
+  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
 {
 }
 
@@ -231,7 +247,14 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
   }
 }
 
-impl<'a> Component for Data<'a> {
+impl<'a, DB> Component<DB> for Data<'a>
+where
+  DB: Database + crate::generic_database::ValueParser,
+  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
+{
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -245,7 +268,7 @@ impl<'a> Component for Data<'a> {
   fn handle_mouse_events(
     &mut self,
     mouse: crossterm::event::MouseEvent,
-    app_state: &AppState,
+    app_state: &AppState<'_, DB>,
   ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Data {
       return Ok(None);
@@ -268,7 +291,7 @@ impl<'a> Component for Data<'a> {
     Ok(None)
   }
 
-  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     if app_state.focus != Focus::Data {
       return Ok(None);
     }
@@ -372,14 +395,14 @@ impl<'a> Component for Data<'a> {
     Ok(None)
   }
 
-  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
+  fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     if let Action::Query(query) = action {
       self.scrollable.reset_scroll();
     }
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
     let focused = app_state.focus == Focus::Data;
 
     let mut block = Block::default().borders(Borders::ALL).border_style(if focused {

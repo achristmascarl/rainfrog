@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Write, pin::Pin, string::String};
 use futures::stream::{BoxStream, StreamExt};
 use sqlparser::{
   ast::Statement,
-  dialect::PostgreSqlDialect,
+  dialect::{MySqlDialect, PostgreSqlDialect, SQLiteDialect},
   keywords,
   parser::{Parser, ParserError},
 };
@@ -15,6 +15,8 @@ use sqlx::{
   types::Uuid,
   Column, Database, Either, Error, Pool, Row, Transaction, ValueRef,
 };
+
+pub mod postgresql;
 
 #[derive(Debug)]
 pub struct Header {

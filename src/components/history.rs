@@ -2,6 +2,7 @@ use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use serde::{Deserialize, Serialize};
+use sqlx::{Database, Executor, Pool};
 use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{Input, Key, Scrolling, TextArea};
 
@@ -49,7 +50,14 @@ impl History {
   }
 }
 
-impl Component for History {
+impl<DB> Component<DB> for History
+where
+  DB: Database + crate::generic_database::ValueParser,
+  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
+{
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -60,7 +68,7 @@ impl Component for History {
     Ok(())
   }
 
-  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     if app_state.focus != Focus::History {
       return Ok(None);
     }
@@ -77,7 +85,7 @@ impl Component for History {
     Ok(None)
   }
 
-  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     if app_state.focus != Focus::History {
       return Ok(None);
     }
@@ -112,11 +120,11 @@ impl Component for History {
     Ok(None)
   }
 
-  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
+  fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
     let focused = app_state.focus == Focus::History;
     if let Some(query_start) = app_state.last_query_start {
       self.last_query_duration = match app_state.last_query_end {

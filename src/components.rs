@@ -15,8 +15,15 @@ pub mod editor;
 pub mod history;
 pub mod menu;
 pub mod scroll_table;
+use sqlx::{Database, Executor, Pool};
+pub trait Component<DB>
+where
+  DB: Database + crate::generic_database::ValueParser,
+  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
 
-pub trait Component {
+{
   /// Register an action handler that can send actions for processing if necessary.
   ///
   /// # Arguments
@@ -68,7 +75,7 @@ pub trait Component {
     &mut self,
     event: Option<Event>,
     last_tick_key_events: Vec<KeyEvent>,
-    app_state: &AppState,
+    app_state: &AppState<'_, DB>,
   ) -> Result<Option<Action>> {
     let r = match event {
       Some(Event::Key(key_event)) => self.handle_key_events(key_event, app_state)?,
@@ -87,7 +94,7 @@ pub trait Component {
   ///
   /// * `Result<Option<Action>>` - An action to be processed or none.
   #[allow(unused_variables)]
-  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     Ok(None)
   }
   /// Handle mouse events and produce actions if necessary.
@@ -100,7 +107,7 @@ pub trait Component {
   ///
   /// * `Result<Option<Action>>` - An action to be processed or none.
   #[allow(unused_variables)]
-  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     Ok(None)
   }
   /// Update the state of the component based on a received action. (REQUIRED)
@@ -113,7 +120,7 @@ pub trait Component {
   ///
   /// * `Result<Option<Action>>` - An action to be processed or none.
   #[allow(unused_variables)]
-  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
+  fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     Ok(None)
   }
   /// Render the component on the screen. (REQUIRED)
@@ -126,5 +133,5 @@ pub trait Component {
   /// # Returns
   ///
   /// * `Result<()>` - An Ok result or an error.
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()>;
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()>;
 }

@@ -10,6 +10,7 @@ use crossterm::event::{KeyCode, KeyEvent, MouseEventKind};
 use indexmap::IndexMap;
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
+use sqlx::{Database, Executor, Pool};
 use symbols::scrollbar;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -34,8 +35,24 @@ pub trait SettableTableList<'a> {
   fn set_table_list(&mut self, data: Option<Result<Rows, DbError>>);
 }
 
-pub trait MenuComponent<'a>: Component + SettableTableList<'a> {}
-impl<'a, T> MenuComponent<'a> for T where T: Component + SettableTableList<'a>
+pub trait MenuComponent<'a, DB>: Component<DB> + SettableTableList<'a>
+where
+  DB: Database + crate::generic_database::ValueParser,
+  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
+{
+}
+
+impl<'a, T, DB> MenuComponent<'a, DB> for T
+where
+  T: Component<DB> + SettableTableList<'a>,
+  DB: Database + crate::generic_database::ValueParser,
+  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
 {
 }
 
@@ -187,7 +204,14 @@ impl<'a> SettableTableList<'a> for Menu {
   }
 }
 
-impl Component for Menu {
+impl<DB> Component<DB> for Menu
+where
+  DB: Database + crate::generic_database::ValueParser,
+  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
+{
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -201,7 +225,7 @@ impl Component for Menu {
   fn handle_mouse_events(
     &mut self,
     mouse: crossterm::event::MouseEvent,
-    app_state: &AppState,
+    app_state: &AppState<'_, DB>,
   ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Menu {
       return Ok(None);
@@ -214,7 +238,7 @@ impl Component for Menu {
     Ok(None)
   }
 
-  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     if app_state.focus != Focus::Menu {
       return Ok(None);
     }
@@ -320,7 +344,7 @@ impl Component for Menu {
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
     let focused = app_state.focus == Focus::Menu;
     let parent_block = Block::default();
     let stable_keys = self.table_map.keys().enumerate();

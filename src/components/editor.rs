@@ -10,6 +10,7 @@ use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
+use sqlx::{Database, Executor, Pool};
 use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{Input, Key, Scrolling, TextArea};
 
@@ -66,7 +67,14 @@ impl<'a> Editor<'a> {
     }
   }
 
-  pub fn transition_vim_state(&mut self, input: Input, app_state: &AppState) -> Result<()> {
+  pub fn transition_vim_state<DB>(&mut self, input: Input, app_state: &AppState<'_, DB>) -> Result<()>
+  where
+    DB: Database + crate::generic_database::ValueParser,
+    DB::QueryResult: crate::generic_database::HasRowsAffected,
+    for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+    for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+  
+  {
     match input {
       Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
         if app_state.query_task.is_none() {
@@ -108,7 +116,14 @@ impl<'a> Editor<'a> {
   }
 }
 
-impl<'a> Component for Editor<'a> {
+impl<'a, DB> Component<DB> for Editor<'a>
+where
+  DB: Database + crate::generic_database::ValueParser,
+  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+
+{
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -119,7 +134,7 @@ impl<'a> Component for Editor<'a> {
     Ok(())
   }
 
-  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     if app_state.focus != Focus::Editor {
       return Ok(None);
     }
@@ -145,7 +160,7 @@ impl<'a> Component for Editor<'a> {
     &mut self,
     event: Option<Event>,
     last_tick_key_events: Vec<KeyEvent>,
-    app_state: &AppState,
+    app_state: &AppState<'_, DB>,
   ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Editor {
       return Ok(None);
@@ -161,7 +176,7 @@ impl<'a> Component for Editor<'a> {
     Ok(None)
   }
 
-  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
+  fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     match action {
       Action::MenuPreview(preview_type, schema, table) => {
         if app_state.query_task.is_some() {
@@ -230,7 +245,7 @@ impl<'a> Component for Editor<'a> {
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
     let focused = app_state.focus == Focus::Editor;
 
     if let Some(query_start) = app_state.last_query_start {
