@@ -329,11 +329,14 @@ pub fn row_to_json(row: &PgRow) -> HashMap<String, String> {
 }
 
 pub fn vec_to_string<T: std::string::ToString>(vec: Vec<T>) -> String {
-  vec.iter().fold(String::new(), |mut output, b| {
-    let s = b.to_string();
-    let _ = write!(output, "{s}");
-    output
-  })
+  let mut content = String::new();
+  for (i, elem) in vec.iter().enumerate() {
+    content.push_str(&*elem.to_string());
+    if i != vec.len() - 1 {
+      content.push_str(", ");
+    }
+  }
+  String::from("{ ".to_owned() + &*content + &*" }".to_owned())
 }
 
 pub fn row_to_vec(row: &PgRow) -> Vec<String> {
