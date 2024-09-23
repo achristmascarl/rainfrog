@@ -13,7 +13,10 @@ use ratatui::{
   Frame,
 };
 use serde::{Deserialize, Serialize};
-use sqlparser::{ast::Statement, keywords::DELETE};
+use sqlparser::{
+  ast::Statement,
+  keywords::{DELETE, NAME},
+};
 use sqlx::{
   postgres::{PgConnectOptions, Postgres},
   Connection, Database, Either, Executor, Pool, Transaction,
@@ -36,19 +39,18 @@ use crate::{
     Component,
   },
   config::Config,
-  database::{self, statement_type_string, DbError, DbPool, Rows},
+  database::{self, get_dialect, statement_type_string, DbError, DbPool, Rows},
   focus::Focus,
-  generic_database, tui,
+  tui,
   ui::center,
 };
 
 pub enum DbTask<'a, DB>
 where
-  DB: Database + generic_database::ValueParser,
-  DB::QueryResult: generic_database::HasRowsAffected,
+  DB: Database + database::ValueParser,
+  DB::QueryResult: database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-
 {
   Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
   TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, DB>)>),
@@ -63,11 +65,10 @@ pub struct HistoryEntry {
 
 pub struct AppState<'a, DB: Database>
 where
-  DB: Database + generic_database::ValueParser,
-  DB::QueryResult: generic_database::HasRowsAffected,
+  DB: Database + database::ValueParser,
+  DB::QueryResult: database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-
 {
   pub connection_opts: <DB::Connection as Connection>::Options,
   pub focus: Focus,
@@ -77,13 +78,12 @@ where
   pub last_query_end: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-pub struct Components<'a, DB: Database + generic_database::ValueParser>
+pub struct Components<'a, DB: Database + database::ValueParser>
 where
-  DB: Database + generic_database::ValueParser,
-  DB::QueryResult: generic_database::HasRowsAffected,
+  DB: Database + database::ValueParser,
+  DB::QueryResult: database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-
 {
   pub menu: Box<dyn MenuComponent<'a, DB>>,
   pub editor: Box<dyn Component<DB>>,
@@ -97,31 +97,29 @@ pub struct QueryResultsWithMetadata {
   pub statement_type: Statement,
 }
 
-pub struct App<'a, DB: Database + generic_database::ValueParser>
+pub struct App<'a, DB: Database + database::ValueParser>
 where
-  DB: Database + generic_database::ValueParser,
-  DB::QueryResult: generic_database::HasRowsAffected,
+  DB: Database + database::ValueParser,
+  DB::QueryResult: database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-
 {
   pub config: Config,
   pub components: Components<'static, DB>,
   pub should_quit: bool,
   pub last_tick_key_events: Vec<KeyEvent>,
   pub last_frame_mouse_event: Option<MouseEvent>,
-  pub pool: Option<generic_database::DbPool<DB>>,
+  pub pool: Option<database::DbPool<DB>>,
   pub state: AppState<'a, DB>,
   last_focused_tab: Focus,
 }
 
 impl<'a, DB> App<'a, DB>
 where
-  DB: Database + generic_database::ValueParser,
-  DB::QueryResult: generic_database::HasRowsAffected,
+  DB: Database + database::ValueParser,
+  DB::QueryResult: database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-
 {
   pub fn new(connection_opts: <DB::Connection as Connection>::Options) -> Result<Self> {
     let focus = Focus::Menu;
@@ -168,7 +166,7 @@ where
   pub async fn run(&mut self) -> Result<()> {
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
     let connection_opts = self.state.connection_opts.clone();
-    let pool = generic_database::init_pool::<DB>(connection_opts).await?;
+    let pool = database::init_pool::<DB>(connection_opts).await?;
     log::info!("{pool:?}");
     self.pool = Some(pool);
 
@@ -383,7 +381,7 @@ where
           Action::LoadMenu => {
             log::info!("LoadMenu");
             if let Some(pool) = &self.pool {
-              let results = generic_database::query(
+              let results = database::query(
                 "select table_schema, table_name
                         from information_schema.tables
                         where table_schema != 'pg_catalog'
@@ -401,7 +399,8 @@ where
             let query_string = query_lines.clone().join(" \n");
             if !query_string.is_empty() {
               self.add_to_history(query_lines.clone());
-              let first_query = database::get_first_query(query_string.clone());
+              let dialect = get_dialect(<DB as sqlx::Database>::NAME);
+              let first_query = database::get_first_query(query_string.clone(), dialect.as_ref());
               let should_use_tx = first_query
                 .map(|(_, statement_type)| (database::should_use_tx(statement_type.clone()), statement_type));
               let action_tx = action_tx.clone();
@@ -412,7 +411,7 @@ where
                     self.components.data.set_loading();
                     let tx = pool.begin().await?;
                     self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                      let (results, tx) = generic_database::query_with_tx::<DB>(tx, query_string.clone()).await;
+                      let (results, tx) = database::query_with_tx::<DB>(tx, query_string.clone()).await;
                       match results {
                         Ok(Either::Left(rows_affected)) => {
                           log::info!("{:?} rows affected", rows_affected);
@@ -440,7 +439,7 @@ where
                   Ok((false, statement_type)) => {
                     self.components.data.set_loading();
                     self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                      let results = generic_database::query(query_string.clone(), &pool).await;
+                      let results = database::query(query_string.clone(), &pool).await;
                       match &results {
                         Ok(rows) => {
                           log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);

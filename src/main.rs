@@ -9,7 +9,6 @@ pub mod components;
 pub mod config;
 pub mod database;
 pub mod focus;
-pub mod generic_database;
 pub mod tui;
 pub mod ui;
 pub mod utils;
@@ -59,8 +58,8 @@ async fn main() -> Result<()> {
 // sqlx defaults to reading from environment variables if no inputs are provided
 fn build_connection_opts<DB: Database>(args: Cli) -> Result<<DB::Connection as Connection>::Options>
 where
-  DB: Database + generic_database::ValueParser,
-  DB::QueryResult: generic_database::HasRowsAffected,
+  DB: Database + database::ValueParser,
+  DB::QueryResult: database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
 {

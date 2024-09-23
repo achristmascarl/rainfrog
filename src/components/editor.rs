@@ -69,11 +69,10 @@ impl<'a> Editor<'a> {
 
   pub fn transition_vim_state<DB>(&mut self, input: Input, app_state: &AppState<'_, DB>) -> Result<()>
   where
-    DB: Database + crate::generic_database::ValueParser,
-    DB::QueryResult: crate::generic_database::HasRowsAffected,
+    DB: Database + crate::database::ValueParser,
+    DB::QueryResult: crate::database::HasRowsAffected,
     for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
     for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-  
   {
     match input {
       Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
@@ -118,11 +117,10 @@ impl<'a> Editor<'a> {
 
 impl<'a, DB> Component<DB> for Editor<'a>
 where
-  DB: Database + crate::generic_database::ValueParser,
-  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  DB: Database + crate::database::ValueParser,
+  DB::QueryResult: crate::database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-
 {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);

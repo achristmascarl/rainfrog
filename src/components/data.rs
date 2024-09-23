@@ -21,7 +21,7 @@ use crate::{
     Component,
   },
   config::{Config, KeyBindings},
-  database::{get_headers, parse_value, row_to_json, row_to_vec, statement_type_string, DbError, Rows},
+  database::{get_headers, row_to_json, row_to_vec, statement_type_string, DbError, Rows},
   focus::Focus,
   tui::Event,
 };
@@ -54,21 +54,19 @@ pub trait SettableDataTable<'a> {
 
 pub trait DataComponent<'a, DB>: Component<DB> + SettableDataTable<'a>
 where
-  DB: Database + crate::generic_database::ValueParser,
-  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  DB: Database + crate::database::ValueParser,
+  DB::QueryResult: crate::database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-
 {
 }
 impl<'a, T, DB> DataComponent<'a, DB> for T
 where
   T: Component<DB> + SettableDataTable<'a>,
-  DB: Database + crate::generic_database::ValueParser,
-  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  DB: Database + crate::database::ValueParser,
+  DB::QueryResult: crate::database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-
 {
 }
 
@@ -249,11 +247,10 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
 
 impl<'a, DB> Component<DB> for Data<'a>
 where
-  DB: Database + crate::generic_database::ValueParser,
-  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  DB: Database + crate::database::ValueParser,
+  DB::QueryResult: crate::database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-
 {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);

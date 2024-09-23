@@ -18,11 +18,10 @@ pub mod scroll_table;
 use sqlx::{Database, Executor, Pool};
 pub trait Component<DB>
 where
-  DB: Database + crate::generic_database::ValueParser,
-  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  DB: Database + crate::database::ValueParser,
+  DB::QueryResult: crate::database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-
 {
   /// Register an action handler that can send actions for processing if necessary.
   ///

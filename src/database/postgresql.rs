@@ -17,9 +17,8 @@ use sqlx::{
 };
 
 use super::{vec_to_string, Value};
-use crate::generic_database::ValueParser;
 
-impl ValueParser for Postgres {
+impl super::ValueParser for Postgres {
   fn parse_value(row: &<Postgres as sqlx::Database>::Row, col: &<Postgres as sqlx::Database>::Column) -> Option<Value> {
     let col_type = col.type_info().to_string();
     let raw_value = row.try_get_raw(col.ordinal()).unwrap();
@@ -182,7 +181,7 @@ mod tests {
   use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
 
   use super::*;
-  use crate::generic_database::{get_first_query, DbError};
+  use crate::database::{get_first_query, DbError};
 
   #[test]
   fn test_get_first_query() {

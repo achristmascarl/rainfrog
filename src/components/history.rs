@@ -52,11 +52,10 @@ impl History {
 
 impl<DB> Component<DB> for History
 where
-  DB: Database + crate::generic_database::ValueParser,
-  DB::QueryResult: crate::generic_database::HasRowsAffected,
+  DB: Database + crate::database::ValueParser,
+  DB::QueryResult: crate::database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-
 {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
