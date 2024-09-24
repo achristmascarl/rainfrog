@@ -20,7 +20,7 @@ profile:
 
 db-up:
 	PG_PORT=$(pg_port) MYSQL_PORT=$(mysql_port) docker compose up -d --wait
-	sleep 3
+	sleep 1
 
 db-down:
 	docker compose kill

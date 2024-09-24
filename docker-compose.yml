@@ -20,14 +20,3 @@ services:
       - "${MYSQL_PORT}:3306"
     volumes:
       - ./dev/mysql_init.sql:/docker-entrypoint-initdb.d/schema.sql
-  # rainfrog-sqlite:
-  #   container_name: rainfrog-sqlite
-  #   image: postgres:16.3
-  #   environment:
-  #     POSTGRES_USER: "root"
-  #     POSTGRES_PASSWORD: "password"
-  #     POSTGRES_DB: "rainfrog"
-  #   ports:
-  #     - "${SQLITE_PORT}:5432"
-  #   volumes:
-  #     - ./00_init.sql:/docker-entrypoint-initdb.d/00_init.sql
