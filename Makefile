@@ -8,6 +8,7 @@ version ?= ""
 
 .DEFAULT_GOAL := restart
 
+.PHONY: dev profile restart release
 dev:
 	cargo run -- -u $(url)
 

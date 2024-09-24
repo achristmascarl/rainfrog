@@ -9,7 +9,7 @@ services:
     ports:
       - "${PG_PORT}:5432"
     volumes:
-      - ./pg_init.sql:/docker-entrypoint-initdb.d/00_init.sql
+      - ./dev/pg_init.sql:/docker-entrypoint-initdb.d/00_init.sql
   rainfrog-mysql:
     container_name: rainfrog-mysql
     image: mysql:8.4
@@ -19,7 +19,7 @@ services:
     ports:
       - "${MYSQL_PORT}:3306"
     volumes:
-      - ./mysql_init.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ./dev/mysql_init.sql:/docker-entrypoint-initdb.d/schema.sql
   # rainfrog-sqlite:
   #   container_name: rainfrog-sqlite
   #   image: postgres:16.3
