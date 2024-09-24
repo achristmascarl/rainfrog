@@ -10,9 +10,8 @@ build = "build.rs"
 license = "MIT"
 exclude = [
   ".github/*",
-  "demo.gif",
-  "demo.tape",
-  "00_init.sql",
+  "vhs/*",
+  "dev/*",
   ".git/*",
   "Makefile",
   "docker-compose.yml",
