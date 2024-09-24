@@ -1,12 +1,22 @@
 services:
-  rainfrog-db:
-    container_name: rainfrog-db
+  rainfrog-postgres:
+    container_name: rainfrog-postgres
     image: postgres:16.3
     environment:
       POSTGRES_USER: "root"
       POSTGRES_PASSWORD: "password"
       POSTGRES_DB: "rainfrog"
     ports:
-      - "${PORT}:5432"
+      - "${PG_PORT}:5432"
     volumes:
-      - ./00_init.sql:/docker-entrypoint-initdb.d/00_init.sql
+      - ./dev/pg_init.sql:/docker-entrypoint-initdb.d/00_init.sql
+  rainfrog-mysql:
+    container_name: rainfrog-mysql
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: "password"
+      MYSQL_DATABASE: "rainfrog"
+    ports:
+      - "${MYSQL_PORT}:3306"
+    volumes:
+      - ./dev/mysql_init.sql:/docker-entrypoint-initdb.d/schema.sql
