@@ -191,13 +191,7 @@ impl<'a> ScrollTable<'a> {
   }
 }
 
-impl<'a, DB> Component<DB> for ScrollTable<'a>
-where
-  DB: Database + crate::database::ValueParser,
-  DB::QueryResult: crate::database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-{
+impl<'a, DB: Database> Component<DB> for ScrollTable<'a> {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
     self.parent_area = area;
     let render_area = self.block.inner_if_some(area);
