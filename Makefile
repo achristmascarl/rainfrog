@@ -24,7 +24,7 @@ db-up:
 	sleep 1
 
 db-down:
-	rm ./dev/rainfrog.sqlite3
+	rm -f ./dev/rainfrog.sqlite3
 	docker compose kill
 	docker compose rm -f -v
 
