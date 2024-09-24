@@ -19,10 +19,12 @@ profile:
 	cargo flamegraph --post-process flamelens --root -- -u $(url)
 
 db-up:
+	sqlite3 ./dev/rainfrog.sqlite3 < ./dev/sqlite_init.sql
 	PG_PORT=$(pg_port) MYSQL_PORT=$(mysql_port) docker compose up -d --wait
 	sleep 1
 
 db-down:
+	rm ./dev/rainfrog.sqlite3
 	docker compose kill
 	docker compose rm -f -v
 
