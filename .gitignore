@@ -5,3 +5,4 @@ flamegraph*
 *flamegraph.stacks
 *.data
 test.tape
+dev/*.sqlite3

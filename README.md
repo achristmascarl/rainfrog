@@ -2,7 +2,7 @@
 
 a database management tui for postgres
 
-![rainfrog demo](demo.gif)
+![rainfrog demo](vhs/demo.gif)
 
 > [!WARNING]
 > rainfrog is currently in beta.

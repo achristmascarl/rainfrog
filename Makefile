@@ -1,10 +1,14 @@
 SHELL := /bin/bash
-port ?= 5499
-url ?= postgres://root:password@localhost:$(port)/rainfrog?sslmode=disable
+pg_port ?= 5499
+mysql_port ?= 3317
+postgres_url ?= postgres://root:password@localhost:$(pg_port)/rainfrog?sslmode=disable
+mysql_url ?= mysql://root:password@localhost:$(mysql_port)/rainfrog?allowPublicKeyRetrieval=true&useSSL=false
+url ?= $(postgres_url)
 version ?= ""
 
 .DEFAULT_GOAL := restart
 
+.PHONY: dev profile restart release
 dev:
 	cargo run -- -u $(url)
 
@@ -15,12 +19,14 @@ profile:
 	cargo flamegraph --post-process flamelens --root -- -u $(url)
 
 db-up:
-	PORT=$(port) docker compose up -d --wait
-	sleep 3
+	sqlite3 ./dev/rainfrog.sqlite3 < ./dev/sqlite_init.sql
+	PG_PORT=$(pg_port) MYSQL_PORT=$(mysql_port) docker compose up -d --wait
+	sleep 1
 
 db-down:
-	PORT=$(port) docker compose kill
-	PORT=$(port) docker compose rm -f -v
+	rm -f ./dev/rainfrog.sqlite3
+	docker compose kill
+	docker compose rm -f -v
 
 restart: db-down db-up dev
 
