@@ -37,20 +37,14 @@ pub trait SettableTableList<'a> {
 
 pub trait MenuComponent<'a, DB>: Component<DB> + SettableTableList<'a>
 where
-  DB: Database + crate::database::ValueParser,
-  DB::QueryResult: crate::database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+  DB: sqlx::Database,
 {
 }
 
 impl<'a, T, DB> MenuComponent<'a, DB> for T
 where
   T: Component<DB> + SettableTableList<'a>,
-  DB: Database + crate::database::ValueParser,
-  DB::QueryResult: crate::database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+  DB: sqlx::Database,
 {
 }
 

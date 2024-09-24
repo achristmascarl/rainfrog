@@ -18,6 +18,12 @@ use sqlx::{
 
 use super::{vec_to_string, Value};
 
+impl super::HasRowsAffected for PgQueryResult {
+  fn rows_affected(&self) -> u64 {
+    self.rows_affected()
+  }
+}
+
 impl super::ValueParser for Postgres {
   fn parse_value(row: &<Postgres as sqlx::Database>::Row, col: &<Postgres as sqlx::Database>::Column) -> Option<Value> {
     let col_type = col.type_info().to_string();

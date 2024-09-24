@@ -28,5 +28,5 @@ pub struct Cli {
   pub port: Option<u16>,
 
   #[arg(long = "database", value_name = "DATABASE", help = "Name of database for connection (ex. postgres)")]
-  pub database: Option<String>,
+  pub database: String,
 }

@@ -42,27 +42,6 @@ pub trait HasRowsAffected {
   fn rows_affected(&self) -> u64;
 }
 
-// Implement for PostgreSQL
-impl HasRowsAffected for PgQueryResult {
-  fn rows_affected(&self) -> u64 {
-    self.rows_affected()
-  }
-}
-
-// Implement for MySQL
-impl HasRowsAffected for MySqlQueryResult {
-  fn rows_affected(&self) -> u64 {
-    self.rows_affected()
-  }
-}
-
-// Implement for SQLite
-impl HasRowsAffected for SqliteQueryResult {
-  fn rows_affected(&self) -> u64 {
-    self.rows_affected()
-  }
-}
-
 pub async fn init_pool<DB: Database>(opts: <DB::Connection as Connection>::Options) -> Result<Pool<DB>, Error> {
   PoolOptions::new().max_connections(5).connect_with(opts).await
 }

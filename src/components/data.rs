@@ -52,21 +52,8 @@ pub trait SettableDataTable<'a> {
   fn set_cancelled(&mut self);
 }
 
-pub trait DataComponent<'a, DB>: Component<DB> + SettableDataTable<'a>
-where
-  DB: Database + crate::database::ValueParser,
-  DB::QueryResult: crate::database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-{
-}
-impl<'a, T, DB> DataComponent<'a, DB> for T
-where
-  T: Component<DB> + SettableDataTable<'a>,
-  DB: Database + crate::database::ValueParser,
-  DB::QueryResult: crate::database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+pub trait DataComponent<'a, DB: sqlx::Database>: Component<DB> + SettableDataTable<'a> {}
+impl<'a, T, DB: sqlx::Database> DataComponent<'a, DB> for T where T: Component<DB> + SettableDataTable<'a>
 {
 }
 

@@ -45,13 +45,7 @@ use crate::{
   ui::center,
 };
 
-pub enum DbTask<'a, DB>
-where
-  DB: Database + database::ValueParser,
-  DB::QueryResult: database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-{
+pub enum DbTask<'a, DB: sqlx::Database> {
   Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
   TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, DB>)>),
   TxPending(Transaction<'a, DB>, QueryResultsWithMetadata),
@@ -63,13 +57,7 @@ pub struct HistoryEntry {
   pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
-pub struct AppState<'a, DB: Database>
-where
-  DB: Database + database::ValueParser,
-  DB::QueryResult: database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-{
+pub struct AppState<'a, DB: Database> {
   pub connection_opts: <DB::Connection as Connection>::Options,
   pub focus: Focus,
   pub query_task: Option<DbTask<'a, DB>>,
@@ -78,13 +66,7 @@ where
   pub last_query_end: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-pub struct Components<'a, DB: Database + database::ValueParser>
-where
-  DB: Database + database::ValueParser,
-  DB::QueryResult: database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-{
+pub struct Components<'a, DB: sqlx::Database> {
   pub menu: Box<dyn MenuComponent<'a, DB>>,
   pub editor: Box<dyn Component<DB>>,
   pub history: Box<dyn Component<DB>>,
@@ -97,13 +79,7 @@ pub struct QueryResultsWithMetadata {
   pub statement_type: Statement,
 }
 
-pub struct App<'a, DB: Database + database::ValueParser>
-where
-  DB: Database + database::ValueParser,
-  DB::QueryResult: database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-{
+pub struct App<'a, DB: sqlx::Database> {
   pub config: Config,
   pub components: Components<'static, DB>,
   pub should_quit: bool,

@@ -35,12 +35,15 @@ async fn tokio_main() -> Result<()> {
   initialize_panic_handler()?;
 
   let args = Cli::parse();
-  if let Some(db) = args.database.as_deref() {
-    if db == "postgres" {
+  match args.database.as_str() {
+    "postgres" => {
       let connection_opts = build_connection_opts::<Postgres>(args.clone())?;
       let mut app = App::<'_, Postgres>::new(connection_opts)?;
       app.run().await?;
-    }
+    },
+    "mysql" => todo!(),
+    "sqlite" => todo!(),
+    _ => return Err(eyre::Report::msg("Please specify a database type")),
   }
   Ok(())
 }
@@ -58,10 +61,6 @@ async fn main() -> Result<()> {
 // sqlx defaults to reading from environment variables if no inputs are provided
 fn build_connection_opts<DB: Database>(args: Cli) -> Result<<DB::Connection as Connection>::Options>
 where
-  DB: Database + database::ValueParser,
-  DB::QueryResult: database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
 {
   match args.connection_url {
     Some(url) => Ok(<DB::Connection as Connection>::Options::from_str(&url)?),
