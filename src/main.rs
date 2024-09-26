@@ -46,9 +46,9 @@ async fn tokio_main() -> Result<()> {
 async fn main() -> Result<()> {
   if let Err(e) = tokio_main().await {
     eprintln!("{} error: Something went wrong", env!("CARGO_PKG_NAME"));
-    Err(e)
+    return Err(e);
   } else {
-    Ok(())
+    return Ok(());
   }
 }
 
