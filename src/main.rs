@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
+// for some reason, clippy thinks the tokio::main fn has a needless return...
+#![allow(clippy::needless_return)]
 
 pub mod action;
 pub mod app;
@@ -46,9 +48,9 @@ async fn tokio_main() -> Result<()> {
 async fn main() -> Result<()> {
   if let Err(e) = tokio_main().await {
     eprintln!("{} error: Something went wrong", env!("CARGO_PKG_NAME"));
-    return Err(e);
+    Err(e)
   } else {
-    return Ok(());
+    Ok(())
   }
 }
 
