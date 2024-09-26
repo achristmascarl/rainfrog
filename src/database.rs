@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use futures::stream::{BoxStream, StreamExt};
 use sqlparser::{
@@ -15,7 +15,11 @@ use sqlx::{
   Column, Connection, Database, Either, Error, Executor, Pool, Row, Transaction,
 };
 
+use crate::cli::Cli;
+
+mod mysql;
 mod postgresql;
+mod sqlite;
 
 #[derive(Debug)]
 pub struct Header {
@@ -42,19 +46,36 @@ pub trait HasRowsAffected {
   fn rows_affected(&self) -> u64;
 }
 
-pub async fn init_pool<DB: Database>(opts: <DB::Connection as Connection>::Options) -> Result<Pool<DB>, Error> {
-  PoolOptions::new().max_connections(5).connect_with(opts).await
+pub trait DatabaseQueries {
+  fn preview_tables_query() -> String;
+  fn preview_rows_query(schema: &str, table: &str) -> String;
+  fn preview_columns_query(schema: &str, table: &str) -> String;
+  fn preview_constraints_query(schema: &str, table: &str) -> String;
+  fn preview_indexes_query(schema: &str, table: &str) -> String;
+  fn preview_policies_query(schema: &str, table: &str) -> String;
 }
 
-pub async fn query<DB>(query: String, pool: &Pool<DB>) -> Result<Rows, DbError>
+pub trait ValueParser: Database {
+  fn parse_value(row: &Self::Row, col: &Self::Column) -> Option<Value>;
+}
+
+pub trait BuildConnectionOptions: Database {
+  fn build_connection_opts(args: Cli) -> color_eyre::eyre::Result<<Self::Connection as Connection>::Options>;
+}
+
+pub async fn init_pool<DB: Database>(opts: <DB::Connection as Connection>::Options) -> Result<Pool<DB>, Error> {
+  PoolOptions::new().max_connections(3).connect_with(opts).await
+}
+
+// since it's possible for raw_sql to execute multiple queries in a single string,
+// we only execute the first one and then drop the rest.
+pub async fn query<DB>(query: String, dialect: &(dyn Dialect + Sync), pool: &Pool<DB>) -> Result<Rows, DbError>
 where
   DB: Database + ValueParser,
   DB::QueryResult: HasRowsAffected,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
 {
-  // get the db type from
-  let dialect = get_dialect(DB::NAME);
-  let first_query = get_first_query(query, dialect.as_ref());
+  let first_query = get_first_query(query, dialect);
   match first_query {
     Ok((first_query, _)) => {
       let stream = sqlx::raw_sql(&first_query).fetch_many(pool);
@@ -64,58 +85,7 @@ where
   }
 }
 
-pub fn get_first_query(query: String, dialect: &dyn Dialect) -> Result<(String, Statement), DbError> {
-  let ast = Parser::parse_sql(dialect, &query);
-  match ast {
-    Ok(ast) if ast.len() > 1 => {
-      Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())))
-    },
-    Ok(ast) if ast.is_empty() => Err(Either::Right(ParserError::ParserError("Parsed query is empty".to_owned()))),
-    Ok(ast) => {
-      let statement = ast[0].clone();
-      Ok((statement.to_string(), statement))
-    },
-    Err(e) => Err(Either::Right(e)),
-  }
-}
-
-pub fn get_dialect(db_type: &str) -> Box<dyn Dialect + Send + Sync> {
-  match db_type {
-    "postgres" => Box::new(PostgreSqlDialect {}),
-    "mysql" => Box::new(MySqlDialect {}),
-    _ => Box::new(SQLiteDialect {}),
-  }
-}
-
-pub trait ValueParser: Database {
-  fn parse_value(row: &Self::Row, col: &Self::Column) -> Option<Value>;
-}
-
-pub fn row_to_vec<DB: Database + ValueParser>(row: &DB::Row) -> Vec<String> {
-  row.columns().iter().map(|col| DB::parse_value(row, col).unwrap().string).collect()
-}
-
-pub fn row_to_json<DB: Database + ValueParser>(row: &DB::Row) -> HashMap<String, String> {
-  let mut result = HashMap::new();
-  for col in row.columns() {
-    let value = match DB::parse_value(row, col) {
-      Some(v) => v.string,
-      _ => "[ unsupported ]".to_string(),
-    };
-    result.insert(col.name().to_string(), value);
-  }
-
-  result
-}
-
-pub fn get_headers<DB: Database + ValueParser>(row: &DB::Row) -> Headers {
-  row
-    .columns()
-    .iter()
-    .map(|col| Header { name: col.name().to_string(), type_name: col.type_info().to_string() })
-    .collect()
-}
-
+#[allow(clippy::type_complexity)]
 pub async fn query_stream<'a, DB>(
   mut stream: BoxStream<'_, Result<Either<DB::QueryResult, DB::Row>, Error>>,
 ) -> Result<Rows, DbError>
@@ -123,42 +93,41 @@ where
   DB: Database + ValueParser,
   DB::QueryResult: HasRowsAffected,
 {
-  let mut query_finished = false;
   let mut query_rows = vec![];
   let mut query_rows_affected: Option<u64> = None;
   let mut headers: Headers = vec![];
-  while !query_finished {
-    let next = stream.next().await;
-    match next {
-      Some(Ok(Either::Left(result))) => {
+  // I change the implementation of the while loop here as the original one times out mysql connection
+  while let Some(item) = stream.next().await {
+    match item {
+      Ok(Either::Left(result)) => {
+        // For non-SELECT queries
         query_rows_affected = Some(result.rows_affected());
-        query_finished = true;
       },
-      Some(Ok(Either::Right(row))) => {
+      Ok(Either::Right(row)) => {
+        // For SELECT queries
         query_rows.push(row_to_vec::<DB>(&row));
         if headers.is_empty() {
           headers = get_headers::<DB>(&row);
         }
       },
-      Some(Err(e)) => return Err(Either::Left(e)),
-      None => return Err(Either::Left(Error::Protocol("Results stream empty".to_owned()))),
-    };
+      Err(e) => return Err(Either::Left(e)),
+    }
   }
   Ok(Rows { rows_affected: query_rows_affected, headers, rows: query_rows })
 }
 
 pub async fn query_with_tx<'a, DB>(
-  mut tx: Transaction<'_, DB>,
+  mut tx: Transaction<'static, DB>,
+  dialect: &(dyn Dialect + Sync),
   query: String,
-) -> (Result<Either<u64, Rows>, DbError>, Transaction<'_, DB>)
+) -> (Result<Either<u64, Rows>, DbError>, Transaction<'static, DB>)
 where
   DB: Database + ValueParser,
   DB::QueryResult: HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
 {
-  let dialect = get_dialect(DB::NAME);
-  let first_query = get_first_query(query, dialect.as_ref());
+  let first_query = get_first_query(query, dialect);
   match first_query {
     Ok((first_query, statement_type)) => {
       match statement_type {
@@ -180,6 +149,21 @@ where
       }
     },
     Err(e) => (Err(e), tx),
+  }
+}
+
+pub fn get_first_query(query: String, dialect: &dyn Dialect) -> Result<(String, Statement), DbError> {
+  let ast = Parser::parse_sql(dialect, &query);
+  match ast {
+    Ok(ast) if ast.len() > 1 => {
+      Err(Either::Right(ParserError::ParserError("Only one statement allowed per query".to_owned())))
+    },
+    Ok(ast) if ast.is_empty() => Err(Either::Right(ParserError::ParserError("Parsed query is empty".to_owned()))),
+    Ok(ast) => {
+      let statement = ast[0].clone();
+      Ok((statement.to_string(), statement))
+    },
+    Err(e) => Err(Either::Right(e)),
   }
 }
 
@@ -205,6 +189,27 @@ pub fn should_use_tx(statement: Statement) -> bool {
   }
 }
 
+pub fn get_headers<DB: Database + ValueParser>(row: &DB::Row) -> Headers {
+  row
+    .columns()
+    .iter()
+    .map(|col| Header { name: col.name().to_string(), type_name: col.type_info().to_string() })
+    .collect()
+}
+
+pub fn row_to_json<DB: Database + ValueParser>(row: &DB::Row) -> HashMap<String, String> {
+  let mut result = HashMap::new();
+  for col in row.columns() {
+    let value = match DB::parse_value(row, col) {
+      Some(v) => v.string,
+      _ => "[ unsupported ]".to_string(),
+    };
+    result.insert(col.name().to_string(), value);
+  }
+
+  result
+}
+
 pub fn vec_to_string<T: std::string::ToString>(vec: Vec<T>) -> String {
   let mut content = String::new();
   for (i, elem) in vec.iter().enumerate() {
@@ -216,6 +221,18 @@ pub fn vec_to_string<T: std::string::ToString>(vec: Vec<T>) -> String {
   "{ ".to_owned() + &*content + &*" }".to_owned()
 }
 
+pub fn row_to_vec<DB: Database + ValueParser>(row: &DB::Row) -> Vec<String> {
+  row.columns().iter().map(|col| DB::parse_value(row, col).unwrap().string).collect()
+}
+
 pub fn get_keywords() -> Vec<String> {
   keywords::ALL_KEYWORDS.iter().map(|k| k.to_string()).collect()
+}
+
+pub fn get_dialect(db_type: &str) -> Arc<dyn Dialect + Send + Sync> {
+  match db_type {
+    "PostgreSQL" => Arc::new(PostgreSqlDialect {}),
+    "MySQL" => Arc::new(MySqlDialect {}),
+    _ => Arc::new(SQLiteDialect {}),
+  }
 }

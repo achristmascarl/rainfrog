@@ -15,6 +15,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use sqlparser::{
   ast::Statement,
+  dialect::Dialect,
   keywords::{DELETE, NAME},
 };
 use sqlx::{
@@ -39,7 +40,7 @@ use crate::{
     Component,
   },
   config::Config,
-  database::{self, get_dialect, statement_type_string, DbError, DbPool, Rows},
+  database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, Rows},
   focus::Focus,
   tui,
   ui::center,
@@ -59,6 +60,7 @@ pub struct HistoryEntry {
 
 pub struct AppState<'a, DB: Database> {
   pub connection_opts: <DB::Connection as Connection>::Options,
+  pub dialect: Arc<dyn Dialect + Send + Sync>,
   pub focus: Focus,
   pub query_task: Option<DbTask<'a, DB>>,
   pub history: Vec<HistoryEntry>,
@@ -92,7 +94,7 @@ pub struct App<'a, DB: sqlx::Database> {
 
 impl<'a, DB> App<'a, DB>
 where
-  DB: Database + database::ValueParser,
+  DB: Database + database::ValueParser + database::DatabaseQueries,
   DB::QueryResult: database::HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
@@ -118,6 +120,7 @@ where
       pool: None,
       state: AppState {
         connection_opts,
+        dialect: get_dialect(DB::NAME),
         focus,
         query_task: None,
         history: vec![],
@@ -357,17 +360,7 @@ where
           Action::LoadMenu => {
             log::info!("LoadMenu");
             if let Some(pool) = &self.pool {
-              let results = database::query(
-                "select table_schema, table_name
-                        from information_schema.tables
-                        where table_schema != 'pg_catalog'
-                        and table_schema != 'information_schema'
-                        group by table_schema, table_name
-                        order by table_schema, table_name asc"
-                  .to_owned(),
-                pool,
-              )
-              .await;
+              let results = database::query(DB::preview_tables_query(), self.state.dialect.as_ref(), pool).await;
               self.components.menu.set_table_list(Some(results));
             }
           },
@@ -375,19 +368,20 @@ where
             let query_string = query_lines.clone().join(" \n");
             if !query_string.is_empty() {
               self.add_to_history(query_lines.clone());
-              let dialect = get_dialect(<DB as sqlx::Database>::NAME);
-              let first_query = database::get_first_query(query_string.clone(), dialect.as_ref());
+              let first_query = database::get_first_query(query_string.clone(), self.state.dialect.as_ref());
               let should_use_tx = first_query
                 .map(|(_, statement_type)| (database::should_use_tx(statement_type.clone()), statement_type));
               let action_tx = action_tx.clone();
               if let Some(pool) = &self.pool {
                 let pool = pool.clone();
+                let dialect = self.state.dialect.clone();
                 match should_use_tx {
                   Ok((true, statement_type)) => {
                     self.components.data.set_loading();
                     let tx = pool.begin().await?;
                     self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                      let (results, tx) = database::query_with_tx::<DB>(tx, query_string.clone()).await;
+                      let (results, tx) =
+                        database::query_with_tx::<DB>(tx, dialect.as_ref(), query_string.clone()).await;
                       match results {
                         Ok(Either::Left(rows_affected)) => {
                           log::info!("{:?} rows affected", rows_affected);
@@ -414,8 +408,9 @@ where
                   },
                   Ok((false, statement_type)) => {
                     self.components.data.set_loading();
+                    let dialect = self.state.dialect.clone();
                     self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                      let results = database::query(query_string.clone(), &pool).await;
+                      let results = database::query(query_string.clone(), dialect.as_ref(), &pool).await;
                       match &results {
                         Ok(rows) => {
                           log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);

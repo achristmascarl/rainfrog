@@ -19,7 +19,7 @@ use crate::{
   action::{Action, MenuPreview},
   app::{App, AppState, DbTask},
   config::{Config, KeyBindings},
-  database::get_keywords,
+  database::{self, get_keywords, DatabaseQueries, HasRowsAffected, ValueParser},
   focus::Focus,
   tui::Event,
   vim::{Mode, Transition, Vim},
@@ -67,13 +67,11 @@ impl<'a> Editor<'a> {
     }
   }
 
-  pub fn transition_vim_state<DB>(&mut self, input: Input, app_state: &AppState<'_, DB>) -> Result<()>
-  where
-    DB: Database + crate::database::ValueParser,
-    DB::QueryResult: crate::database::HasRowsAffected,
-    for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-    for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-  {
+  pub fn transition_vim_state<DB: Database + DatabaseQueries>(
+    &mut self,
+    input: Input,
+    app_state: &AppState<'_, DB>,
+  ) -> Result<()> {
     match input {
       Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
         if app_state.query_task.is_none() {
@@ -115,13 +113,7 @@ impl<'a> Editor<'a> {
   }
 }
 
-impl<'a, DB> Component<DB> for Editor<'a>
-where
-  DB: Database + crate::database::ValueParser,
-  DB::QueryResult: crate::database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-{
+impl<'a, DB: Database + DatabaseQueries> Component<DB> for Editor<'a> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -181,28 +173,11 @@ where
           return Ok(None);
         }
         let query = match preview_type {
-          MenuPreview::Rows => format!("select * from \"{}\".\"{}\" limit 100", schema, table),
-          MenuPreview::Columns => {
-            format!(
-              "select column_name, * from information_schema.columns where table_schema = '{}' and table_name = '{}'",
-              schema, table
-            )
-          },
-          MenuPreview::Constraints => {
-            format!(
-            "select constraint_name, * from information_schema.table_constraints where table_schema = '{}' and table_name = '{}'",
-            schema, table
-          )
-          },
-          MenuPreview::Indexes => {
-            format!(
-              "select indexname, indexdef, * from pg_indexes where schemaname = '{}' and tablename = '{}'",
-              schema, table
-            )
-          },
-          MenuPreview::Policies => {
-            format!("select * from pg_policies where schemaname = '{}' and tablename = '{}'", schema, table)
-          },
+          MenuPreview::Rows => DB::preview_rows_query(&schema, &table),
+          MenuPreview::Columns => DB::preview_columns_query(&schema, &table),
+          MenuPreview::Constraints => DB::preview_constraints_query(&schema, &table),
+          MenuPreview::Indexes => DB::preview_indexes_query(&schema, &table),
+          MenuPreview::Policies => DB::preview_policies_query(&schema, &table),
         };
         self.textarea = TextArea::from(vec![query.clone()]);
         self.textarea.set_search_pattern(keyword_regex()).unwrap();

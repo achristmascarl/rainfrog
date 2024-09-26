@@ -196,13 +196,7 @@ impl<'a> SettableTableList<'a> for Menu {
   }
 }
 
-impl<DB> Component<DB> for Menu
-where
-  DB: Database + crate::database::ValueParser,
-  DB::QueryResult: crate::database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-{
+impl<DB: Database> Component<DB> for Menu {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())

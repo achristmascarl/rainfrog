@@ -28,5 +28,8 @@ pub struct Cli {
   pub port: Option<u16>,
 
   #[arg(long = "database", value_name = "DATABASE", help = "Name of database for connection (ex. postgres)")]
-  pub database: String,
+  pub database: Option<String>,
+
+  #[arg(long = "driver", value_name = "DRIVER", help = "Driver for database connection (ex. postgres)")]
+  pub driver: String,
 }

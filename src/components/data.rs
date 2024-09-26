@@ -1,4 +1,4 @@
-use std::{collections::HashMap, marker::PhantomData, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use color_eyre::eyre::Result;
 use crossterm::{
@@ -232,13 +232,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
   }
 }
 
-impl<'a, DB> Component<DB> for Data<'a>
-where
-  DB: Database + crate::database::ValueParser,
-  DB::QueryResult: crate::database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-{
+impl<'a, DB: Database> Component<DB> for Data<'a> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
