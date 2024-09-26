@@ -21,6 +21,8 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
+use crate::config::Config;
+
 pub type IO = std::io::Stdout;
 pub fn io() -> IO {
   std::io::stdout()
@@ -82,8 +84,10 @@ impl Tui {
     self
   }
 
-  pub fn mouse(mut self, mouse: bool) -> Self {
-    self.mouse = mouse;
+  pub fn mouse(mut self, mouse: Option<bool>) -> Self {
+    if mouse.is_some() {
+      self.mouse = mouse.unwrap();
+    }
     self
   }
 

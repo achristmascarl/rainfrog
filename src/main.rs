@@ -36,7 +36,7 @@ async fn tokio_main() -> Result<()> {
 
   let args = Cli::parse();
   let connection_opts = build_connection_opts(args.clone())?;
-  let mut app = App::new(connection_opts)?;
+  let mut app = App::new(connection_opts, args.mouse_mode)?;
   app.run().await?;
 
   Ok(())
