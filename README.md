@@ -93,7 +93,7 @@ curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/instal
 Usage: rainfrog [OPTIONS]
 
 Options:
-  -M, --mouse <MOUSE_MODE>   Whether to enable mouse event support. If enabled, your terminal's default mouse event handling will not
+  -M, --mouse <MOUSE_MODE>   Whether to enable mouse event support. If enabled, your terminal\'s default mouse event handling will not
                              work. [possible values: true, false]
   -u, --url <URL>            Full connection URL for the database, e.g. postgres://username:password@localhost:5432/dbname
       --username <USERNAME>  Username for database connection
