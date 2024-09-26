@@ -1,3 +1,6 @@
+[settings]
+mouse_mode = true
+
 [keybindings.Menu]
 "<Ctrl-c>" = "Quit"
 "q" = "AbortQuery"

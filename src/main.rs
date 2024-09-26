@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
+// for some reason, clippy thinks the tokio::main fn has a needless return...
+#![allow(clippy::needless_return)]
 
 pub mod action;
 pub mod app;
