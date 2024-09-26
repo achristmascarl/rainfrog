@@ -89,13 +89,23 @@ curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/instal
 
 ## usage
 
-all arguments are optional; you will be prompted to provide any missing information.
-
 ```sh
-rainfrog
+Usage: rainfrog [OPTIONS]
+
+Options:
+  -M, --mouse <MOUSE_MODE>   Whether to enable mouse event support. If enabled, your terminal\'s default mouse event handling will not
+                             work. [possible values: true, false]
+  -u, --url <URL>            Full connection URL for the database, e.g. postgres://username:password@localhost:5432/dbname
+      --username <USERNAME>  Username for database connection
+      --password <PASSWORD>  Password for database connection
+      --host <HOST>          Host for database connection (ex. localhost)
+      --port <PORT>          Port for database connection (ex. 5432)
+      --database <DATABASE>  Name of database for connection (ex. postgres)
+  -h, --help                 Print help
+  -V, --version              Print version
 ```
 
-### with individual options
+### with connection options
 
 if any options are not provided, you will be prompted to input them.
 if you do not provide an input, that option will
@@ -112,7 +122,8 @@ rainfrog \
 ### with connection url
 
 the `connection_url` must include all the necessary options for connecting
-to the database (ex. `postgres://username:password@localhost:5432/postgres`)
+to the database (ex. `postgres://username:password@localhost:5432/postgres`).
+it will take precedence over all connection options.
 
 ```sh
 rainfrog --url $(connection_url)
@@ -130,9 +141,41 @@ docker run --platform linux/amd64 -it --rm --name rainfrog \
   -e db_name="<db_name>" achristmascarl/rainfrog:latest
 ```
 
-## keybindings
+## customization
 
-### general
+rainfrog can be customized by placing a `rainfrog_config.toml` file in
+one of the following locations depending on your os, as determined by
+the [directories](https://crates.io/crates/directories) crate:
+
+| Platform | Value                                                                   | Example                                                       |
+| -------- | ----------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Linux    | `$XDG_CONFIG_HOME`/`_project_path_` or `$HOME`/.config/`_project_path_` | /home/alice/.config/barapp                                    |
+| macOS    | `$HOME`/Library/Application Support/`_project_path_`                    | /Users/Alice/Library/Application Support/com.Foo-Corp.Bar-App |
+| Windows  | `{FOLDERID_LocalAppData}`\\`_project_path_`\\config                     | C:\Users\Alice\AppData\Local\Foo Corp\Bar App\config          |
+
+you can change the default config location by exporting an environment variable.
+to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
+
+```sh
+export RAINFROG_CONFIG=~/.config
+```
+
+### settings
+
+right now, the only setting available is whether rainfrog
+captures mouse events by default. capturing mouse events
+allows you to change focus and scroll using the mouse.
+however, your terminal will not handle mouse events like it
+normally does (you won't be able to copy by highlighting, for example).
+
+### keybindings
+
+you can customize some of the default keybindings, but not all of
+them. to see a list of the ones you can customize, see the default
+config file at [.config/rainfrog_config.toml](./.config/rainfrog_config.toml). below
+are the default keybindings.
+
+#### general
 
 | keybinding                   | description                   |
 | ---------------------------- | ----------------------------- |
@@ -145,7 +188,7 @@ docker run --platform linux/amd64 -it --rm --name rainfrog \
 | `Shift+Tab`                  | cycle focus backwards         |
 | `q`, `Alt+q` in query editor | abort current query           |
 
-### menu (list of schemas and tables)
+#### menu (list of schemas and tables)
 
 | keybinding                   | description                       |
 | ---------------------------- | --------------------------------- |
@@ -163,7 +206,7 @@ docker run --platform linux/amd64 -it --rm --name rainfrog \
 | `Enter` with selected table  | preview table (100 rows)          |
 | `R`                          | reload schemas and tables         |
 
-### query editor
+#### query editor
 
 Keybindings may not behave exactly like Vim. The full list of active Vim keybindings in Rainfrog can be found at [vim.rs](./src/vim.rs).
 
@@ -197,7 +240,7 @@ Keybindings may not behave exactly like Vim. The full list of active Vim keybind
 | `Ctrl+e`          | Scroll down                            |
 | `Ctrl+y`          | Scroll up                              |
 
-### query history
+#### query history
 
 | keybinding | description                   |
 | ---------- | ----------------------------- |
@@ -209,7 +252,7 @@ Keybindings may not behave exactly like Vim. The full list of active Vim keybind
 | `I`        | edit selected query in editor |
 | `D`        | delete all history            |
 
-### results
+#### results
 
 | keybinding                | description                    |
 | ------------------------- | ------------------------------ |
@@ -275,6 +318,8 @@ features
 
 ## known issues and limitations
 
+- for x11 and wayland, yanking does not copy to the system clipboard, only
+  to the query editor's buffer. see <https://github.com/achristmascarl/rainfrog/issues/83>
 - in addition to the experience being subpar if the terminal window is too
   small, if the terminal window is too large, rainfrog will crash due to the
   maximum area of ratatui buffers being `u16::MAX` (65,535). more details in
@@ -292,6 +337,12 @@ features
 - mouse events are only used for changing focus and scrolling; the editor does
   not currently support mouse events, and menu items cannot be selected using
   the mouse
+
+## Contributing
+
+for bug reports and feature requests, please [create an issue](https://github.com/achristmascarl/rainfrog/issues/new/choose).
+
+please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening issues or creating PRs.
 
 ## acknowledgements
 

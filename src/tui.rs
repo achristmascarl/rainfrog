@@ -82,8 +82,10 @@ impl Tui {
     self
   }
 
-  pub fn mouse(mut self, mouse: bool) -> Self {
-    self.mouse = mouse;
+  pub fn mouse(mut self, mouse: Option<bool>) -> Self {
+    if mouse.is_some() {
+      self.mouse = mouse.unwrap();
+    }
     self
   }
 

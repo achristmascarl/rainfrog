@@ -8,6 +8,14 @@ use crate::utils::version;
 #[command(author, version = version(), about)]
 pub struct Cli {
   #[arg(
+    short = 'M',
+    long = "mouse",
+    value_name = "MOUSE_MODE",
+    help = "Whether to enable mouse event support. If enabled, your terminal's default mouse event handling will not work."
+  )]
+  pub mouse_mode: Option<bool>,
+
+  #[arg(
     short = 'u',
     long = "url",
     value_name = "URL",

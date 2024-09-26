@@ -31,6 +31,8 @@ pub struct Config {
   pub keybindings: KeyBindings,
   #[serde(default)]
   pub styles: Styles,
+  #[serde(default)]
+  pub settings: Settings,
 }
 
 impl Config {
@@ -74,6 +76,12 @@ impl Config {
         user_styles.entry(style_key.clone()).or_insert_with(|| *style);
       }
     }
+    match cfg.settings.mouse_mode {
+      Some(mouse_mode) => {},
+      None => {
+        cfg.settings.mouse_mode = default_config.settings.mouse_mode;
+      },
+    };
 
     Ok(cfg)
   }
@@ -270,6 +278,11 @@ pub fn parse_key_sequence(raw: &str) -> Result<Vec<KeyEvent>, String> {
   sequences.into_iter().map(parse_key_event).collect()
 }
 
+#[derive(Clone, Debug, Default, Deref, DerefMut, Deserialize)]
+pub struct Settings {
+  pub mouse_mode: Option<bool>,
+}
+
 #[derive(Clone, Debug, Default, Deref, DerefMut)]
 pub struct Styles(pub HashMap<Focus, HashMap<String, Style>>);
 
@@ -446,6 +459,7 @@ mod tests {
       c.keybindings.get(&Focus::Menu).unwrap().get(&parse_key_sequence("<q>").unwrap_or_default()).unwrap(),
       &Action::AbortQuery
     );
+    assert_eq!(c.settings.mouse_mode, Some(true));
     Ok(())
   }
 

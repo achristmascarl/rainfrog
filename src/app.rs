@@ -77,6 +77,7 @@ pub struct QueryResultsWithMetadata {
 }
 
 pub struct App<'a> {
+  pub mouse_mode_override: Option<bool>,
   pub config: Config,
   pub components: Components<'static>,
   pub should_quit: bool,
@@ -88,7 +89,7 @@ pub struct App<'a> {
 }
 
 impl<'a> App<'a> {
-  pub fn new(connection_opts: PgConnectOptions) -> Result<Self> {
+  pub fn new(connection_opts: PgConnectOptions, mouse_mode_override: Option<bool>) -> Result<Self> {
     let focus = Focus::Menu;
     let menu = Menu::new();
     let editor = Editor::new();
@@ -103,6 +104,7 @@ impl<'a> App<'a> {
         data: Box::new(data),
       },
       should_quit: false,
+      mouse_mode_override,
       config,
       last_tick_key_events: Vec::new(),
       last_frame_mouse_event: None,
@@ -137,7 +139,7 @@ impl<'a> App<'a> {
     log::info!("{pool:?}");
     self.pool = Some(pool);
 
-    let mut tui = tui::Tui::new()?;
+    let mut tui = tui::Tui::new()?.mouse(self.mouse_mode_override.or(self.config.settings.mouse_mode));
     tui.enter()?;
 
     self.components.menu.register_action_handler(action_tx.clone())?;
