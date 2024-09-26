@@ -21,8 +21,6 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::config::Config;
-
 pub type IO = std::io::Stdout;
 pub fn io() -> IO {
   std::io::stdout()
