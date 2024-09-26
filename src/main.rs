@@ -32,15 +32,16 @@ use crate::{
   utils::{initialize_logging, initialize_panic_handler, version},
 };
 
-async fn run_app<DB>(args: Cli) -> Result<()>
+async fn run_app<DB>(mut args: Cli) -> Result<()>
 where
   DB: Database + BuildConnectionOptions + ValueParser + DatabaseQueries,
   DB::QueryResult: HasRowsAffected,
   for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
   for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
 {
+  let mouse_mode = args.mouse_mode.take();
   let connection_opts = DB::build_connection_opts(args)?;
-  let mut app = App::<'_, DB>::new(connection_opts)?;
+  let mut app = App::<'_, DB>::new(connection_opts, mouse_mode)?;
   app.run().await?;
   Ok(())
 }
