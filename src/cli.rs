@@ -1,6 +1,11 @@
-use std::path::PathBuf;
+use std::{
+  io::{self, Write},
+  path::PathBuf,
+  str::FromStr,
+};
 
 use clap::Parser;
+use color_eyre::eyre::{self, Result};
 
 use crate::utils::version;
 
@@ -39,5 +44,42 @@ pub struct Cli {
   pub database: Option<String>,
 
   #[arg(long = "driver", value_name = "DRIVER", help = "Driver for database connection (ex. postgres)")]
-  pub driver: String,
+  pub driver: Option<Driver>,
+}
+
+#[derive(Parser, Debug, Clone)]
+pub enum Driver {
+  Postgres,
+  Mysql,
+  Sqlite,
+}
+
+impl FromStr for Driver {
+  type Err = eyre::Report;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    match s.to_lowercase().as_str() {
+      "postgres" | "postgresql" => Ok(Driver::Postgres),
+      "mysql" => Ok(Driver::Mysql),
+      "sqlite" => Ok(Driver::Sqlite),
+      _ => Err(eyre::Report::msg("Invalid driver")),
+    }
+  }
+}
+
+pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
+  let url = url.trim();
+  if let Some(pos) = url.find("://") {
+    url[..pos].to_lowercase().parse()
+  } else {
+    Err(eyre::Report::msg("Invalid connection URL format"))
+  }
+}
+
+pub fn prompt_for_driver() -> Result<Driver> {
+  let mut driver = String::new();
+  print!("Database driver (postgres, mysql, sqlite): ");
+  io::stdout().flush()?;
+  io::stdin().read_line(&mut driver)?;
+  driver.trim().to_lowercase().parse()
 }

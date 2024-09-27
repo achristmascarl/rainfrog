@@ -22,7 +22,7 @@ use std::{
 };
 
 use clap::Parser;
-use cli::Cli;
+use cli::{extract_driver_from_url, prompt_for_driver, Cli, Driver};
 use color_eyre::eyre::{self, Result};
 use database::{BuildConnectionOptions, DatabaseQueries, HasRowsAffected, ValueParser};
 use sqlx::{postgres::PgConnectOptions, Connection, Database, Executor, MySql, Pool, Postgres, Sqlite};
@@ -51,12 +51,18 @@ async fn tokio_main() -> Result<()> {
 
   initialize_panic_handler()?;
 
-  let args = Cli::parse();
-  match args.driver.as_str() {
-    "postgres" => run_app::<Postgres>(args).await,
-    "mysql" => run_app::<MySql>(args).await,
-    "sqlite" => run_app::<Sqlite>(args).await,
-    _ => Err(eyre::Report::msg("Please provide a valid a database type")),
+  let mut args = Cli::parse();
+  let driver = if let Some(driver) = args.driver.take() {
+    driver
+  } else if let Some(ref url) = args.connection_url {
+    extract_driver_from_url(url)?
+  } else {
+    prompt_for_driver()?
+  };
+  match driver {
+    Driver::Postgres => run_app::<Postgres>(args).await,
+    Driver::Mysql => run_app::<MySql>(args).await,
+    Driver::Sqlite => run_app::<Sqlite>(args).await,
   }
 }
 

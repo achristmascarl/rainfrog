@@ -178,3 +178,114 @@ impl super::ValueParser for Sqlite {
     }
   }
 }
+
+mod tests {
+  use sqlparser::{
+    ast::Statement,
+    dialect::SQLiteDialect,
+    parser::{Parser, ParserError},
+  };
+
+  use super::*;
+  use crate::database::{get_first_query, should_use_tx, DbError};
+
+  #[test]
+  fn test_get_first_query_sqlite() {
+    type TestCase = (&'static str, Result<(String, Box<dyn Fn(&Statement) -> bool>), DbError>);
+
+    let test_cases: Vec<TestCase> = vec![
+      // single query
+      ("SELECT * FROM users;", Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      // multiple queries
+      (
+        "SELECT * FROM users; DELETE FROM posts;",
+        Err(DbError::Right(ParserError::ParserError("Only one statement allowed per query".to_owned()))),
+      ),
+      // empty query
+      ("", Err(DbError::Right(ParserError::ParserError("Parsed query is empty".to_owned())))),
+      // syntax error
+      (
+        "SELEC * FORM users;",
+        Err(DbError::Right(ParserError::ParserError(
+          "Expected: an SQL statement, found: SELEC at Line: 1, Column: 1".to_owned(),
+        ))),
+      ),
+      // lowercase
+      (
+        "select * from \"users\"",
+        Ok(("SELECT * FROM \"users\"".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
+      // newlines
+      ("select *\nfrom users;", Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      // comment-only
+      ("-- select * from users;", Err(DbError::Right(ParserError::ParserError("Parsed query is empty".to_owned())))),
+      // commented line(s)
+      (
+        "-- select blah;\nselect * from users",
+        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
+      // update
+      (
+        "UPDATE users SET name = 'John' WHERE id = 1",
+        Ok((
+          "UPDATE users SET name = 'John' WHERE id = 1".to_owned(),
+          Box::new(|s| matches!(s, Statement::Update { .. })),
+        )),
+      ),
+      // delete
+      (
+        "DELETE FROM users WHERE id = 1",
+        Ok(("DELETE FROM users WHERE id = 1".to_owned(), Box::new(|s| matches!(s, Statement::Delete { .. })))),
+      ),
+      // drop
+      ("DROP TABLE users", Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. }))))),
+      // explain
+      (
+        "EXPLAIN SELECT * FROM users",
+        Ok(("EXPLAIN SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Explain { .. })))),
+      ),
+    ];
+
+    let dialect = Box::new(SQLiteDialect {});
+
+    for (input, expected_output) in test_cases {
+      let result = get_first_query(input.to_string(), dialect.as_ref());
+      match (result, expected_output) {
+        (Ok((query, statement)), Ok((expected_query, match_statement))) => {
+          assert_eq!(query, expected_query);
+          assert!(match_statement(&statement));
+        },
+        (
+          Err(DbError::Right(ParserError::ParserError(msg))),
+          Err(DbError::Right(ParserError::ParserError(expected_msg))),
+        ) => {
+          assert_eq!(msg, expected_msg);
+        },
+        _ => panic!("Unexpected result for input: {}", input),
+      }
+    }
+  }
+
+  #[test]
+  fn test_should_use_tx_sqlite() {
+    let dialect = SQLiteDialect {};
+    let test_cases = vec![
+      ("DELETE FROM users WHERE id = 1", true),
+      ("DROP TABLE users", true),
+      ("UPDATE users SET name = 'John' WHERE id = 1", true),
+      ("SELECT * FROM users", false),
+      ("INSERT INTO users (name) VALUES ('John')", false),
+      // SQLite EXPLAIN statements
+      ("EXPLAIN DELETE FROM users WHERE id = 1", false),
+      ("EXPLAIN SELECT * FROM users", false),
+      // TODO: why this fail to parse?
+      // ("EXPLAIN QUERY PLAN SELECT * FROM users", false),
+    ];
+
+    for (query, expected) in test_cases {
+      let ast = Parser::parse_sql(&dialect, query).unwrap();
+      let statement = ast[0].clone();
+      assert_eq!(should_use_tx(statement), expected, "Failed for query: {}", query);
+    }
+  }
+}
