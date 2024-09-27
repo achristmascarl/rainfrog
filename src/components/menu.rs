@@ -35,16 +35,9 @@ pub trait SettableTableList<'a> {
   fn set_table_list(&mut self, data: Option<Result<Rows, DbError>>);
 }
 
-pub trait MenuComponent<'a, DB>: Component<DB> + SettableTableList<'a>
-where
-  DB: sqlx::Database,
-{
-}
+pub trait MenuComponent<'a, DB: Database>: Component<DB> + SettableTableList<'a> {}
 
-impl<'a, T, DB> MenuComponent<'a, DB> for T
-where
-  T: Component<DB> + SettableTableList<'a>,
-  DB: sqlx::Database,
+impl<'a, T, DB: Database> MenuComponent<'a, DB> for T where T: Component<DB> + SettableTableList<'a>
 {
 }
 

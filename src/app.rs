@@ -68,7 +68,7 @@ pub struct AppState<'a, DB: Database> {
   pub last_query_end: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-pub struct Components<'a, DB: sqlx::Database> {
+pub struct Components<'a, DB> {
   pub menu: Box<dyn MenuComponent<'a, DB>>,
   pub editor: Box<dyn Component<DB>>,
   pub history: Box<dyn Component<DB>>,
