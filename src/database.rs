@@ -233,6 +233,7 @@ pub fn get_dialect(db_type: &str) -> Arc<dyn Dialect + Send + Sync> {
   match db_type {
     "PostgreSQL" => Arc::new(PostgreSqlDialect {}),
     "MySQL" => Arc::new(MySqlDialect {}),
-    _ => Arc::new(SQLiteDialect {}),
+    "SQLite" => Arc::new(SQLiteDialect {}),
+    x => panic!("Unsupported database type: {}", x),
   }
 }
