@@ -150,7 +150,7 @@ jobs:
           context: .
           tags: achristmascarl/rainfrog:latest,achristmascarl/rainfrog:${{ github.ref_name }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max`
+          cache-to: type=gha,mode=max
 
   publish-cargo:
     name: Publishing to Cargo

@@ -61,9 +61,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: build docker image
-        run: |
-          docker build . -t rainfrog_test
+      - name: Set up Docker CLI
+        uses: docker/setup-buildx-action@v3
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          push: false
+          context: .
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: rainfrog_test
+          outputs: type=docker
       - name: init db for docker test
         run: |
           make db-up
