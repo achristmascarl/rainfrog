@@ -24,4 +24,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD pidof rainfrog || exit 1
 
 # Command to construct the full connection options using environment variables
-CMD ["bash", "-c", "rainfrog --username=$username --password=$password --host=$hostname --port=$db_port --database=$db_name --driver=$driver"]
+CMD ["bash", "-c", "rainfrog --username=$username --password=$password --host=$hostname --port=$db_port --database=$db_name --driver=$db_driver"]

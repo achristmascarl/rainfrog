@@ -145,7 +145,7 @@ of the options as environment variables:
 ```sh
 docker run --platform linux/amd64 -it --rm --name rainfrog \
   --add-host host.docker.internal:host-gateway \
-  -e driver="db_driver" \
+  -e db_driver="db_driver" \
   -e username="<username>" \
   -e password="<password>" \
   -e hostname="host.docker.internal" \
