@@ -72,7 +72,7 @@ jobs:
         run: |
           docker run -dit --name rainfrog_test_postgres \
             --add-host host.docker.internal:host-gateway \
-            -e driver="postgres" \
+            -e db_driver="postgres" \
             -e username="root" \
             -e password="password" \
             -e hostname="host.docker.internal" \
@@ -94,7 +94,7 @@ jobs:
         run: |
           docker run -dit --name rainfrog_test_mysql \
             --add-host host.docker.internal:host-gateway \
-            -e driver="mysql" \
+            -e db_driver="mysql" \
             -e username="root" \
             -e password="password" \
             -e hostname="host.docker.internal" \

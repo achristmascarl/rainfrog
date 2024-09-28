@@ -26,7 +26,8 @@ pgadmin/dbeaver.
 
 rainfrog has mainly been tested with postgres, and postgres will be the primary
 database targeted. **mysql and sqlite are also supported, but they are
-currently unstable**; use with caution!
+currently unstable**; use with caution, and check out the
+[known issues](#known-issues-and-limitations) section for things to look out for!
 
 ## disclaimer
 
@@ -354,6 +355,8 @@ features
 - in mysql, DROP statements cannot be rolled back, even if they are part of a
   transaction; see <https://github.com/achristmascarl/rainfrog/issues/107>
   which will address this issue
+- in sqlite, `EXPLAIN QUERY PLAN` does not work due to an issue with the
+  sql parser; see <https://github.com/achristmascarl/rainfrog/issues/106>
 - for x11 and wayland, yanking does not copy to the system clipboard, only
   to the query editor's buffer. see <https://github.com/achristmascarl/rainfrog/issues/83>
 - in addition to the experience being subpar if the terminal window is too
