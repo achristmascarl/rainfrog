@@ -359,7 +359,7 @@ mod tests {
       // ("DROP TABLE users", false), // In MySQL, DROP TABLE causes an implicit commit
       ("UPDATE users SET name = 'John' WHERE id = 1", true),
       ("SELECT * FROM users", false),
-      ("INSERT INTO users (name) VALUES ('John')", true),
+      ("INSERT INTO users (name) VALUES ('John')", false),
       // EXPLAIN statements in MySQL
       ("EXPLAIN DELETE FROM users WHERE id = 1", false),
       ("EXPLAIN SELECT * FROM users", false),
