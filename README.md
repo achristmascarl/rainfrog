@@ -5,7 +5,7 @@ a database management tui for postgres
 ![rainfrog demo](vhs/demo.gif)
 
 > [!WARNING]
-> rainfrog is currently in beta.
+> rainfrog is currently in beta; the mysql and sqlite drivers are unstable.
 
 the goal for rainfrog is to provide a lightweight, terminal-based alternative to
 pgadmin/dbeaver.
@@ -21,6 +21,12 @@ pgadmin/dbeaver.
 ### why "rainfrog"?
 
 > [frogs find refuge in elephant tracks](https://www.sciencedaily.com/releases/2019/06/190604131157.htm)
+
+### supported databases
+
+rainfrog has mainly been tested with postgres, and postgres will be the primary
+database targeted. **mysql and sqlite are also supported, but they are
+currently unstable**; use with caution!
 
 ## disclaimer
 
@@ -93,14 +99,15 @@ curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/instal
 Usage: rainfrog [OPTIONS]
 
 Options:
-  -M, --mouse <MOUSE_MODE>   Whether to enable mouse event support. If enabled, your terminal\'s default mouse event handling will not
-                             work. [possible values: true, false]
+  -M, --mouse <MOUSE_MODE>   Whether to enable mouse event support. If enabled, your terminal\'s default mouse event handling will
+                             not work. [possible values: true, false]
   -u, --url <URL>            Full connection URL for the database, e.g. postgres://username:password@localhost:5432/dbname
       --username <USERNAME>  Username for database connection
       --password <PASSWORD>  Password for database connection
       --host <HOST>          Host for database connection (ex. localhost)
       --port <PORT>          Port for database connection (ex. 5432)
       --database <DATABASE>  Name of database for connection (ex. postgres)
+      --driver <DRIVER>      Driver for database connection (ex. postgres)
   -h, --help                 Print help
   -V, --version              Print version
 ```
@@ -113,6 +120,7 @@ default to what is in your environment variables.
 
 ```sh
 rainfrog \
+  --driver <db_driver> \
   --username <username> \
   --host <hostname> \
   --port <db_port> \
@@ -131,14 +139,38 @@ rainfrog --url $(connection_url)
 
 ### `docker run`
 
+for postgres and mysql, you can run it by specifying all
+of the options as environment variables:
+
 ```sh
 docker run --platform linux/amd64 -it --rm --name rainfrog \
   --add-host host.docker.internal:host-gateway \
+  -e driver="db_driver" \
   -e username="<username>" \
   -e password="<password>" \
   -e hostname="host.docker.internal" \
   -e db_port="<db_port>" \
   -e db_name="<db_name>" achristmascarl/rainfrog:latest
+```
+
+if you want to provide a custom combination of
+options and omit others, you can override the Dockerfile's
+CMD like so:
+
+```sh
+docker run --platform linux/amd64 -it --rm --name rainfrog \
+  achristmascarl/rainfrog:latest \
+  rainfrog # overrides CMD, addition options would come after
+```
+
+since sqlite is file-based, you may need to mount a path to
+the sqlite db as a volume in order to access it:
+
+```sh
+docker run --platform linux/amd64 -it --rm --name rainfrog \
+  -v ~/code/rainfrog/dev/rainfrog.sqlite3:/rainfrog.sqlite3 \
+  achristmascarl/rainfrog:latest \
+  rainfrog --url sqlite:///rainfrog.sqlite3
 ```
 
 ## customization
@@ -208,7 +240,8 @@ are the default keybindings.
 
 #### query editor
 
-Keybindings may not behave exactly like Vim. The full list of active Vim keybindings in Rainfrog can be found at [vim.rs](./src/vim.rs).
+Keybindings may not behave exactly like Vim. The full list of active
+Vim keybindings in Rainfrog can be found at [vim.rs](./src/vim.rs).
 
 | Keybinding        | Description                            |
 | ----------------- | -------------------------------------- |
@@ -318,6 +351,9 @@ features
 
 ## known issues and limitations
 
+- in mysql, DROP statements cannot be rolled back, even if they are part of a
+  transaction; see <https://github.com/achristmascarl/rainfrog/issues/107>
+  which will address this issue
 - for x11 and wayland, yanking does not copy to the system clipboard, only
   to the query editor's buffer. see <https://github.com/achristmascarl/rainfrog/issues/83>
 - in addition to the experience being subpar if the terminal window is too
@@ -342,7 +378,8 @@ features
 
 for bug reports and feature requests, please [create an issue](https://github.com/achristmascarl/rainfrog/issues/new/choose).
 
-please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening issues or creating PRs.
+please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening issues
+or creating PRs.
 
 ## acknowledgements
 
