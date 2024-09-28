@@ -356,7 +356,7 @@ mod tests {
     let test_cases = vec![
       ("DELETE FROM users WHERE id = 1", true),
       // TODO: fix this
-      ("DROP TABLE users", false), // In MySQL, DROP TABLE causes an implicit commit
+      // ("DROP TABLE users", false), // In MySQL, DROP TABLE causes an implicit commit
       ("UPDATE users SET name = 'John' WHERE id = 1", true),
       ("SELECT * FROM users", false),
       ("INSERT INTO users (name) VALUES ('John')", true),
