@@ -10,6 +10,7 @@ use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
+use sqlx::{Database, Executor, Pool};
 use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{Input, Key, Scrolling, TextArea};
 
@@ -18,7 +19,7 @@ use crate::{
   action::{Action, MenuPreview},
   app::{App, AppState, DbTask},
   config::{Config, KeyBindings},
-  database::get_keywords,
+  database::{self, get_keywords, DatabaseQueries, HasRowsAffected, ValueParser},
   focus::Focus,
   tui::Event,
   vim::{Mode, Transition, Vim},
@@ -66,7 +67,11 @@ impl<'a> Editor<'a> {
     }
   }
 
-  pub fn transition_vim_state(&mut self, input: Input, app_state: &AppState) -> Result<()> {
+  pub fn transition_vim_state<DB: Database + DatabaseQueries>(
+    &mut self,
+    input: Input,
+    app_state: &AppState<'_, DB>,
+  ) -> Result<()> {
     match input {
       Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
         if app_state.query_task.is_none() {
@@ -108,7 +113,7 @@ impl<'a> Editor<'a> {
   }
 }
 
-impl<'a> Component for Editor<'a> {
+impl<'a, DB: Database + DatabaseQueries> Component<DB> for Editor<'a> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -119,7 +124,7 @@ impl<'a> Component for Editor<'a> {
     Ok(())
   }
 
-  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     if app_state.focus != Focus::Editor {
       return Ok(None);
     }
@@ -145,7 +150,7 @@ impl<'a> Component for Editor<'a> {
     &mut self,
     event: Option<Event>,
     last_tick_key_events: Vec<KeyEvent>,
-    app_state: &AppState,
+    app_state: &AppState<'_, DB>,
   ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Editor {
       return Ok(None);
@@ -161,35 +166,18 @@ impl<'a> Component for Editor<'a> {
     Ok(None)
   }
 
-  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
+  fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     match action {
       Action::MenuPreview(preview_type, schema, table) => {
         if app_state.query_task.is_some() {
           return Ok(None);
         }
         let query = match preview_type {
-          MenuPreview::Rows => format!("select * from \"{}\".\"{}\" limit 100", schema, table),
-          MenuPreview::Columns => {
-            format!(
-              "select column_name, * from information_schema.columns where table_schema = '{}' and table_name = '{}'",
-              schema, table
-            )
-          },
-          MenuPreview::Constraints => {
-            format!(
-            "select constraint_name, * from information_schema.table_constraints where table_schema = '{}' and table_name = '{}'",
-            schema, table
-          )
-          },
-          MenuPreview::Indexes => {
-            format!(
-              "select indexname, indexdef, * from pg_indexes where schemaname = '{}' and tablename = '{}'",
-              schema, table
-            )
-          },
-          MenuPreview::Policies => {
-            format!("select * from pg_policies where schemaname = '{}' and tablename = '{}'", schema, table)
-          },
+          MenuPreview::Rows => DB::preview_rows_query(&schema, &table),
+          MenuPreview::Columns => DB::preview_columns_query(&schema, &table),
+          MenuPreview::Constraints => DB::preview_constraints_query(&schema, &table),
+          MenuPreview::Indexes => DB::preview_indexes_query(&schema, &table),
+          MenuPreview::Policies => DB::preview_policies_query(&schema, &table),
         };
         self.textarea = TextArea::from(vec![query.clone()]);
         self.textarea.set_search_pattern(keyword_regex()).unwrap();
@@ -230,7 +218,7 @@ impl<'a> Component for Editor<'a> {
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
     let focused = app_state.focus == Focus::Editor;
 
     if let Some(query_start) = app_state.last_query_start {

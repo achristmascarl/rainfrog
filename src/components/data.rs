@@ -8,6 +8,7 @@ use crossterm::{
 use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::Statement;
+use sqlx::{Database, Executor, Pool};
 use tokio::sync::{mpsc::UnboundedSender, Mutex};
 use tui_textarea::{Input, Key};
 
@@ -20,7 +21,7 @@ use crate::{
     Component,
   },
   config::{Config, KeyBindings},
-  database::{get_headers, parse_value, row_to_json, row_to_vec, statement_type_string, DbError, Rows},
+  database::{get_headers, row_to_json, row_to_vec, statement_type_string, DbError, Rows},
   focus::Focus,
   tui::Event,
 };
@@ -51,8 +52,8 @@ pub trait SettableDataTable<'a> {
   fn set_cancelled(&mut self);
 }
 
-pub trait DataComponent<'a>: Component + SettableDataTable<'a> {}
-impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a>
+pub trait DataComponent<'a, DB: sqlx::Database>: Component<DB> + SettableDataTable<'a> {}
+impl<'a, T, DB: sqlx::Database> DataComponent<'a, DB> for T where T: Component<DB> + SettableDataTable<'a>
 {
 }
 
@@ -231,7 +232,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
   }
 }
 
-impl<'a> Component for Data<'a> {
+impl<'a, DB: Database> Component<DB> for Data<'a> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -245,7 +246,7 @@ impl<'a> Component for Data<'a> {
   fn handle_mouse_events(
     &mut self,
     mouse: crossterm::event::MouseEvent,
-    app_state: &AppState,
+    app_state: &AppState<'_, DB>,
   ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Data {
       return Ok(None);
@@ -268,7 +269,7 @@ impl<'a> Component for Data<'a> {
     Ok(None)
   }
 
-  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     if app_state.focus != Focus::Data {
       return Ok(None);
     }
@@ -372,14 +373,14 @@ impl<'a> Component for Data<'a> {
     Ok(None)
   }
 
-  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
+  fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     if let Action::Query(query) = action {
       self.scrollable.reset_scroll();
     }
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
     let focused = app_state.focus == Focus::Data;
 
     let mut block = Block::default().borders(Borders::ALL).border_style(if focused {

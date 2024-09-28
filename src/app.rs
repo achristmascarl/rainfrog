@@ -13,10 +13,14 @@ use ratatui::{
   Frame,
 };
 use serde::{Deserialize, Serialize};
-use sqlparser::{ast::Statement, keywords::DELETE};
+use sqlparser::{
+  ast::Statement,
+  dialect::Dialect,
+  keywords::{DELETE, NAME},
+};
 use sqlx::{
   postgres::{PgConnectOptions, Postgres},
-  Either, Transaction,
+  Connection, Database, Either, Executor, Pool, Transaction,
 };
 use tokio::{
   sync::{
@@ -36,16 +40,16 @@ use crate::{
     Component,
   },
   config::Config,
-  database::{self, statement_type_string, DbError, DbPool, Rows},
+  database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, Rows},
   focus::Focus,
   tui,
   ui::center,
 };
 
-pub enum DbTask<'a> {
+pub enum DbTask<'a, DB: sqlx::Database> {
   Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
-  TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, Postgres>)>),
-  TxPending(Transaction<'a, Postgres>, QueryResultsWithMetadata),
+  TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, DB>)>),
+  TxPending(Transaction<'a, DB>, QueryResultsWithMetadata),
   TxCommit(tokio::task::JoinHandle<QueryResultsWithMetadata>),
 }
 
@@ -54,20 +58,21 @@ pub struct HistoryEntry {
   pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
-pub struct AppState<'a> {
-  pub connection_opts: PgConnectOptions,
+pub struct AppState<'a, DB: Database> {
+  pub connection_opts: <DB::Connection as Connection>::Options,
+  pub dialect: Arc<dyn Dialect + Send + Sync>,
   pub focus: Focus,
-  pub query_task: Option<DbTask<'a>>,
+  pub query_task: Option<DbTask<'a, DB>>,
   pub history: Vec<HistoryEntry>,
   pub last_query_start: Option<chrono::DateTime<chrono::Utc>>,
   pub last_query_end: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-pub struct Components<'a> {
-  pub menu: Box<dyn MenuComponent<'a>>,
-  pub editor: Box<dyn Component>,
-  pub history: Box<dyn Component>,
-  pub data: Box<dyn DataComponent<'a>>,
+pub struct Components<'a, DB> {
+  pub menu: Box<dyn MenuComponent<'a, DB>>,
+  pub editor: Box<dyn Component<DB>>,
+  pub history: Box<dyn Component<DB>>,
+  pub data: Box<dyn DataComponent<'a, DB>>,
 }
 
 #[derive(Debug)]
@@ -76,20 +81,29 @@ pub struct QueryResultsWithMetadata {
   pub statement_type: Statement,
 }
 
-pub struct App<'a> {
+pub struct App<'a, DB: sqlx::Database> {
   pub mouse_mode_override: Option<bool>,
   pub config: Config,
-  pub components: Components<'static>,
+  pub components: Components<'static, DB>,
   pub should_quit: bool,
   pub last_tick_key_events: Vec<KeyEvent>,
   pub last_frame_mouse_event: Option<MouseEvent>,
-  pub pool: Option<DbPool>,
-  pub state: AppState<'a>,
+  pub pool: Option<database::DbPool<DB>>,
+  pub state: AppState<'a, DB>,
   last_focused_tab: Focus,
 }
 
-impl<'a> App<'a> {
-  pub fn new(connection_opts: PgConnectOptions, mouse_mode_override: Option<bool>) -> Result<Self> {
+impl<'a, DB> App<'a, DB>
+where
+  DB: Database + database::ValueParser + database::DatabaseQueries,
+  DB::QueryResult: database::HasRowsAffected,
+  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
+  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
+{
+  pub fn new(
+    connection_opts: <DB::Connection as Connection>::Options,
+    mouse_mode_override: Option<bool>,
+  ) -> Result<Self> {
     let focus = Focus::Menu;
     let menu = Menu::new();
     let editor = Editor::new();
@@ -111,6 +125,7 @@ impl<'a> App<'a> {
       pool: None,
       state: AppState {
         connection_opts,
+        dialect: get_dialect(DB::NAME),
         focus,
         query_task: None,
         history: vec![],
@@ -135,7 +150,7 @@ impl<'a> App<'a> {
   pub async fn run(&mut self) -> Result<()> {
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
     let connection_opts = self.state.connection_opts.clone();
-    let pool = database::init_pool(connection_opts).await?;
+    let pool = database::init_pool::<DB>(connection_opts).await?;
     log::info!("{pool:?}");
     self.pool = Some(pool);
 
@@ -350,17 +365,7 @@ impl<'a> App<'a> {
           Action::LoadMenu => {
             log::info!("LoadMenu");
             if let Some(pool) = &self.pool {
-              let results = database::query(
-                "select table_schema, table_name
-                        from information_schema.tables
-                        where table_schema != 'pg_catalog'
-                        and table_schema != 'information_schema'
-                        group by table_schema, table_name
-                        order by table_schema, table_name asc"
-                  .to_owned(),
-                pool,
-              )
-              .await;
+              let results = database::query(DB::preview_tables_query(), self.state.dialect.as_ref(), pool).await;
               self.components.menu.set_table_list(Some(results));
             }
           },
@@ -368,18 +373,20 @@ impl<'a> App<'a> {
             let query_string = query_lines.clone().join(" \n");
             if !query_string.is_empty() {
               self.add_to_history(query_lines.clone());
-              let first_query = database::get_first_query(query_string.clone());
+              let first_query = database::get_first_query(query_string.clone(), self.state.dialect.as_ref());
               let should_use_tx = first_query
                 .map(|(_, statement_type)| (database::should_use_tx(statement_type.clone()), statement_type));
               let action_tx = action_tx.clone();
               if let Some(pool) = &self.pool {
                 let pool = pool.clone();
+                let dialect = self.state.dialect.clone();
                 match should_use_tx {
                   Ok((true, statement_type)) => {
                     self.components.data.set_loading();
                     let tx = pool.begin().await?;
                     self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                      let (results, tx) = database::query_with_tx(tx, query_string.clone()).await;
+                      let (results, tx) =
+                        database::query_with_tx::<DB>(tx, dialect.as_ref(), query_string.clone()).await;
                       match results {
                         Ok(Either::Left(rows_affected)) => {
                           log::info!("{:?} rows affected", rows_affected);
@@ -406,8 +413,9 @@ impl<'a> App<'a> {
                   },
                   Ok((false, statement_type)) => {
                     self.components.data.set_loading();
+                    let dialect = self.state.dialect.clone();
                     self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                      let results = database::query(query_string.clone(), &pool).await;
+                      let results = database::query(query_string.clone(), dialect.as_ref(), &pool).await;
                       match &results {
                         Ok(rows) => {
                           log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);

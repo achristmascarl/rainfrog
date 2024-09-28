@@ -9,6 +9,7 @@ use ratatui::{
     Table, TableState, WidgetRef,
   },
 };
+use sqlx::{Database, Executor, Pool};
 use symbols::scrollbar;
 
 use super::Component;
@@ -190,8 +191,8 @@ impl<'a> ScrollTable<'a> {
   }
 }
 
-impl<'a> Component for ScrollTable<'a> {
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
+impl<'a, DB: Database> Component<DB> for ScrollTable<'a> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
     self.parent_area = area;
     let render_area = self.block.inner_if_some(area);
     self.pg_height = std::cmp::min(self.max_height, render_area.height).saturating_sub(3);

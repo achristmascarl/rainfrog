@@ -68,25 +68,67 @@ jobs:
         run: |
           make db-up
           sleep 5 # wait for db container
-      - name: docker run
+      - name: docker run postgres
         run: |
-          docker run -dit --name rainfrog_test \
+          docker run -dit --name rainfrog_test_postgres \
             --add-host host.docker.internal:host-gateway \
+            -e db_driver="postgres" \
             -e username="root" \
             -e password="password" \
             -e hostname="host.docker.internal" \
             -e db_port="5499" \
             -e db_name="rainfrog" rainfrog_test
           sleep 5  # wait for container
-      - name: check container status
+      - name: check postgres container status
         run: |
-          container_status=$(docker ps -f name=rainfrog_test --format "{{.Status}}")
+          container_status=$(docker ps -f name=rainfrog_test_postgres --format "{{.Status}}")
           if [[ "$container_status" == "Up"* ]]; then
             echo "container started"
           else
             echo "container did not start"
             echo "logs: "
-            docker logs -t rainfrog_test
+            docker logs -t rainfrog_test_postgres
+            exit 1
+          fi
+      - name: docker run mysql
+        run: |
+          docker run -dit --name rainfrog_test_mysql \
+            --add-host host.docker.internal:host-gateway \
+            -e db_driver="mysql" \
+            -e username="root" \
+            -e password="password" \
+            -e hostname="host.docker.internal" \
+            -e db_port="3317" \
+            -e db_name="rainfrog" rainfrog_test
+          sleep 5  # wait for container
+      - name: check mysql container status
+        run: |
+          container_status=$(docker ps -f name=rainfrog_test_mysql --format "{{.Status}}")
+          if [[ "$container_status" == "Up"* ]]; then
+            echo "container started"
+          else
+            echo "container did not start"
+            echo "logs: "
+            docker logs -t rainfrog_test_mysql
+            exit 1
+          fi
+      - name: docker run sqlite
+        run: |
+          docker run -dit --name rainfrog_test_sqlite \
+            --add-host host.docker.internal:host-gateway \
+            -v /home/runner/work/rainfrog/rainfrog/dev/rainfrog.sqlite3:/rainfrog.sqlite3 \
+            rainfrog_test \
+            rainfrog --url sqlite:///rainfrog.sqlite3
+          sleep 5  # wait for container
+      - name: check sqlite container status
+        run: |
+          container_status=$(docker ps -f name=rainfrog_test_sqlite --format "{{.Status}}")
+          if [[ "$container_status" == "Up"* ]]; then
+            echo "container started"
+          else
+            echo "container did not start"
+            echo "logs: "
+            docker logs -t rainfrog_test_sqlite
             exit 1
           fi
 
