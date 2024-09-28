@@ -114,9 +114,11 @@ jobs:
           fi
       - name: docker run sqlite
         run: |
+          pwd
+          ls
           docker run -dit --name rainfrog_test_sqlite \
             --add-host host.docker.internal:host-gateway \
-            -v $(pwd)/dev/rainfrog.sqlite3:/rainfrog.sqlite3 \
+            -v /home/runner/work/rainfrog/rainfrog/dev/rainfrog.sqlite3:/rainfrog.sqlite3 \
             rainfrog_test \
             rainfrog --url sqlite:///rainforg.sqlite3
           sleep 5  # wait for container
