@@ -71,6 +71,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: rainfrog_test
+          outputs: type=docker
       - name: init db for docker test
         run: |
           make db-up
