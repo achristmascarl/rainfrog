@@ -40,8 +40,9 @@ use crate::{
     Component,
   },
   config::Config,
-  database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, Rows},
+  database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, ExecutionType, Rows},
   focus::Focus,
+  popups::{confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, PopUp, PopUpPayload},
   tui,
   ui::center,
 };
@@ -91,6 +92,7 @@ pub struct App<'a, DB: sqlx::Database> {
   pub pool: Option<database::DbPool<DB>>,
   pub state: AppState<'a, DB>,
   last_focused_tab: Focus,
+  popup: Option<Box<dyn PopUp<DB>>>,
 }
 
 impl<'a, DB> App<'a, DB>
@@ -133,6 +135,7 @@ where
         last_query_end: None,
       },
       last_focused_tab: Focus::Editor,
+      popup: None,
     })
   }
 
@@ -176,6 +179,9 @@ where
     action_tx.send(Action::LoadMenu)?;
 
     loop {
+      if let Some(popup) = &mut self.popup {
+        self.state.focus = Focus::PopUp;
+      }
       match &mut self.state.query_task {
         Some(DbTask::Query(task)) => {
           if task.is_finished() {
@@ -191,6 +197,7 @@ where
             match results.results {
               Ok(_) => {
                 self.state.query_task = Some(DbTask::TxPending(tx, results));
+                self.popup = Some(Box::new(ConfirmTx::<DB>::new()));
                 self.state.focus = Focus::PopUp;
               },
               Err(_) => {
@@ -218,46 +225,22 @@ where
                 log::info!("Got action: {action:?}");
                 action_tx.send(action.clone())?;
                 event_consumed = true;
-              } else if self.state.focus == Focus::PopUp {
-                match key.code {
-                  KeyCode::Char('Y') | KeyCode::Char('N') | KeyCode::Esc => {
-                    let task = self.state.query_task.take();
-                    if let Some(DbTask::TxPending(tx, results)) = task {
-                      let mut rolled_back = false;
-                      let result = match key.code {
-                        KeyCode::Char('Y') => tx.commit().await,
-                        KeyCode::Char('N') | KeyCode::Esc => {
-                          rolled_back = true;
-                          tx.rollback().await
-                        },
-                        _ => panic!("inconsistent key codes"),
-                      };
-                      self.components.data.set_data_state(
-                        match result {
-                          Ok(_) => {
-                            match results.statement_type {
-                              Statement::Explain { .. } if results.results.is_ok() && !rolled_back => {
-                                Some(Ok(results.results.unwrap()))
-                              },
-                              _ => Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
-                            }
-                          },
-                          Err(e) => Some(Err(Either::Left(e))),
-                        },
-                        Some(match rolled_back {
-                          false => {
-                            match results.statement_type {
-                              Statement::Explain { .. } => results.statement_type,
-                              _ => Statement::Commit { chain: false },
-                            }
-                          },
-                          true => Statement::Rollback { chain: false, savepoint: None },
-                        }),
-                      );
-                    }
+              } else if let Some(popup) = &mut self.popup {
+                // popup captures all inputs. if it returns a payload, that means
+                // it is finished and should be closed
+                let payload = popup.handle_key_events(key, &mut self.state).await?;
+                match payload {
+                  Some(PopUpPayload::SetDataTable(result, statement)) => {
+                    self.components.data.set_data_state(result, statement);
+                    self.popup = None;
                     self.state.focus = Focus::Editor;
                   },
-                  _ => {},
+                  Some(PopUpPayload::ConfirmQuery(query)) => {
+                    action_tx.send(Action::Query(vec![query], true))?;
+                    self.popup = None;
+                    self.state.focus = Focus::Editor;
+                  },
+                  None => {},
                 }
                 event_consumed = true;
               } else {
@@ -369,19 +352,20 @@ where
               self.components.menu.set_table_list(Some(results));
             }
           },
-          Action::Query(query_lines) => {
+          Action::Query(query_lines, confirmed) => {
             let query_string = query_lines.clone().join(" \n");
             if !query_string.is_empty() {
               self.add_to_history(query_lines.clone());
               let first_query = database::get_first_query(query_string.clone(), self.state.dialect.as_ref());
-              let should_use_tx = first_query
-                .map(|(_, statement_type)| (database::should_use_tx(statement_type.clone()), statement_type));
+              let execution_type = first_query.map(|(_, statement_type)| {
+                (database::get_execution_type(statement_type.clone(), *confirmed), statement_type)
+              });
               let action_tx = action_tx.clone();
               if let Some(pool) = &self.pool {
                 let pool = pool.clone();
                 let dialect = self.state.dialect.clone();
-                match should_use_tx {
-                  Ok((true, statement_type)) => {
+                match execution_type {
+                  Ok((ExecutionType::Transaction, statement_type)) => {
                     self.components.data.set_loading();
                     let tx = pool.begin().await?;
                     self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
@@ -411,7 +395,11 @@ where
                     self.state.last_query_start = Some(chrono::Utc::now());
                     self.state.last_query_end = None;
                   },
-                  Ok((false, statement_type)) => {
+                  Ok((ExecutionType::Confirm, statement_type)) => {
+                    self.popup = Some(Box::new(ConfirmQuery::<DB>::new(query_string.clone(), statement_type)));
+                    self.state.focus = Focus::PopUp;
+                  },
+                  Ok((ExecutionType::Normal, statement_type)) => {
                     self.components.data.set_loading();
                     let dialect = self.state.dialect.clone();
                     self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
@@ -591,8 +579,8 @@ where
     self.components.data.draw(f, right_layout[1], state).unwrap();
     self.render_hints(f, hints_layout[1]);
 
-    if let Some(DbTask::TxPending(tx, results)) = &self.state.query_task {
-      self.render_popup(f, results);
+    if let Some(popup) = &self.popup {
+      self.render_popup(f, popup.as_ref());
     }
   }
 
@@ -619,7 +607,7 @@ where
     frame.render_widget(paragraph, area);
   }
 
-  fn render_popup(&self, frame: &mut Frame, results: &QueryResultsWithMetadata) {
+  fn render_popup(&self, frame: &mut Frame, popup: &dyn PopUp<DB>) {
     let area = center(frame.area(), Constraint::Percentage(50), Constraint::Percentage(50));
     let block = Block::default()
       .borders(Borders::ALL)
@@ -631,33 +619,8 @@ where
       .direction(Direction::Vertical)
       .split(block.inner(area));
 
-    let rows_affected = match results.results {
-      Ok(Rows { rows_affected: Some(n), .. }) => n,
-      _ => 0,
-    };
-    let cta = match results.statement_type.clone() {
-      Statement::Delete(_) | Statement::Insert(_) | Statement::Update { .. } => {
-        format!(
-          "Are you sure you want to {} {} rows?",
-          statement_type_string(&results.statement_type).to_uppercase(),
-          rows_affected
-        )
-      },
-      Statement::Explain { statement, .. } => {
-        format!(
-          "Are you sure you want to run an EXPLAIN ANALYZE that will {} rows?",
-          statement_type_string(&statement).to_uppercase(),
-        )
-      },
-      _ => {
-        format!(
-          "Are you sure you want to use a {} statement?",
-          statement_type_string(&results.statement_type).to_uppercase()
-        )
-      },
-    };
-    let popup_cta = Paragraph::new(Line::from(cta).centered()).wrap(Wrap { trim: false });
-    let popup_actions = Paragraph::new(Line::from("[Y]es to confirm | [N]o to cancel").centered());
+    let popup_cta = Paragraph::new(Line::from(popup.get_cta_text(&self.state)).centered()).wrap(Wrap { trim: false });
+    let popup_actions = Paragraph::new(Line::from(popup.get_actions_text(&self.state)).centered());
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
     frame.render_widget(popup_cta, layout[0]);

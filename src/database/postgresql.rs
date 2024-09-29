@@ -311,7 +311,7 @@ mod tests {
   use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
 
   use super::*;
-  use crate::database::{get_first_query, should_use_tx, DbError};
+  use crate::database::{get_execution_type, get_first_query, DbError, ExecutionType};
 
   #[test]
   fn test_get_first_query() {
@@ -395,23 +395,24 @@ mod tests {
   }
 
   #[test]
-  fn test_should_use_tx() {
+  fn test_execution_type_postgres() {
     let dialect = PostgreSqlDialect {};
     let test_cases = vec![
-      ("DELETE FROM users WHERE id = 1", true),
-      ("DROP TABLE users", true),
-      ("UPDATE users SET name = 'John' WHERE id = 1", true),
-      ("SELECT * FROM users", false),
-      ("INSERT INTO users (name) VALUES ('John')", false),
-      ("EXPLAIN ANALYZE DELETE FROM users WHERE id = 1", true),
-      ("EXPLAIN SELECT * FROM users", false),
-      ("EXPLAIN ANALYZE SELECT * FROM users WHERE id = 1", false),
+      ("DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
+      ("DROP TABLE users", ExecutionType::Confirm),
+      ("UPDATE users SET name = 'John' WHERE id = 1", ExecutionType::Transaction),
+      ("SELECT * FROM users", ExecutionType::Normal),
+      ("INSERT INTO users (name) VALUES ('John')", ExecutionType::Normal),
+      ("EXPLAIN ANALYZE DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
+      ("EXPLAIN ANALYZE DROP TABLE users", ExecutionType::Confirm),
+      ("EXPLAIN SELECT * FROM users", ExecutionType::Normal),
+      ("EXPLAIN ANALYZE SELECT * FROM users WHERE id = 1", ExecutionType::Normal),
     ];
 
     for (query, expected) in test_cases {
       let ast = Parser::parse_sql(&dialect, query).unwrap();
       let statement = ast[0].clone();
-      assert_eq!(should_use_tx(statement), expected, "Failed for query: {}", query);
+      assert_eq!(get_execution_type(statement, false), expected, "Failed for query: {}", query);
     }
   }
 }

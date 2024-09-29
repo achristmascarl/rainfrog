@@ -374,7 +374,7 @@ impl<'a, DB: Database> Component<DB> for Data<'a> {
   }
 
   fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
-    if let Action::Query(query) = action {
+    if let Action::Query(query, confirmed) = action {
       self.scrollable.reset_scroll();
     }
     Ok(None)
