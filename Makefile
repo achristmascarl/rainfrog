@@ -2,7 +2,7 @@ SHELL := /bin/bash
 pg_port ?= 5499
 mysql_port ?= 3317
 postgres_url ?= postgres://root:password@localhost:$(pg_port)/rainfrog?sslmode=disable
-mysql_url ?= mysql://root:password@localhost:$(mysql_port)/rainfrog?allowPublicKeyRetrieval=true&useSSL=false
+mysql_url ?= mysql://root:password@localhost:$(mysql_port)/rainfrog?useSSL=false
 url ?= $(postgres_url)
 version ?= ""
 
@@ -11,6 +11,9 @@ version ?= ""
 .PHONY: dev profile restart release
 dev:
 	cargo run -- -u $(url)
+
+dev-mysql:
+	cargo run -- -u $(mysql_url)
 
 dev-termux:
 	cargo run --features termux --no-default-features -- -u $(url)
