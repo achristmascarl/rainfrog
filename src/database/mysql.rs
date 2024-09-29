@@ -351,7 +351,7 @@ mod tests {
   }
 
   #[test]
-  fn test_should_use_tx_mysql() {
+  fn test_execution_type_mysql() {
     let dialect = MySqlDialect {};
     let test_cases = vec![
       ("DELETE FROM users WHERE id = 1", ExecutionType::Transaction),

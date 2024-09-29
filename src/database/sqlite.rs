@@ -267,7 +267,7 @@ mod tests {
   }
 
   #[test]
-  fn test_should_use_tx_sqlite() {
+  fn test_execution_type_sqlite() {
     let dialect = SQLiteDialect {};
     let test_cases = vec![
       ("DELETE FROM users WHERE id = 1", ExecutionType::Transaction),

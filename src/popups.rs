@@ -1,16 +1,11 @@
 use async_trait::async_trait;
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyEvent, MouseEvent};
-use ratatui::layout::Rect;
+use crossterm::event::KeyEvent;
 use sqlparser::ast::Statement;
-use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
-  action::Action,
   app::AppState,
-  config::Config,
   database::{DbError, Rows},
-  tui::{Event, Frame},
 };
 
 pub mod confirm_query;

@@ -395,7 +395,7 @@ mod tests {
   }
 
   #[test]
-  fn test_should_use_tx() {
+  fn test_execution_type_postgres() {
     let dialect = PostgreSqlDialect {};
     let test_cases = vec![
       ("DELETE FROM users WHERE id = 1", ExecutionType::Transaction),

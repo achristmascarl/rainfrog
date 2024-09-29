@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use crossterm::event::{Event, KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent};
 use sqlparser::ast::Statement;
 use sqlx::Either;
 use tokio::sync::mpsc::UnboundedSender;
@@ -34,7 +34,7 @@ impl<DB: sqlx::Database> PopUp<DB> for ConfirmQuery<DB> {
     app_state: &mut crate::app::AppState<'_, DB>,
   ) -> color_eyre::eyre::Result<Option<PopUpPayload>> {
     match key.code {
-      KeyCode::Char('Y') => Ok(Some(PopUpPayload::ConfirmQuery(self.pending_query.clone()))),
+      KeyCode::Char('Y') => Ok(Some(PopUpPayload::ConfirmQuery(self.pending_query.to_owned()))),
       KeyCode::Char('N') | KeyCode::Esc => Ok(Some(PopUpPayload::SetDataTable(None, None))),
       _ => Ok(None),
     }
