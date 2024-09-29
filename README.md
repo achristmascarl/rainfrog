@@ -72,6 +72,11 @@ features):
 cargo install rainfrog --features termux --no-default-features
 ```
 
+### nix
+```sh
+nix-env -iA nixos.rainfrog
+```
+
 ### install script
 
 there is a simple install script that assists in downloading and unpacking a
