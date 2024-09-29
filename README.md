@@ -357,9 +357,7 @@ features
 
 ## known issues and limitations
 
-- in mysql, DROP statements cannot be rolled back, even if they are part of a
-  transaction; see <https://github.com/achristmascarl/rainfrog/issues/107>
-  which will address this issue
+- geometry types are not currently supported
 - in sqlite, `EXPLAIN QUERY PLAN` does not work due to an issue with the
   sql parser; see <https://github.com/achristmascarl/rainfrog/issues/106>
 - for x11 and wayland, yanking does not copy to the system clipboard, only
@@ -381,6 +379,9 @@ features
 - mouse events are only used for changing focus and scrolling; the editor does
   not currently support mouse events, and menu items cannot be selected using
   the mouse
+
+you can find other reported issues in the 
+[issues tab](https://github.com/achristmascarl/rainfrog/issues)
 
 ## Contributing
 
