@@ -21,7 +21,7 @@ mod mysql;
 mod postgresql;
 mod sqlite;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Header {
   pub name: String,
   pub type_name: String,
@@ -32,7 +32,7 @@ pub struct Value {
   pub string: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Rows {
   pub headers: Headers,
   pub rows: Vec<Vec<String>>,

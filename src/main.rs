@@ -11,6 +11,7 @@ pub mod components;
 pub mod config;
 pub mod database;
 pub mod focus;
+pub mod popups;
 pub mod tui;
 pub mod ui;
 pub mod utils;
