@@ -11,7 +11,6 @@ use crate::{
   action::Action,
   app::DbTask,
   database::{statement_type_string, Rows},
-  focus::Focus,
 };
 
 #[derive(Debug)]

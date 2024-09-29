@@ -11,10 +11,9 @@ use crate::{
   action::Action,
   app::DbTask,
   database::{statement_type_string, Rows},
-  focus::Focus,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ConfirmTx<DB: sqlx::Database> {
   phantom: PhantomData<DB>,
 }
