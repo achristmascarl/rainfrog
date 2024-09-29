@@ -197,7 +197,7 @@ where
             match results.results {
               Ok(_) => {
                 self.state.query_task = Some(DbTask::TxPending(tx, results));
-                self.popup = Some(Box::new(ConfirmTx::<DB>::new(action_tx.clone())));
+                self.popup = Some(Box::new(ConfirmTx::<DB>::new()));
                 self.state.focus = Focus::PopUp;
               },
               Err(_) => {
@@ -396,8 +396,7 @@ where
                     self.state.last_query_end = None;
                   },
                   Ok((ExecutionType::Confirm, statement_type)) => {
-                    self.popup =
-                      Some(Box::new(ConfirmQuery::<DB>::new(action_tx.clone(), query_string.clone(), statement_type)));
+                    self.popup = Some(Box::new(ConfirmQuery::<DB>::new(query_string.clone(), statement_type)));
                     self.state.focus = Focus::PopUp;
                   },
                   Ok((ExecutionType::Normal, statement_type)) => {

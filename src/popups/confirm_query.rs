@@ -16,15 +16,14 @@ use crate::{
 
 #[derive(Debug)]
 pub struct ConfirmQuery<DB: sqlx::Database> {
-  command_tx: UnboundedSender<Action>,
   pending_query: String,
   statement_type: Statement,
   phantom: PhantomData<DB>,
 }
 
 impl<DB: sqlx::Database> ConfirmQuery<DB> {
-  pub fn new(tx: UnboundedSender<Action>, pending_query: String, statement_type: Statement) -> Self {
-    Self { command_tx: tx.clone(), pending_query, statement_type, phantom: PhantomData }
+  pub fn new(pending_query: String, statement_type: Statement) -> Self {
+    Self { pending_query, statement_type, phantom: PhantomData }
   }
 }
 

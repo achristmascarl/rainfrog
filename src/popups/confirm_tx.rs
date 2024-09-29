@@ -16,13 +16,12 @@ use crate::{
 
 #[derive(Debug)]
 pub struct ConfirmTx<DB: sqlx::Database> {
-  command_tx: UnboundedSender<Action>,
   phantom: PhantomData<DB>,
 }
 
 impl<DB: sqlx::Database> ConfirmTx<DB> {
-  pub fn new(tx: UnboundedSender<Action>) -> Self {
-    Self { command_tx: tx.clone(), phantom: PhantomData }
+  pub fn new() -> Self {
+    Self { phantom: PhantomData }
   }
 }
 
