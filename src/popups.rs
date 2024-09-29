@@ -22,14 +22,11 @@ pub mod confirm_tx;
 // it work with Actions for now.
 pub enum PopUpPayload {
   SetDataTable(Option<Result<Rows, DbError>>, Option<Statement>),
+  ConfirmQuery(String),
 }
 
 #[async_trait(?Send)]
 pub trait PopUp<DB: sqlx::Database> {
-  fn new(tx: UnboundedSender<Action>) -> Self
-  where
-    Self: Sized;
-
   #[allow(unused_variables)]
   async fn handle_key_events(&self, key: KeyEvent, app_state: &mut AppState<'_, DB>) -> Result<Option<PopUpPayload>>;
 

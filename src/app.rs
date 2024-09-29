@@ -40,9 +40,9 @@ use crate::{
     Component,
   },
   config::Config,
-  database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, Rows},
+  database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, ExecutionType, Rows},
   focus::Focus,
-  popups::{confirm_tx, PopUp, PopUpPayload},
+  popups::{confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, PopUp, PopUpPayload},
   tui,
   ui::center,
 };
@@ -197,7 +197,7 @@ where
             match results.results {
               Ok(_) => {
                 self.state.query_task = Some(DbTask::TxPending(tx, results));
-                self.popup = Some(Box::new(confirm_tx::ConfirmTx::<DB>::new(action_tx.clone())));
+                self.popup = Some(Box::new(ConfirmTx::<DB>::new(action_tx.clone())));
                 self.state.focus = Focus::PopUp;
               },
               Err(_) => {
@@ -232,6 +232,11 @@ where
                 match payload {
                   Some(PopUpPayload::SetDataTable(result, statement)) => {
                     self.components.data.set_data_state(result, statement);
+                    self.popup = None;
+                    self.state.focus = Focus::Editor;
+                  },
+                  Some(PopUpPayload::ConfirmQuery(query)) => {
+                    action_tx.send(Action::Query(vec![query], true))?;
                     self.popup = None;
                     self.state.focus = Focus::Editor;
                   },
@@ -347,19 +352,20 @@ where
               self.components.menu.set_table_list(Some(results));
             }
           },
-          Action::Query(query_lines) => {
+          Action::Query(query_lines, confirmed) => {
             let query_string = query_lines.clone().join(" \n");
             if !query_string.is_empty() {
               self.add_to_history(query_lines.clone());
               let first_query = database::get_first_query(query_string.clone(), self.state.dialect.as_ref());
-              let should_use_tx = first_query
-                .map(|(_, statement_type)| (database::should_use_tx(statement_type.clone()), statement_type));
+              let execution_type = first_query.map(|(_, statement_type)| {
+                (database::get_execution_type(statement_type.clone(), *confirmed), statement_type)
+              });
               let action_tx = action_tx.clone();
               if let Some(pool) = &self.pool {
                 let pool = pool.clone();
                 let dialect = self.state.dialect.clone();
-                match should_use_tx {
-                  Ok((true, statement_type)) => {
+                match execution_type {
+                  Ok((ExecutionType::Transaction, statement_type)) => {
                     self.components.data.set_loading();
                     let tx = pool.begin().await?;
                     self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
@@ -389,7 +395,12 @@ where
                     self.state.last_query_start = Some(chrono::Utc::now());
                     self.state.last_query_end = None;
                   },
-                  Ok((false, statement_type)) => {
+                  Ok((ExecutionType::Confirm, statement_type)) => {
+                    self.popup =
+                      Some(Box::new(ConfirmQuery::<DB>::new(action_tx.clone(), query_string.clone(), statement_type)));
+                    self.state.focus = Focus::PopUp;
+                  },
+                  Ok((ExecutionType::Normal, statement_type)) => {
                     self.components.data.set_loading();
                     let dialect = self.state.dialect.clone();
                     self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {

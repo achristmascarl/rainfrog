@@ -42,6 +42,13 @@ pub type Headers = Vec<Header>;
 pub type DbPool<DB> = Pool<DB>;
 pub type DbError = Either<Error, ParserError>;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExecutionType {
+  Confirm,
+  Transaction,
+  Normal,
+}
+
 pub trait HasRowsAffected {
   fn rows_affected(&self) -> u64;
 }
@@ -175,17 +182,39 @@ pub fn statement_type_string(statement: &Statement) -> String {
     .to_string()
 }
 
-pub fn should_use_tx(statement: Statement) -> bool {
+pub fn get_execution_type(statement: Statement, confirmed: bool) -> ExecutionType {
+  if confirmed {
+    return ExecutionType::Normal;
+  }
   match statement {
-    Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. } => true,
+    Statement::AlterIndex { .. }
+    | Statement::AlterView { .. }
+    | Statement::AlterRole { .. }
+    | Statement::AlterTable { .. }
+    | Statement::Drop { .. }
+    | Statement::Truncate { .. } => ExecutionType::Confirm,
+    Statement::Delete(_) | Statement::Update { .. } => ExecutionType::Transaction,
     Statement::Explain { statement, analyze, .. }
       if analyze
-        && matches!(statement.as_ref(), Statement::Delete(_) | Statement::Drop { .. } | Statement::Update { .. }) =>
+        && matches!(
+          statement.as_ref(),
+          Statement::AlterIndex { .. }
+            | Statement::AlterView { .. }
+            | Statement::AlterRole { .. }
+            | Statement::AlterTable { .. }
+            | Statement::Drop { .. }
+            | Statement::Truncate { .. },
+        ) =>
     {
-      true
+      ExecutionType::Confirm
     },
-    Statement::Explain { .. } => false,
-    _ => false,
+    Statement::Explain { statement, analyze, .. }
+      if analyze && matches!(statement.as_ref(), Statement::Delete(_) | Statement::Update { .. }) =>
+    {
+      ExecutionType::Transaction
+    },
+    Statement::Explain { .. } => ExecutionType::Normal,
+    _ => ExecutionType::Normal,
   }
 }
 

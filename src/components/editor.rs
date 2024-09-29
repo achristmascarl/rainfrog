@@ -76,7 +76,7 @@ impl<'a> Editor<'a> {
       Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
         if app_state.query_task.is_none() {
           if let Some(sender) = &self.command_tx {
-            sender.send(Action::Query(self.textarea.lines().to_vec()))?;
+            sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
             self.vim_state = Vim::new(Mode::Normal);
             self.cursor_style = Mode::Normal.cursor_style();
           }
@@ -181,11 +181,11 @@ impl<'a, DB: Database + DatabaseQueries> Component<DB> for Editor<'a> {
         };
         self.textarea = TextArea::from(vec![query.clone()]);
         self.textarea.set_search_pattern(keyword_regex()).unwrap();
-        self.command_tx.as_ref().unwrap().send(Action::Query(vec![query.clone()]))?;
+        self.command_tx.as_ref().unwrap().send(Action::Query(vec![query.clone()], false))?;
       },
       Action::SubmitEditorQuery => {
         if let Some(sender) = &self.command_tx {
-          sender.send(Action::Query(self.textarea.lines().to_vec()))?;
+          sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
         }
       },
       Action::CopyData(data) => {

@@ -20,12 +20,14 @@ pub struct ConfirmTx<DB: sqlx::Database> {
   phantom: PhantomData<DB>,
 }
 
-#[async_trait(?Send)]
-impl<DB: sqlx::Database> PopUp<DB> for ConfirmTx<DB> {
-  fn new(tx: UnboundedSender<Action>) -> Self {
+impl<DB: sqlx::Database> ConfirmTx<DB> {
+  pub fn new(tx: UnboundedSender<Action>) -> Self {
     Self { command_tx: tx.clone(), phantom: PhantomData }
   }
+}
 
+#[async_trait(?Send)]
+impl<DB: sqlx::Database> PopUp<DB> for ConfirmTx<DB> {
   async fn handle_key_events(
     &self,
     key: crossterm::event::KeyEvent,
