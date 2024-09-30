@@ -166,7 +166,7 @@ CMD like so:
 ```sh
 docker run --platform linux/amd64 -it --rm --name rainfrog \
   achristmascarl/rainfrog:latest \
-  rainfrog # overrides CMD, addition options would come after
+  rainfrog # overrides CMD, additional options would come after
 ```
 
 since sqlite is file-based, you may need to mount a path to
