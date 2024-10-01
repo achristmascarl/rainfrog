@@ -28,6 +28,7 @@ pub struct Header {
 }
 
 pub struct Value {
+  pub parse_error: bool,
   pub is_null: bool,
   pub string: String,
 }

@@ -156,59 +156,150 @@ impl super::ValueParser for MySql {
   fn parse_value(row: &<MySql as sqlx::Database>::Row, col: &<MySql as sqlx::Database>::Column) -> Option<Value> {
     let col_type = col.type_info().to_string();
     let raw_value = row.try_get_raw(col.ordinal()).ok()?;
-    if raw_value.is_null() {
-      return Some(Value { string: "NULL".to_string(), is_null: true });
+    if row.try_get_raw(col.ordinal()).is_ok_and(|v| v.is_null()) {
+      return Some(Value { parse_error: false, string: "NULL".to_string(), is_null: true });
     }
     match col_type.to_uppercase().as_str() {
       "TINYINT(1)" | "BOOLEAN" | "BOOL" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: bool = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "TINYINT" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: i8 = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "SMALLINT" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: i16 = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "INT" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: i32 = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "BIGINT" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: i64 = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "TINYINT UNSIGNED" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: u8 = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "SMALLINT UNSIGNED" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: u16 = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "INT UNSIGNED" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: u32 = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "BIGINT UNSIGNED" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: u64 = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "FLOAT" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: f32 = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "DOUBLE" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: f64 = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "VARCHAR" | "CHAR" | "TEXT" | "BINARY" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received = row.try_get::<String, _>(col.ordinal()).ok()?;
         Some(Value { string: received, is_null: false })
       },
       "VARBINARY" | "BLOB" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: Vec<u8> = row.try_get(col.ordinal()).ok()?;
         if let Ok(s) = String::from_utf8(received.clone()) {
           Some(Value { string: s, is_null: false })
@@ -223,10 +314,24 @@ impl super::ValueParser for MySql {
         }
       },
       "INET4" | "INET6" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: std::net::IpAddr = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "TIME" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         if let Ok(received) = row.try_get::<chrono::NaiveTime, _>(col.ordinal()) {
           Some(Value { string: received.to_string(), is_null: false })
         } else {
@@ -235,18 +340,46 @@ impl super::ValueParser for MySql {
         }
       },
       "DATE" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: chrono::NaiveDate = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "DATETIME" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: chrono::NaiveDateTime = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "TIMESTAMP" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: chrono::DateTime<chrono::Utc> = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
       "JSON" => {
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: serde_json::Value = row.try_get(col.ordinal()).ok()?;
         Some(Value { string: received.to_string(), is_null: false })
       },
@@ -256,6 +389,13 @@ impl super::ValueParser for MySql {
       },
       _ => {
         // Try to cast custom or other types to strings
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
         let received: String = row.try_get_unchecked(col.ordinal()).ok()?;
         Some(Value { string: received, is_null: false })
       },
