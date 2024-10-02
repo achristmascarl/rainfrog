@@ -3,6 +3,7 @@ pg_port ?= 5499
 mysql_port ?= 3317
 postgres_url ?= postgres://root:password@localhost:$(pg_port)/rainfrog?sslmode=disable
 mysql_url ?= mysql://root:password@localhost:$(mysql_port)/rainfrog?useSSL=false
+sqlite_url ?= sqlite://./dev/rainfrog.sqlite3
 url ?= $(postgres_url)
 version ?= ""
 
@@ -12,8 +13,14 @@ version ?= ""
 dev:
 	cargo run -- -u $(url)
 
+dev-postgres:
+	cargo run -- -u $(postgres_url)
+
 dev-mysql:
 	cargo run -- -u $(mysql_url)
+
+dev-sqlite:
+	cargo run -- -u $(sqlite_url)
 
 dev-termux:
 	cargo run --features termux --no-default-features -- -u $(url)

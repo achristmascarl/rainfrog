@@ -145,162 +145,317 @@ impl super::ValueParser for Postgres {
   // parsed based on https://docs.rs/sqlx/latest/sqlx/postgres/types/index.html
   fn parse_value(row: &<Postgres as sqlx::Database>::Row, col: &<Postgres as sqlx::Database>::Column) -> Option<Value> {
     let col_type = col.type_info().to_string();
-    let raw_value = row.try_get_raw(col.ordinal()).unwrap();
-    // if col.name() == "dimensions" {
-    //   let received: String = row.try_get_unchecked(col.ordinal()).unwrap();
-    //   println!("col_type: {:?}, {:?}", col_type, received);
-    // }
-    if raw_value.is_null() {
-      return Some(Value { string: "NULL".to_string(), is_null: true });
+    if row.try_get_raw(col.ordinal()).is_ok_and(|v| v.is_null()) {
+      return Some(Value { parse_error: false, string: "NULL".to_string(), is_null: true });
     }
     match col_type.to_uppercase().as_str() {
       "TIMESTAMPTZ" => {
-        let received: chrono::DateTime<chrono::Utc> = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "TIMESTAMP" => {
-        let received: chrono::NaiveDateTime = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<chrono::NaiveDateTime, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "DATE" => {
-        let received: chrono::NaiveDate = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<chrono::NaiveDate, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "TIME" => {
-        let received: chrono::NaiveTime = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<chrono::NaiveTime, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "UUID" => {
-        let received: Uuid = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<Uuid, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "INET" | "CIDR" => {
-        let received: std::net::IpAddr = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<std::net::IpAddr, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "JSON" | "JSONB" => {
-        let received: serde_json::Value = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<serde_json::Value, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "BOOL" => {
-        let received: bool = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<bool, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "SMALLINT" | "SMALLSERIAL" | "INT2" => {
-        let received: i16 = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<i16, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "INT" | "SERIAL" | "INT4" => {
-        let received: i32 = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<i32, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "BIGINT" | "BIGSERIAL" | "INT8" => {
-        let received: i64 = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<i64, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "REAL" | "FLOAT4" => {
-        let received: f32 = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<f32, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "DOUBLE PRECISION" | "FLOAT8" => {
-        let received: f64 = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received.to_string(), is_null: false })
+        Some(
+          row
+            .try_get::<f64, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "TEXT" | "VARCHAR" | "NAME" | "CITEXT" | "BPCHAR" | "CHAR" => {
-        let received: String = row.try_get(col.ordinal()).unwrap();
-        Some(Value { string: received, is_null: false })
+        Some(
+          row
+            .try_get::<String, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
       "BYTEA" => {
-        let received: Vec<u8> = row.try_get(col.ordinal()).unwrap();
-        Some(Value {
-          string: received.iter().fold(String::new(), |mut output, b| {
-            let _ = write!(output, "{b:02X}");
-            output
-          }),
-          is_null: false,
-        })
-      },
-      "VOID" => Some(Value { string: "".to_string(), is_null: false }),
-      _ if col_type.to_uppercase().ends_with("[]") => {
-        let array_type = col_type.to_uppercase().replace("[]", "");
-        match array_type.as_str() {
-          "TIMESTAMPTZ" => {
-            let received: Vec<chrono::DateTime<chrono::Utc>> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "TIMESTAMP" => {
-            let received: Vec<chrono::NaiveDateTime> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "DATE" => {
-            let received: Vec<chrono::NaiveDate> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "TIME" => {
-            let received: Vec<chrono::NaiveTime> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "UUID" => {
-            let received: Vec<Uuid> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "INET" | "CIDR" => {
-            let received: Vec<std::net::IpAddr> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "JSON" | "JSONB" => {
-            let received: Vec<serde_json::Value> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "BOOL" => {
-            let received: Vec<bool> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "SMALLINT" | "SMALLSERIAL" | "INT2" => {
-            let received: Vec<i16> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "INT" | "SERIAL" | "INT4" => {
-            let received: Vec<i32> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "BIGINT" | "BIGSERIAL" | "INT8" => {
-            let received: Vec<i64> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "REAL" | "FLOAT4" => {
-            let received: Vec<f32> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "DOUBLE PRECISION" | "FLOAT8" => {
-            let received: Vec<f64> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "TEXT" | "VARCHAR" | "NAME" | "CITEXT" | "BPCHAR" | "CHAR" => {
-            let received: Vec<String> = row.try_get(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
-          },
-          "BYTEA" => {
-            let received: Vec<u8> = row.try_get(col.ordinal()).unwrap();
-            Some(Value {
+        Some(row.try_get::<Vec<u8>, usize>(col.ordinal()).map_or(
+          Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+          |received| {
+            Value {
+              parse_error: false,
               string: received.iter().fold(String::new(), |mut output, b| {
                 let _ = write!(output, "{b:02X}");
                 output
               }),
               is_null: false,
-            })
+            }
+          },
+        ))
+      },
+      "VOID" => Some(Value { parse_error: false, string: "".to_string(), is_null: false }),
+      _ if col_type.to_uppercase().ends_with("[]") => {
+        let array_type = col_type.to_uppercase().replace("[]", "");
+        match array_type.as_str() {
+          "TIMESTAMPTZ" => {
+            Some(
+              row
+                .try_get::<Vec<chrono::DateTime<chrono::Utc>>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "TIMESTAMP" => {
+            Some(
+              row
+                .try_get::<Vec<chrono::NaiveDateTime>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "DATE" => {
+            Some(
+              row
+                .try_get::<Vec<chrono::NaiveDate>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "TIME" => {
+            Some(
+              row
+                .try_get::<Vec<chrono::NaiveTime>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "UUID" => {
+            Some(
+              row
+                .try_get::<Vec<Uuid>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "INET" | "CIDR" => {
+            Some(
+              row
+                .try_get::<Vec<std::net::IpAddr>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "JSON" | "JSONB" => {
+            Some(
+              row
+                .try_get::<Vec<serde_json::Value>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "BOOL" => {
+            Some(
+              row
+                .try_get::<Vec<bool>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "SMALLINT" | "SMALLSERIAL" | "INT2" => {
+            Some(
+              row
+                .try_get::<Vec<i16>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "INT" | "SERIAL" | "INT4" => {
+            Some(
+              row
+                .try_get::<Vec<i32>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "BIGINT" | "BIGSERIAL" | "INT8" => {
+            Some(
+              row
+                .try_get::<Vec<i64>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "REAL" | "FLOAT4" => {
+            Some(
+              row
+                .try_get::<Vec<f32>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "DOUBLE PRECISION" | "FLOAT8" => {
+            Some(
+              row
+                .try_get::<Vec<f64>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "TEXT" | "VARCHAR" | "NAME" | "CITEXT" | "BPCHAR" | "CHAR" => {
+            Some(
+              row
+                .try_get::<Vec<String>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
+          },
+          "BYTEA" => {
+            Some(row.try_get::<Vec<u8>, usize>(col.ordinal()).map_or(
+              Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+              |received| {
+                Value {
+                  parse_error: false,
+                  string: received.iter().fold(String::new(), |mut output, b| {
+                    let _ = write!(output, "{b:02X}");
+                    output
+                  }),
+                  is_null: false,
+                }
+              },
+            ))
           },
           _ => {
             // try to cast custom or other types to strings
-            let received: Vec<String> = row.try_get_unchecked(col.ordinal()).unwrap();
-            Some(Value { string: vec_to_string(received), is_null: false })
+            Some(
+              row
+                .try_get_unchecked::<Vec<String>, usize>(col.ordinal())
+                .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+                  Value { parse_error: false, string: vec_to_string(received), is_null: false }
+                }),
+            )
           },
         }
       },
       _ => {
         // try to cast custom or other types to strings
-        let received: String = row.try_get_unchecked(col.ordinal()).unwrap();
-        Some(Value { string: received, is_null: false })
+        Some(
+          row
+            .try_get_unchecked::<String, usize>(col.ordinal())
+            .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
+              Value { parse_error: false, string: received.to_string(), is_null: false }
+            }),
+        )
       },
     }
   }
