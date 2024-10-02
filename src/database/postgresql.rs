@@ -439,7 +439,7 @@ impl super::ValueParser for Postgres {
             // try to cast custom or other types to strings
             Some(
               row
-                .try_get::<Vec<String>, usize>(col.ordinal())
+                .try_get_unchecked::<Vec<String>, usize>(col.ordinal())
                 .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
                   Value { parse_error: false, string: vec_to_string(received), is_null: false }
                 }),
@@ -451,7 +451,7 @@ impl super::ValueParser for Postgres {
         // try to cast custom or other types to strings
         Some(
           row
-            .try_get::<String, usize>(col.ordinal())
+            .try_get_unchecked::<String, usize>(col.ordinal())
             .map_or(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }, |received| {
               Value { parse_error: false, string: received.to_string(), is_null: false }
             }),
