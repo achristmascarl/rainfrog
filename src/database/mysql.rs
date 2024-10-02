@@ -155,7 +155,6 @@ impl super::DatabaseQueries for MySql {
 impl super::ValueParser for MySql {
   fn parse_value(row: &<MySql as sqlx::Database>::Row, col: &<MySql as sqlx::Database>::Column) -> Option<Value> {
     let col_type = col.type_info().to_string();
-    let raw_value = row.try_get_raw(col.ordinal()).ok()?;
     if row.try_get_raw(col.ordinal()).is_ok_and(|v| v.is_null()) {
       return Some(Value { parse_error: false, string: "NULL".to_string(), is_null: true });
     }
