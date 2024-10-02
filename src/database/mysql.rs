@@ -345,7 +345,7 @@ impl super::ValueParser for MySql {
       },
       "GEOMETRY" => {
         // TODO: would have to resort to geozero to parse WKB
-        Some(Value { parse_error: true, string: "TODO".to_owned(), is_null: false })
+        Some(Value { parse_error: true, string: "_TODO_".to_owned(), is_null: false })
       },
       _ => {
         // Try to cast custom or other types to strings
