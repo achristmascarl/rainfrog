@@ -363,6 +363,9 @@ impl<'a, DB: Database> Component<DB> for Data<'a> {
         } else if let DataState::Explain(text) = &self.data_state {
           self.command_tx.clone().unwrap().send(Action::CopyData(text.to_string()))?;
           self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
+        } else if let DataState::Error(err) = &self.data_state {
+          self.command_tx.clone().unwrap().send(Action::CopyData(err.to_string()))?;
+          self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
         }
       },
       Input { key: Key::Esc, .. } => {
@@ -405,25 +408,23 @@ impl<'a, DB: Database> Component<DB> for Data<'a> {
       let row = &rows[y];
       let title_string = match self.scrollable.get_selection_mode() {
         Some(SelectionMode::Row) => {
-          format!(" 󰆼 results <alt+4> (row {} of {})", y.saturating_add(1), rows.len())
+          format!(" 󰆼 results <alt+3> (row {} of {})", y.saturating_add(1), rows.len())
         },
         Some(SelectionMode::Cell) => {
-          format!(" 󰆼 results <alt+4> (row {} of {}) - {} ", y.saturating_add(1), rows.len(), row[x as usize].clone())
+          format!(" 󰆼 results <alt+3> (row {} of {}) - {} ", y.saturating_add(1), rows.len(), row[x as usize].clone())
         },
         Some(SelectionMode::Copied) => {
-          format!(" 󰆼 results <alt+4> ({} rows) - copied! ", rows.len())
+          format!(" 󰆼 results <alt+3> ({} rows) - copied! ", rows.len())
         },
-        _ => format!(" 󰆼 results <alt+4> ({} rows)", rows.len()),
-      };
-      block = block.title(title_string);
-    } else if let DataState::Explain(_) = &self.data_state {
-      let title_string = match self.scrollable.get_selection_mode() {
-        Some(SelectionMode::Copied) => " 󰆼 results <alt+4> - copied! ",
-        _ => " 󰆼 results <alt+4>",
+        _ => format!(" 󰆼 results <alt+3> ({} rows)", rows.len()),
       };
       block = block.title(title_string);
     } else {
-      block = block.title(" 󰆼 results <alt+4>");
+      let title_string = match self.scrollable.get_selection_mode() {
+        Some(SelectionMode::Copied) => " 󰆼 results <alt+3> - copied! ",
+        _ => " 󰆼 results <alt+3>",
+      };
+      block = block.title(title_string);
     }
 
     match &self.data_state {

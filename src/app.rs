@@ -310,6 +310,7 @@ where
             self.state.focus = Focus::Editor;
             self.last_focused_tab = Focus::Editor;
           },
+          Action::FocusData => self.state.focus = Focus::Data,
           Action::FocusHistory => {
             self.state.focus = Focus::History;
             self.last_focused_tab = Focus::History;
@@ -321,30 +322,33 @@ where
                 self.last_focused_tab = Focus::Editor;
               },
               Focus::Editor => {
+                self.state.focus = Focus::Data;
+              },
+              Focus::Data => {
                 self.state.focus = Focus::History;
                 self.last_focused_tab = Focus::History;
               },
-              Focus::History => self.state.focus = Focus::Data,
-              Focus::Data => self.state.focus = Focus::Menu,
+              Focus::History => self.state.focus = Focus::Menu,
               _ => {},
             }
           },
           Action::CycleFocusBackwards => {
             match self.state.focus {
               Focus::History => {
+                self.state.focus = Focus::Data;
+              },
+              Focus::Data => {
                 self.state.focus = Focus::Editor;
                 self.last_focused_tab = Focus::Editor;
               },
-              Focus::Data => {
+              Focus::Editor => self.state.focus = Focus::Menu,
+              Focus::Menu => {
                 self.state.focus = Focus::History;
                 self.last_focused_tab = Focus::History;
               },
-              Focus::Menu => self.state.focus = Focus::Data,
-              Focus::Editor => self.state.focus = Focus::Menu,
               _ => {},
             }
           },
-          Action::FocusData => self.state.focus = Focus::Data,
           Action::LoadMenu => {
             log::info!("LoadMenu");
             if let Some(pool) = &self.pool {
@@ -552,7 +556,7 @@ where
       }
     }
 
-    let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+3>"])
+    let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+4>"])
       .highlight_style(
         Style::new()
           .fg(if self.state.focus == Focus::Editor || self.state.focus == Focus::History {

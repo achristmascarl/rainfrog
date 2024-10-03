@@ -73,6 +73,7 @@ cargo install rainfrog --features termux --no-default-features
 ```
 
 ### nix
+
 ```sh
 nix-env -iA nixos.rainfrog
 ```
@@ -220,8 +221,8 @@ are the default keybindings.
 | `Ctrl+c`                     | quit program                  |
 | `Alt+1`, `Ctrl+k`            | change focus to menu          |
 | `Alt+2`, `Ctrl+j`            | change focus to query editor  |
-| `Alt+3`, `Ctrl+h`            | change focus to query history |
-| `Alt+4`, `Ctrl+g`            | change focus to results       |
+| `Alt+3`, `Ctrl+h`            | change focus to results       |
+| `Alt+4`, `Ctrl+g`            | change focus to query history |
 | `Tab`                        | cycle focus forwards          |
 | `Shift+Tab`                  | cycle focus backwards         |
 | `q`, `Alt+q` in query editor | abort current query           |
@@ -380,7 +381,7 @@ features
   not currently support mouse events, and menu items cannot be selected using
   the mouse
 
-you can find other reported issues in the 
+you can find other reported issues in the
 [issues tab](https://github.com/achristmascarl/rainfrog/issues)
 
 ## Contributing

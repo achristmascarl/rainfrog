@@ -46,7 +46,7 @@ Type "jjj"
 Sleep 500ms
 Enter
 Sleep 1s
-Ctrl+G
+Ctrl+H
 Sleep 2s
 Type "v"
 Sleep 2s
@@ -78,7 +78,7 @@ Alt+Enter
 Sleep 2.5s
 Type "N"
 Sleep 1s
-Ctrl+H
+Ctrl+G
 Sleep 2s
 Type "jjj"
 Sleep 1s
