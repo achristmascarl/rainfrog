@@ -2489,7 +2489,7 @@ dependencies = [
 
 [[package]]
 name = "rainfrog"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "arboard",
  "async-trait",
