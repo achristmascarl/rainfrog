@@ -419,14 +419,12 @@ impl<'a, DB: Database> Component<DB> for Data<'a> {
         _ => format!(" 󰆼 results <alt+3> ({} rows)", rows.len()),
       };
       block = block.title(title_string);
-    } else if let DataState::Explain(_) = &self.data_state {
+    } else {
       let title_string = match self.scrollable.get_selection_mode() {
         Some(SelectionMode::Copied) => " 󰆼 results <alt+3> - copied! ",
         _ => " 󰆼 results <alt+3>",
       };
       block = block.title(title_string);
-    } else {
-      block = block.title(" 󰆼 results <alt+3>");
     }
 
     match &self.data_state {
