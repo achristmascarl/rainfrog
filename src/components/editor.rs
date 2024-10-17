@@ -78,6 +78,7 @@ impl<'a> Editor<'a> {
           if let Some(sender) = &self.command_tx {
             sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
             self.vim_state = Vim::new(Mode::Normal);
+            self.vim_state.register_action_handler(self.command_tx.clone())?;
             self.cursor_style = Mode::Normal.cursor_style();
           }
         }
@@ -107,6 +108,7 @@ impl<'a> Editor<'a> {
           Transition::Nop | Transition::Mode(_) => new_vim_state,
           Transition::Pending(input) => new_vim_state.with_pending(input),
         };
+        self.vim_state.register_action_handler(self.command_tx.clone())?;
       },
     };
     Ok(())
@@ -115,6 +117,8 @@ impl<'a> Editor<'a> {
 
 impl<'a, DB: Database + DatabaseQueries> Component<DB> for Editor<'a> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
+    log::info!("register_action_handler {:?}", tx);
+    self.vim_state.register_action_handler(self.command_tx.clone())?;
     self.command_tx = Some(tx);
     Ok(())
   }

@@ -1,5 +1,6 @@
 use std::{borrow::Borrow, fmt::format, sync::Arc};
 
+use arboard::Clipboard;
 use color_eyre::eyre::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use futures::{task::Poll, FutureExt};
@@ -154,6 +155,7 @@ where
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
     let connection_opts = self.state.connection_opts.clone();
     let pool = database::init_pool::<DB>(connection_opts).await?;
+    let mut clipboard = Clipboard::new();
     log::info!("{pool:?}");
     self.pool = Some(pool);
 
@@ -450,6 +452,24 @@ where
           Action::ClearHistory => {
             self.clear_history();
           },
+          Action::CopyData(data) => {
+            #[cfg(not(feature = "termux"))]
+            {
+              log::info!("Copy signal recieved, text is {}", data);
+              clipboard.as_mut().unwrap().set_text(data);
+              // Clipboard::new().map_or_else(
+              //   |e| {
+              //     log::error!("{e:?}");
+              //   },
+              //   |mut clipboard| {
+              //     clipboard.set_text(data.clone()).unwrap_or_else(|e| {
+              //       log::error!("{e:?}");
+              //     })
+              //   },
+              // );
+            }
+
+          }
           _ => {},
         }
         if !action_consumed {
