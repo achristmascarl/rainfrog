@@ -117,7 +117,6 @@ impl<'a> Editor<'a> {
 
 impl<'a, DB: Database + DatabaseQueries> Component<DB> for Editor<'a> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
-    log::info!("register_action_handler {:?}", tx);
     self.vim_state.register_action_handler(self.command_tx.clone())?;
     self.command_tx = Some(tx);
     Ok(())
@@ -190,27 +189,6 @@ impl<'a, DB: Database + DatabaseQueries> Component<DB> for Editor<'a> {
       Action::SubmitEditorQuery => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
-        }
-      },
-      Action::CopyData(data) => {
-        #[cfg(not(feature = "termux"))]
-        {
-          Clipboard::new().map_or_else(
-            |e| {
-              log::error!("{e:?}");
-            },
-            |mut clipboard| {
-              clipboard.set_text(data.clone()).unwrap_or_else(|e| {
-                log::error!("{e:?}");
-              })
-            },
-          );
-          // also set textarea buffer as a fallback
-          self.textarea.set_yank_text(data.clone());
-        }
-        #[cfg(feature = "termux")]
-        {
-          self.textarea.set_yank_text(data);
         }
       },
       Action::HistoryToEditor(lines) => {

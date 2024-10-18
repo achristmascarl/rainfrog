@@ -183,20 +183,7 @@ impl Vim {
               }
             }
             textarea.cut();
-            let text = textarea.yank_text();
-            #[cfg(not(feature = "termux"))]
-            {
-              Clipboard::new().map_or_else(
-                |e| {
-                  log::error!("{e:?}");
-                },
-                |mut clipboard| {
-                  clipboard.set_text(text).unwrap_or_else(|e| {
-                    log::error!("{e:?}");
-                  })
-                },
-              );
-            }
+            self.send_copy_action_with_text(textarea.yank_text());
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('i'), .. } => {

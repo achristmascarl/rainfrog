@@ -455,20 +455,17 @@ where
           Action::CopyData(data) => {
             #[cfg(not(feature = "termux"))]
             {
-              log::info!("Copy signal recieved, text is {}", data);
-              clipboard.as_mut().unwrap().set_text(data);
-              // Clipboard::new().map_or_else(
-              //   |e| {
-              //     log::error!("{e:?}");
-              //   },
-              //   |mut clipboard| {
-              //     clipboard.set_text(data.clone()).unwrap_or_else(|e| {
-              //       log::error!("{e:?}");
-              //     })
-              //   },
-              // );
+              clipboard.as_mut().map_or_else(
+                |e| {
+                  log::error!("{e:?}");
+                },
+                |clipboard| {
+                  clipboard.set_text(data.clone()).unwrap_or_else(|e| {
+                    log::error!("{e:?}");
+                  })
+                },
+              );
             }
-
           }
           _ => {},
         }
