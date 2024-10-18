@@ -1,7 +1,6 @@
 // vim emulation for tui_textarea. based on:
 // https://github.com/rhysd/tui-textarea/blob/main/examples/vim.rs
 use std::{env, fmt, fs, io, io::BufRead};
-use tokio::sync::mpsc::UnboundedSender;
 
 #[cfg(not(feature = "termux"))]
 use arboard::Clipboard;
@@ -17,6 +16,7 @@ use ratatui::{
   widgets::{Block, Borders},
   Terminal,
 };
+use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{CursorMove, Input, Key, Scrolling, TextArea};
 
 use crate::action::Action;
@@ -364,9 +364,7 @@ impl Vim {
 
   fn send_copy_action_with_text(&self, text: String) {
     if let Some(sender) = &self.command_tx {
-      sender.send(Action::CopyData(text)).map_or_else(
-        |e| log::error!("{e:?}"), |_| {}
-      );
+      sender.send(Action::CopyData(text)).map_or_else(|e| log::error!("{e:?}"), |_| {});
     }
   }
 }

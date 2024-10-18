@@ -155,12 +155,14 @@ where
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
     let connection_opts = self.state.connection_opts.clone();
     let pool = database::init_pool::<DB>(connection_opts).await?;
-    let mut clipboard = Clipboard::new();
     log::info!("{pool:?}");
     self.pool = Some(pool);
 
     let mut tui = tui::Tui::new()?.mouse(self.mouse_mode_override.or(self.config.settings.mouse_mode));
     tui.enter()?;
+
+    #[allow(unused_mut)]
+    let mut clipboard = Clipboard::new();
 
     self.components.menu.register_action_handler(action_tx.clone())?;
     self.components.editor.register_action_handler(action_tx.clone())?;
@@ -460,13 +462,13 @@ where
                   log::error!("{e:?}");
                 },
                 |clipboard| {
-                  clipboard.set_text(data.clone()).unwrap_or_else(|e| {
+                  clipboard.set_text(data).unwrap_or_else(|e| {
                     log::error!("{e:?}");
                   })
                 },
               );
             }
-          }
+          },
           _ => {},
         }
         if !action_consumed {
