@@ -196,14 +196,7 @@ impl<'a, DB: Database + DatabaseQueries> Component<DB> for Editor<'a> {
         self.textarea.set_search_pattern(keyword_regex()).unwrap();
       },
       Action::CopyData(data) => {
-        #[cfg(not(feature = "termux"))]
-        {
-          self.textarea.set_yank_text(data);
-        }
-        #[cfg(feature = "termux")]
-        {
-          self.textarea.set_yank_text(data);
-        }
+        self.textarea.set_yank_text(data);
       },
       _ => {},
     }
