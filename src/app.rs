@@ -1,5 +1,6 @@
 use std::{borrow::Borrow, fmt::format, sync::Arc};
 
+#[cfg(not(feature = "termux"))]
 use arboard::Clipboard;
 use color_eyre::eyre::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
@@ -162,6 +163,7 @@ where
     tui.enter()?;
 
     #[allow(unused_mut)]
+    #[cfg(not(feature = "termux"))]
     let mut clipboard = Clipboard::new();
 
     self.components.menu.register_action_handler(action_tx.clone())?;
