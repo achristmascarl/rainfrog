@@ -25,6 +25,9 @@ dev-sqlite:
 dev-termux:
 	cargo run --features termux --no-default-features -- -u $(url)
 
+dev-termux-sqlite:
+	cargo run --features termux --no-default-features -- -u $(sqlite_url)
+
 profile:
 	cargo flamegraph --post-process flamelens --root -- -u $(url)
 
