@@ -52,7 +52,7 @@ pub struct Editor<'a> {
   last_query_duration: Option<chrono::Duration>,
 }
 
-impl<'a> Editor<'a> {
+impl Editor<'_> {
   pub fn new() -> Self {
     let mut textarea = TextArea::default();
     textarea.set_search_pattern(keyword_regex()).unwrap();
@@ -115,7 +115,7 @@ impl<'a> Editor<'a> {
   }
 }
 
-impl<'a, DB: Database + DatabaseQueries> Component<DB> for Editor<'a> {
+impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.vim_state.register_action_handler(self.command_tx.clone())?;
     self.command_tx = Some(tx);

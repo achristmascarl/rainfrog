@@ -70,7 +70,7 @@ pub struct Data<'a> {
   explain_max_y_offset: u16,
 }
 
-impl<'a> Data<'a> {
+impl Data<'_> {
   pub fn new() -> Self {
     Data {
       command_tx: None,
@@ -232,7 +232,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
   }
 }
 
-impl<'a, DB: Database> Component<DB> for Data<'a> {
+impl<DB: Database> Component<DB> for Data<'_> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())

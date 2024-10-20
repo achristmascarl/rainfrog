@@ -191,7 +191,7 @@ impl<'a> ScrollTable<'a> {
   }
 }
 
-impl<'a, DB: Database> Component<DB> for ScrollTable<'a> {
+impl<DB: Database> Component<DB> for ScrollTable<'_> {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
     self.parent_area = area;
     let render_area = self.block.inner_if_some(area);
@@ -252,7 +252,7 @@ impl<'a> Renderer<'a> {
   }
 }
 
-impl<'a> Widget for Renderer<'a> {
+impl Widget for Renderer<'_> {
   fn render(self, area: Rect, buf: &mut Buffer) {
     let scrollable = self.0;
     let table = &scrollable.table;

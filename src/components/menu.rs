@@ -159,7 +159,7 @@ impl Menu {
   }
 }
 
-impl<'a> SettableTableList<'a> for Menu {
+impl SettableTableList<'_> for Menu {
   fn set_table_list(&mut self, data: Option<Result<Rows, DbError>>) {
     log::info!("setting menu table list");
     self.table_map = IndexMap::new();
