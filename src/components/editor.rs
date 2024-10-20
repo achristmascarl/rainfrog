@@ -52,7 +52,7 @@ pub struct Editor<'a> {
   last_query_duration: Option<chrono::Duration>,
 }
 
-impl<'a> Editor<'a> {
+impl Editor<'_> {
   pub fn new() -> Self {
     let mut textarea = TextArea::default();
     textarea.set_search_pattern(keyword_regex()).unwrap();
@@ -78,6 +78,7 @@ impl<'a> Editor<'a> {
           if let Some(sender) = &self.command_tx {
             sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
             self.vim_state = Vim::new(Mode::Normal);
+            self.vim_state.register_action_handler(self.command_tx.clone())?;
             self.cursor_style = Mode::Normal.cursor_style();
           }
         }
@@ -107,14 +108,16 @@ impl<'a> Editor<'a> {
           Transition::Nop | Transition::Mode(_) => new_vim_state,
           Transition::Pending(input) => new_vim_state.with_pending(input),
         };
+        self.vim_state.register_action_handler(self.command_tx.clone())?;
       },
     };
     Ok(())
   }
 }
 
-impl<'a, DB: Database + DatabaseQueries> Component<DB> for Editor<'a> {
+impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
+    self.vim_state.register_action_handler(self.command_tx.clone())?;
     self.command_tx = Some(tx);
     Ok(())
   }
@@ -188,30 +191,12 @@ impl<'a, DB: Database + DatabaseQueries> Component<DB> for Editor<'a> {
           sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
         }
       },
-      Action::CopyData(data) => {
-        #[cfg(not(feature = "termux"))]
-        {
-          Clipboard::new().map_or_else(
-            |e| {
-              log::error!("{e:?}");
-            },
-            |mut clipboard| {
-              clipboard.set_text(data.clone()).unwrap_or_else(|e| {
-                log::error!("{e:?}");
-              })
-            },
-          );
-          // also set textarea buffer as a fallback
-          self.textarea.set_yank_text(data.clone());
-        }
-        #[cfg(feature = "termux")]
-        {
-          self.textarea.set_yank_text(data);
-        }
-      },
       Action::HistoryToEditor(lines) => {
         self.textarea = TextArea::from(lines.clone());
         self.textarea.set_search_pattern(keyword_regex()).unwrap();
+      },
+      Action::CopyData(data) => {
+        self.textarea.set_yank_text(data);
       },
       _ => {},
     }

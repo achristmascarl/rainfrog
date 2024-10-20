@@ -1,5 +1,7 @@
 use std::{borrow::Borrow, fmt::format, sync::Arc};
 
+#[cfg(not(feature = "termux"))]
+use arboard::Clipboard;
 use color_eyre::eyre::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use futures::{task::Poll, FutureExt};
@@ -159,6 +161,10 @@ where
 
     let mut tui = tui::Tui::new()?.mouse(self.mouse_mode_override.or(self.config.settings.mouse_mode));
     tui.enter()?;
+
+    #[allow(unused_mut)]
+    #[cfg(not(feature = "termux"))]
+    let mut clipboard = Clipboard::new();
 
     self.components.menu.register_action_handler(action_tx.clone())?;
     self.components.editor.register_action_handler(action_tx.clone())?;
@@ -449,6 +455,21 @@ where
           },
           Action::ClearHistory => {
             self.clear_history();
+          },
+          Action::CopyData(data) => {
+            #[cfg(not(feature = "termux"))]
+            {
+              clipboard.as_mut().map_or_else(
+                |e| {
+                  log::error!("{e:?}");
+                },
+                |clipboard| {
+                  clipboard.set_text(data).unwrap_or_else(|e| {
+                    log::error!("{e:?}");
+                  })
+                },
+              );
+            }
           },
           _ => {},
         }

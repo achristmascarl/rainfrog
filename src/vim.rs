@@ -16,7 +16,10 @@ use ratatui::{
   widgets::{Block, Borders},
   Terminal,
 };
+use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{CursorMove, Input, Key, Scrolling, TextArea};
+
+use crate::action::Action;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Mode {
@@ -93,15 +96,21 @@ pub enum Transition {
 pub struct Vim {
   pub mode: Mode,
   pub pending: Input, // Pending input to handle a sequence with two keys like gg
+  command_tx: Option<UnboundedSender<Action>>,
 }
 
 impl Vim {
   pub fn new(mode: Mode) -> Self {
-    Self { mode, pending: Input::default() }
+    Self { mode, pending: Input::default(), command_tx: None }
   }
 
   pub fn with_pending(self, pending: Input) -> Self {
-    Self { mode: self.mode, pending }
+    Self { mode: self.mode, pending, command_tx: None }
+  }
+
+  pub fn register_action_handler(&mut self, tx: Option<UnboundedSender<Action>>) -> Result<()> {
+    self.command_tx = tx;
+    Ok(())
   }
 
   pub fn transition(&self, input: Input, textarea: &mut TextArea<'_>) -> Transition {
@@ -174,20 +183,7 @@ impl Vim {
               }
             }
             textarea.cut();
-            let text = textarea.yank_text();
-            #[cfg(not(feature = "termux"))]
-            {
-              Clipboard::new().map_or_else(
-                |e| {
-                  log::error!("{e:?}");
-                },
-                |mut clipboard| {
-                  clipboard.set_text(text).unwrap_or_else(|e| {
-                    log::error!("{e:?}");
-                  })
-                },
-              );
-            }
+            self.send_copy_action_with_text(textarea.yank_text());
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('i'), .. } => {
@@ -288,20 +284,7 @@ impl Vim {
               }
             }
             textarea.copy();
-            let text = textarea.yank_text();
-            #[cfg(not(feature = "termux"))]
-            {
-              Clipboard::new().map_or_else(
-                |e| {
-                  log::error!("{e:?}");
-                },
-                |mut clipboard| {
-                  clipboard.set_text(text).unwrap_or_else(|e| {
-                    log::error!("{e:?}");
-                  })
-                },
-              );
-            }
+            self.send_copy_action_with_text(textarea.yank_text());
             return Transition::Mode(Mode::Normal);
           },
           Input { key: Key::Char('d'), ctrl: false, .. } if self.mode == Mode::Visual => {
@@ -328,20 +311,7 @@ impl Vim {
               }
             }
             textarea.cut();
-            let text = textarea.yank_text();
-            #[cfg(not(feature = "termux"))]
-            {
-              Clipboard::new().map_or_else(
-                |e| {
-                  log::error!("{e:?}");
-                },
-                |mut clipboard| {
-                  clipboard.set_text(text).unwrap_or_else(|e| {
-                    log::error!("{e:?}");
-                  })
-                },
-              );
-            }
+            self.send_copy_action_with_text(textarea.yank_text());
             return Transition::Mode(Mode::Insert);
           },
           Input { key: Key::Esc, .. } => {
@@ -355,20 +325,7 @@ impl Vim {
         match self.mode {
           Mode::Operator('y') => {
             textarea.copy();
-            let text = textarea.yank_text();
-            #[cfg(not(feature = "termux"))]
-            {
-              Clipboard::new().map_or_else(
-                |e| {
-                  log::error!("{e:?}");
-                },
-                |mut clipboard| {
-                  clipboard.set_text(text).unwrap_or_else(|e| {
-                    log::error!("{e:?}");
-                  })
-                },
-              );
-            }
+            self.send_copy_action_with_text(textarea.yank_text());
             Transition::Mode(Mode::Normal)
           },
           Mode::Operator('d') => {
@@ -377,20 +334,7 @@ impl Vim {
           },
           Mode::Operator('c') => {
             textarea.cut();
-            let text = textarea.yank_text();
-            #[cfg(not(feature = "termux"))]
-            {
-              Clipboard::new().map_or_else(
-                |e| {
-                  log::error!("{e:?}");
-                },
-                |mut clipboard| {
-                  clipboard.set_text(text).unwrap_or_else(|e| {
-                    log::error!("{e:?}");
-                  })
-                },
-              );
-            }
+            self.send_copy_action_with_text(textarea.yank_text());
             Transition::Mode(Mode::Insert)
           },
           _ => Transition::Nop,
@@ -415,6 +359,12 @@ impl Vim {
           },
         }
       },
+    }
+  }
+
+  fn send_copy_action_with_text(&self, text: String) {
+    if let Some(sender) = &self.command_tx {
+      sender.send(Action::CopyData(text)).map_or_else(|e| log::error!("{e:?}"), |_| {});
     }
   }
 }
