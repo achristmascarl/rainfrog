@@ -186,6 +186,19 @@ impl Vim {
             self.send_copy_action_with_text(textarea.yank_text());
             return Transition::Mode(Mode::Normal);
           },
+          Input { key: Key::Char('X'), .. } => {
+            if self.mode == Mode::Visual {
+              textarea.move_cursor(CursorMove::Head);
+              textarea.start_selection();
+              textarea.move_cursor(CursorMove::End);
+            } else {
+              textarea.start_selection();
+              textarea.move_cursor(CursorMove::Back);
+            }
+            textarea.cut();
+            self.send_copy_action_with_text(textarea.yank_text());
+            return Transition::Mode(Mode::Normal);
+          },
           Input { key: Key::Char('i'), .. } => {
             textarea.cancel_selection();
             return Transition::Mode(Mode::Insert);
@@ -310,6 +323,14 @@ impl Vim {
                 },
               }
             }
+            textarea.cut();
+            self.send_copy_action_with_text(textarea.yank_text());
+            return Transition::Mode(Mode::Insert);
+          },
+          Input { key: Key::Char('S'), ctrl: false, .. } => {
+            textarea.move_cursor(CursorMove::Head);
+            textarea.start_selection();
+            textarea.move_cursor(CursorMove::End);
             textarea.cut();
             self.send_copy_action_with_text(textarea.yank_text());
             return Transition::Mode(Mode::Insert);

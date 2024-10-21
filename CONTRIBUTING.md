@@ -29,7 +29,7 @@ to start a discussion before making too much progress.
 make sure to check the format before opening a PR by running:
 
 ```sh
-cargo fmt --workspace --check
+cargo fmt --all --check
 ```
 
 ### Tests
