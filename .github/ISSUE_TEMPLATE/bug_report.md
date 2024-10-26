@@ -15,6 +15,7 @@ A clear and concise description of what the bug is and what it resulted in (brok
 ### system info
  - OS version and architecture (can be obtained by running `uname` in your terminal): [e.g. macOS 14.5.1 Darwin]
  - rainfrog version (available in crash logs or by running `rainfrog --version`): [e.g. v0.1.11]
+ - terminal emulator and shell: [e.g. kitty + zsh]
 
 ### crash logs
 If the app panicked, the error output will include a line saying "We have generated a report file at "/var/folders/xx/yyyyyyy_yyyyyyy/Z/report-abcd-efgh-ijklmnop.toml"; please get the report file and include its contents below:
