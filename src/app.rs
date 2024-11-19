@@ -97,7 +97,7 @@ pub struct App<'a, DB: sqlx::Database> {
   popup: Option<Box<dyn PopUp<DB>>>,
 }
 
-impl<'a, DB> App<'a, DB>
+impl<DB> App<'_, DB>
 where
   DB: Database + database::ValueParser + database::DatabaseQueries,
   DB::QueryResult: database::HasRowsAffected,

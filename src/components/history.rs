@@ -149,7 +149,7 @@ impl<DB: sqlx::Database> Component<DB> for History {
       .iter()
       .enumerate()
       .map(|(i, h)| {
-        let selected = self.list_state.selected().map_or(false, |x| i == x);
+        let selected = self.list_state.selected() == Some(i);
         let color = if selected && focused { Color::Blue } else { Color::default() };
         let max_lines = 1_usize.max(area.height.saturating_sub(6) as usize);
         let mut lines = h
