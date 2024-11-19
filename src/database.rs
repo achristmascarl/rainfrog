@@ -94,7 +94,7 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-pub async fn query_stream<'a, DB>(
+pub async fn query_stream<DB>(
   mut stream: BoxStream<'_, Result<Either<DB::QueryResult, DB::Row>, Error>>,
 ) -> Result<Rows, DbError>
 where
