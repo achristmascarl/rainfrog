@@ -316,8 +316,8 @@ mod tests {
       ("INSERT INTO users (name) VALUES ('John')", ExecutionType::Normal),
       ("EXPLAIN DELETE FROM users WHERE id = 1", ExecutionType::Normal),
       ("EXPLAIN SELECT * FROM users", ExecutionType::Normal),
-      // TODO: why this fail to parse?
-      // ("EXPLAIN QUERY PLAN SELECT * FROM users", false),
+      ("EXPLAIN QUERY PLAN SELECT * FROM users", ExecutionType::Normal),
+      ("EXPLAIN Query PLAN DELETE FROM users WHERE id = 1", ExecutionType::Normal),
     ];
 
     for (query, expected) in test_cases {

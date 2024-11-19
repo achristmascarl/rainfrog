@@ -81,7 +81,7 @@ chrono = { version = "0.4", default-features = false }
 chrono-tz = { version = "0.5", default-features = false }
 indexmap = "2.2.6"
 tui-textarea = { version = "0.6.1", features = ["search"] }
-sqlparser = "0.49.0"
+sqlparser = "0.52.0"
 arboard = { version = "3.4.1", optional = true, features = [
   "wayland-data-control",
 ] }
