@@ -1,6 +1,6 @@
 [package]
 name = "rainfrog"
-version = "0.2.10"
+version = "0.2.11"
 edition = "2021"
 rust-version = "1.80"
 description = "a database management tui for postgres"
