@@ -29,6 +29,11 @@ database targeted. **mysql and sqlite are also supported, but they are
 currently unstable**; use with caution, and check out the
 [known issues](#known-issues-and-limitations) section for things to look out for!
 
+the postgres driver can also be used to connect to other databases that support 
+the postgres wire protocol, such as AWS Redshift. however, this functionality is not 
+well tested. in theory, the mysql driver should be able to do the same for databases 
+that support the mysql protocol. check each database's documentation for compatability.
+
 ## disclaimer
 
 this software is currently under active development; expect breaking changes,
@@ -247,8 +252,8 @@ are the default keybindings.
 
 #### query editor
 
-Keybindings may not behave exactly like Vim. The full list of active
-Vim keybindings in Rainfrog can be found at [vim.rs](./src/vim.rs).
+keybindings may not behave exactly like vim. the full list of active
+Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 
 | Keybinding        | Description                            |
 | ----------------- | -------------------------------------- |
@@ -359,8 +364,6 @@ features
 ## known issues and limitations
 
 - geometry types are not currently supported
-- in sqlite, `EXPLAIN QUERY PLAN` does not work due to an issue with the
-  sql parser; see <https://github.com/achristmascarl/rainfrog/issues/106>
 - for x11 and wayland, yanking does not copy to the system clipboard, only
   to the query editor's buffer. see <https://github.com/achristmascarl/rainfrog/issues/83>
 - in addition to the experience being subpar if the terminal window is too
