@@ -149,6 +149,11 @@ it will take precedence over all connection options.
 rainfrog --url $(connection_url)
 ```
 
+### with environment variables
+if `connection_url` is not present, rainfrog will first check your `DATABASE_URL`
+environment variable, then it will check for `DATABASE_URL` in a `.env` file in
+the current directory or a parent directory.
+
 ### `docker run`
 
 for postgres and mysql, you can run it by specifying all
