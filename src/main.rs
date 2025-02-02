@@ -54,7 +54,12 @@ async fn tokio_main() -> Result<()> {
   initialize_panic_handler()?;
 
   let mut args = Cli::parse();
-  let url = args.connection_url.clone().or(env::var("DATABASE_URL").ok());
+  let url = args.connection_url.clone().or_else(|| {
+    env::var("DATABASE_URL").map_or(None, |url| {
+      println!("Using DATABASE_URL from environment variable");
+      Some(url)
+    })
+  });
   let driver = if let Some(driver) = args.driver.take() {
     driver
   } else if let Some(ref url) = url {
