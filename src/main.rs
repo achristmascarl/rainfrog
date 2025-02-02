@@ -27,6 +27,7 @@ use clap::Parser;
 use cli::{extract_driver_from_url, prompt_for_driver, Cli, Driver};
 use color_eyre::eyre::{self, Result};
 use database::{BuildConnectionOptions, DatabaseQueries, HasRowsAffected, ValueParser};
+use dotenvy::dotenv;
 use sqlx::{postgres::PgConnectOptions, Connection, Database, Executor, MySql, Pool, Postgres, Sqlite};
 
 use crate::{
@@ -54,8 +55,12 @@ async fn tokio_main() -> Result<()> {
   initialize_panic_handler()?;
 
   let mut args = Cli::parse();
+  dotenv().ok();
   let url = args.connection_url.clone().or_else(|| {
     env::var("DATABASE_URL").map_or(None, |url| {
+      if url.is_empty() {
+        return None;
+      }
       println!("Using DATABASE_URL from environment variable");
       Some(url)
     })

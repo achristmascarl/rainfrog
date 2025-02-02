@@ -2145,6 +2145,7 @@ dependencies = [
  "crossterm",
  "derive_deref",
  "directories",
+ "dotenvy",
  "futures",
  "human-panic",
  "indexmap",
