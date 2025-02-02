@@ -60,7 +60,7 @@ impl<DB: sqlx::Database> PopUp<DB> for ConfirmTx<DB> {
               false => {
                 match results.statement_type {
                   Statement::Explain { .. } => results.statement_type,
-                  _ => Statement::Commit { chain: false },
+                  _ => Statement::Commit { chain: false, end: false, modifier: None },
                 }
               },
               true => Statement::Rollback { chain: false, savepoint: None },
