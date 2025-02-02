@@ -18,6 +18,7 @@ pub mod utils;
 pub mod vim;
 
 use std::{
+  env,
   io::{self, Write},
   str::FromStr,
 };
@@ -53,9 +54,10 @@ async fn tokio_main() -> Result<()> {
   initialize_panic_handler()?;
 
   let mut args = Cli::parse();
+  let url = args.connection_url.clone().or(env::var("DATABASE_URL").ok());
   let driver = if let Some(driver) = args.driver.take() {
     driver
-  } else if let Some(ref url) = args.connection_url {
+  } else if let Some(ref url) = url {
     extract_driver_from_url(url)?
   } else {
     prompt_for_driver()?
