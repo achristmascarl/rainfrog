@@ -72,6 +72,7 @@ async fn tokio_main() -> Result<()> {
   } else {
     prompt_for_driver()?
   };
+  args.connection_url = url;
   match driver {
     Driver::Postgres => run_app::<Postgres>(args).await,
     Driver::Mysql => run_app::<MySql>(args).await,
