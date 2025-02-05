@@ -224,6 +224,13 @@ them. to see a list of the ones you can customize, see the default
 config file at [.config/rainfrog_config.toml](./.config/rainfrog_config.toml). below
 are the default keybindings.
 
+#### n.b. for mac users
+on mac, for VS Code, terminal, kitty, and others, a setting for
+"use option as meta key" needs to be turned
+on for Alt/Opt keybindings to work. (In VS Code, it's
+`"terminal.integrated.macOptionIsMeta": true` in the settings; in
+kitty, it's `macos_option_as_alt yes` in the config.)
+
 #### general
 
 | keybinding                   | description                   |
@@ -371,11 +378,6 @@ features
 - geometry types are not currently supported
 - for x11 and wayland, yanking does not copy to the system clipboard, only
   to the query editor's buffer. see <https://github.com/achristmascarl/rainfrog/issues/83>
-- on mac, for VS Code, terminal, kitty, and others, a setting for
-  "use option as meta key" needs to be turned
-  on for Alt/Opt keybindings to work. (In VS Code, it's
-  `"terminal.integrated.macOptionIsMeta": true` in the settings; in
-  kitty, it's `macos_option_as_alt yes` in the config.)
 - in visual mode, when selecting an entire line, the behavior is not the same as
   vim's, as it simply starts the selection at the head of the line, so
   moving up or down in lines will break the selection.
