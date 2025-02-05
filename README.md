@@ -371,9 +371,6 @@ features
 - geometry types are not currently supported
 - for x11 and wayland, yanking does not copy to the system clipboard, only
   to the query editor's buffer. see <https://github.com/achristmascarl/rainfrog/issues/83>
-- for query results with many columns, the height of the rendered `Table` widget
-  may be limited due to the same limitation mentioned above. Could be fixed by
-  <https://github.com/ratatui-org/ratatui/issues/1250>
 - on mac, for VS Code, terminal, kitty, and others, a setting for
   "use option as meta key" needs to be turned
   on for Alt/Opt keybindings to work. (In VS Code, it's
