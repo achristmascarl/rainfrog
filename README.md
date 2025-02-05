@@ -5,7 +5,7 @@ a database management tui for postgres
 ![rainfrog demo](vhs/demo.gif)
 
 > [!WARNING]
-> rainfrog is currently in beta; the mysql and sqlite drivers are unstable.
+> rainfrog is currently in beta
 
 the goal for rainfrog is to provide a lightweight, terminal-based alternative to
 pgadmin/dbeaver.
@@ -25,8 +25,8 @@ pgadmin/dbeaver.
 ### supported databases
 
 rainfrog has mainly been tested with postgres, and postgres will be the primary
-database targeted. **mysql and sqlite are also supported, but they are
-currently unstable**; use with caution, and check out the
+database targeted. **mysql and sqlite are also supported, but they have not been 
+tested as extensively as postgres**; use with caution, and check out the
 [known issues](#known-issues-and-limitations) section for things to look out for!
 
 the postgres driver can also be used to connect to other databases that support 
