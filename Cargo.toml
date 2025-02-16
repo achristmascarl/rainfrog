@@ -18,7 +18,8 @@ exclude = [
 ]
 
 [profile.dev]
-opt-level = 2 # very slow on 1, basically as fast as --release on 2
+incremental = true
+opt-level = 2      # very slow on 1, basically as fast as --release on 2
 
 [profile.release]
 strip = "debuginfo"
