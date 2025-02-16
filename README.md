@@ -51,6 +51,11 @@ after installing rust (recommended to do so via
 cargo install rainfrog
 ```
 
+### homebrew
+```sh
+brew install rainfrog
+```
+
 ### arch linux
 
 arch linux users can install from the
