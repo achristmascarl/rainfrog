@@ -252,8 +252,11 @@ where
                   Some(PopUpPayload::ConfirmExport(confirmed)) => {
                     if confirmed {
                       action_tx.send(Action::ExportData(ExportFormat::CSV))?;
+                      self.popup = Some(Box::new(Exporting::new()));
+                    } else {
+                      self.popup = None;
+                      self.state.focus = Focus::Data;
                     }
-                    self.popup = Some(Box::new(Exporting::new()));
                   },
                   None => {},
                 }
