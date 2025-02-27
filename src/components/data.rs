@@ -387,11 +387,11 @@ impl<DB: Database> Component<DB> for Data<'_> {
     if let Action::Query(query, confirmed) = action {
       self.scrollable.reset_scroll();
     } else if let Action::ExportData(format) = action {
-      let name = format!("rainfrog_export_{}.csv", chrono::Utc::now().timestamp());
-      let mut writer = Writer::from_path(get_export_dir().join(name))?;
       let DataState::HasResults(rows) = &self.data_state else {
         return Ok(None);
       };
+      let name = format!("rainfrog_export_{}_rows_{}.csv", rows.rows.len(), chrono::Utc::now().timestamp());
+      let mut writer = Writer::from_path(get_export_dir().join(name))?;
       writer.write_record(header_to_vec(&rows.headers))?;
       for row in &rows.rows {
         writer.write_record(row)?;
