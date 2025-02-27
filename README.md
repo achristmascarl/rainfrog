@@ -414,7 +414,7 @@ you can change the default export location by exporting an environment variable.
 to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
 
 ```sh
-export RAINFROG_EXPORT=~/Documents/
+export RAINFROG_EXPORT=~/Documents
 ```
 
 <!-- TOC --><a name="roadmap"></a>
