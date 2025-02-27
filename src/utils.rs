@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use color_eyre::eyre::Result;
-use directories::ProjectDirs;
+use directories::{ProjectDirs, UserDirs};
 use lazy_static::lazy_static;
 use tracing::error;
 use tracing_error::ErrorLayer;
@@ -16,12 +16,18 @@ lazy_static! {
     std::env::var(format!("{}_DATA", PROJECT_NAME.clone())).ok().map(PathBuf::from);
   pub static ref CONFIG_FOLDER: Option<PathBuf> =
     std::env::var(format!("{}_CONFIG", PROJECT_NAME.clone())).ok().map(PathBuf::from);
+  pub static ref EXPORT_FOLDER: Option<PathBuf> =
+    std::env::var(format!("{}_EXPORT", PROJECT_NAME.clone())).ok().map(PathBuf::from);
   pub static ref LOG_ENV: String = format!("{}_LOGLEVEL", PROJECT_NAME.clone());
   pub static ref LOG_FILE: String = format!("{}.log", env!("CARGO_PKG_NAME"));
 }
 
 fn project_directory() -> Option<ProjectDirs> {
   ProjectDirs::from("dev", "rainfrog", env!("CARGO_PKG_NAME"))
+}
+
+fn user_directory() -> Option<UserDirs> {
+  UserDirs::new()
 }
 
 pub fn initialize_panic_handler() -> Result<()> {
@@ -87,6 +93,21 @@ pub fn get_config_dir() -> PathBuf {
     proj_dirs.config_local_dir().to_path_buf()
   } else {
     PathBuf::from(".").join(".config")
+  };
+  directory
+}
+
+pub fn get_export_dir() -> PathBuf {
+  let directory = if let Some(s) = EXPORT_FOLDER.clone() {
+    s
+  } else if let Some(user_dir) = user_directory() {
+    if let Some(download_dir) = user_dir.download_dir() {
+      download_dir.to_path_buf()
+    } else {
+      PathBuf::from(".").join(".export")
+    }
+  } else {
+    PathBuf::from(".").join(".export")
   };
   directory
 }

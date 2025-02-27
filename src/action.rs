@@ -21,6 +21,11 @@ pub enum MenuPreview {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
+pub enum ExportFormat {
+  CSV,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
 pub enum Action {
   Tick,
   Render,
@@ -44,4 +49,7 @@ pub enum Action {
   CycleFocusBackwards,
   LoadMenu,
   CopyData(String),
+  RequestExportData(i64),
+  ExportData(ExportFormat),
+  ExportDataFinished,
 }
