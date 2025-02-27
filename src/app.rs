@@ -537,7 +537,7 @@ where
     let hints_layout = Layout::default()
       .direction(Direction::Vertical)
       .constraints(match f.area().width {
-        x if x < 135 => [Constraint::Fill(1), Constraint::Length(2)],
+        x if x < 160 => [Constraint::Fill(1), Constraint::Length(2)],
         _ => [Constraint::Fill(1), Constraint::Length(1)],
       })
       .split(f.area());
@@ -640,7 +640,7 @@ where
             Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
             Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query",
             Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
-            Focus::Data if self.state.query_task.is_none() => "[j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
+            Focus::Data if self.state.query_task.is_none() => "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
             _ => "",
         }

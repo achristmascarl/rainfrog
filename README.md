@@ -318,6 +318,7 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 
 | keybinding                | description                    |
 | ------------------------- | ------------------------------ |
+| `P`                       | export results to csv          |
 | `j`, `↓`                  | scroll down by 1 row           |
 | `k`, `↑`                  | scroll up by 1 row             |
 | `h`, `←`                  | scroll left by 1 cell          |
