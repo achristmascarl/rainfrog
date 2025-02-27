@@ -163,8 +163,8 @@ macro_rules! trace_dbg {
 pub fn version() -> String {
   let author = clap::crate_authors!();
 
-  // let current_exe_path = PathBuf::from(clap::crate_name!()).display().to_string();
   let config_dir_path = get_config_dir().display().to_string();
+  let export_dir_path = get_export_dir().display().to_string();
   let data_dir_path = get_data_dir().display().to_string();
 
   format!(
@@ -174,6 +174,7 @@ pub fn version() -> String {
 Authors: {author}
 
 Config directory: {config_dir_path}
+Export directory: {export_dir_path}
 Data directory: {data_dir_path}"
   )
 }
