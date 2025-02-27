@@ -33,7 +33,7 @@ use tokio::{
 };
 
 use crate::{
-  action::Action,
+  action::{Action, ExportFormat},
   components::{
     data::{Data, DataComponent},
     editor::Editor,
@@ -44,7 +44,10 @@ use crate::{
   config::Config,
   database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, ExecutionType, Rows},
   focus::Focus,
-  popups::{confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, PopUp, PopUpPayload},
+  popups::{
+    confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, exporting::Exporting, PopUp,
+    PopUpPayload,
+  },
   tui,
   ui::center,
 };
@@ -245,6 +248,12 @@ where
                     action_tx.send(Action::Query(vec![query], true))?;
                     self.popup = None;
                     self.state.focus = Focus::Editor;
+                  },
+                  Some(PopUpPayload::ConfirmExport(confirmed)) => {
+                    if confirmed {
+                      action_tx.send(Action::ExportData(ExportFormat::CSV))?;
+                    }
+                    self.popup = Some(Box::new(Exporting::new()));
                   },
                   None => {},
                 }
@@ -470,6 +479,14 @@ where
                 },
               );
             }
+          },
+          Action::RequestExportData(row_count) => {
+            self.popup = Some(Box::new(ConfirmExport::<DB>::new(*row_count)));
+            self.state.focus = Focus::PopUp;
+          },
+          Action::ExportDataFinished => {
+            self.popup = None;
+            self.state.focus = Focus::Data;
           },
           _ => {},
         }

@@ -8,8 +8,10 @@ use crate::{
   database::{DbError, Rows},
 };
 
+pub mod confirm_export;
 pub mod confirm_query;
 pub mod confirm_tx;
+pub mod exporting;
 
 // since popups are meant to overlay the entire app and capture
 // all input, we have a payload representing when a popup is exited
@@ -18,6 +20,7 @@ pub mod confirm_tx;
 pub enum PopUpPayload {
   SetDataTable(Option<Result<Rows, DbError>>, Option<Statement>),
   ConfirmQuery(String),
+  ConfirmExport(bool),
 }
 
 #[async_trait(?Send)]
