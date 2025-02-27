@@ -13,7 +13,7 @@ use crate::{
   database::{statement_type_string, Rows},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Exporting<DB: sqlx::Database> {
   phantom: PhantomData<DB>,
 }
