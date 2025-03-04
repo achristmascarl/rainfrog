@@ -8,12 +8,13 @@ use std::{
 use arboard::Clipboard;
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
+use rat_text::text_area::TextArea;
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use sqlx::{Database, Executor, Pool};
 use tokio::sync::mpsc::UnboundedSender;
-use tui_textarea::{Input, Key, Scrolling, TextArea};
 
+// use tui_textarea::{Input, Key, Scrolling, TextArea};
 use super::{Component, Frame};
 use crate::{
   action::{Action, MenuPreview},
@@ -54,8 +55,8 @@ pub struct Editor<'a> {
 
 impl Editor<'_> {
   pub fn new() -> Self {
-    let mut textarea = TextArea::default();
-    textarea.set_search_pattern(keyword_regex()).unwrap();
+    let textarea = TextArea::default();
+    // textarea.set_search_pattern(keyword_regex()).unwrap();
     Editor {
       command_tx: None,
       config: Config::default(),

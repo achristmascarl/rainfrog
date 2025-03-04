@@ -349,7 +349,10 @@ checksum = "a21f936df1771bf62b77f047b726c4625ff2e8aa607c01ec06e5a05bd8463401"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
+ "js-sys",
  "num-traits",
+ "pure-rust-locales",
+ "wasm-bindgen",
  "windows-targets 0.52.6",
 ]
 
@@ -900,6 +903,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
+name = "dyn-clone"
+version = "1.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c7a8fb8a9fbf66c1f703fe16184d10ca0ee9d23be5b4436400408ba54a95005"
+
+[[package]]
 name = "either"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1053,6 +1062,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "format_num_pattern"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39657b084f99a6df45351bac3df5f764acc57e7191f90efd6acd51e3256070a6"
+dependencies = [
+ "log",
+ "memchr",
+ "pure-rust-locales",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1150,6 +1170,15 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "slab",
+]
+
+[[package]]
+name = "fxhash"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c"
+dependencies = [
+ "byteorder",
 ]
 
 [[package]]
@@ -1386,6 +1415,12 @@ name = "is_terminal_polyfill"
 version = "1.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
+
+[[package]]
+name = "iset"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "855de4169757ca6b92b396d7a0380ef234e9a1ec2ec603c80779453ed0ab45e4"
 
 [[package]]
 name = "itertools"
@@ -2133,6 +2168,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "pure-rust-locales"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1190fd18ae6ce9e137184f207593877e70f39b015040156b1e05081cdfe3733a"
+
+[[package]]
 name = "quick-xml"
 version = "0.36.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2175,6 +2216,7 @@ dependencies = [
  "libc",
  "log",
  "pretty_assertions",
+ "rat-text",
  "ratatui",
  "rpassword",
  "serde",
@@ -2223,6 +2265,84 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
+]
+
+[[package]]
+name = "rat-cursor"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37427a103efff37496fad20528e767ba658737e731dff1cf9231104859455dc0"
+
+[[package]]
+name = "rat-event"
+version = "1.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26e333b72bcd23f28ac85ba6441c5e75600ace55947e71930e7cb327e6716286"
+dependencies = [
+ "crossterm",
+ "log",
+ "ratatui",
+]
+
+[[package]]
+name = "rat-focus"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05ba7cfef5aa7bec283ad631c82eb41b9bc9dcce3384d10bf392542a573e40de"
+dependencies = [
+ "crossterm",
+ "fxhash",
+ "log",
+ "rat-event",
+ "rat-reloc",
+ "ratatui",
+]
+
+[[package]]
+name = "rat-reloc"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbddcf2d92aae0efb227180c07d8fbbb4480cd30318e4e6f5825aae8f6dc5ba5"
+dependencies = [
+ "log",
+ "ratatui",
+]
+
+[[package]]
+name = "rat-scrolled"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7110d840d57dc76785c1fbb76814c162772d975414d37ce931bfa2296b1f8f45"
+dependencies = [
+ "crossterm",
+ "log",
+ "rat-event",
+ "rat-reloc",
+ "ratatui",
+]
+
+[[package]]
+name = "rat-text"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c923ab42cee656bed589c2cbc2b454f4ead356fe91cc5d22bcbe497dfb36ba0"
+dependencies = [
+ "chrono",
+ "crossterm",
+ "dyn-clone",
+ "format_num_pattern",
+ "iset",
+ "log",
+ "pure-rust-locales",
+ "rat-cursor",
+ "rat-event",
+ "rat-focus",
+ "rat-reloc",
+ "rat-scrolled",
+ "ratatui",
+ "ropey",
+ "unicode-display-width",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -2385,6 +2505,16 @@ dependencies = [
  "bitflags 2.6.0",
  "serde",
  "serde_derive",
+]
+
+[[package]]
+name = "ropey"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93411e420bcd1a75ddd1dc3caf18c23155eda2c090631a85af21ba19e97093b5"
+dependencies = [
+ "smallvec",
+ "str_indices",
 ]
 
 [[package]]
@@ -2976,6 +3106,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "str_indices"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d08889ec5408683408db66ad89e0e1f93dff55c73a4ccc71c427d5b277ee47e6"
+
+[[package]]
 name = "stringprep"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3398,6 +3534,15 @@ name = "unicode-bidi"
 version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08f95100a766bf4f8f28f90d77e0a5461bbdb219042e7679bebe79004fed8d75"
+
+[[package]]
+name = "unicode-display-width"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a43273b656140aa2bb8e65351fe87c255f0eca706b2538a9bd4a590a3490bf3"
+dependencies = [
+ "unicode-segmentation",
+]
 
 [[package]]
 name = "unicode-ident"
