@@ -255,6 +255,10 @@ pub fn row_to_vec<DB: Database + ValueParser>(row: &DB::Row) -> Vec<String> {
   row.columns().iter().map(|col| DB::parse_value(row, col).unwrap().string).collect()
 }
 
+pub fn header_to_vec(headers: &Headers) -> Vec<String> {
+  headers.iter().map(|h| h.name.to_string()).collect()
+}
+
 pub fn get_keywords() -> Vec<String> {
   keywords::ALL_KEYWORDS.iter().map(|k| k.to_string()).collect()
 }

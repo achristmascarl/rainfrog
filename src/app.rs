@@ -33,7 +33,7 @@ use tokio::{
 };
 
 use crate::{
-  action::Action,
+  action::{Action, ExportFormat},
   components::{
     data::{Data, DataComponent},
     editor::Editor,
@@ -44,7 +44,10 @@ use crate::{
   config::Config,
   database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, ExecutionType, Rows},
   focus::Focus,
-  popups::{confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, PopUp, PopUpPayload},
+  popups::{
+    confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, exporting::Exporting, PopUp,
+    PopUpPayload,
+  },
   tui,
   ui::center,
 };
@@ -245,6 +248,15 @@ where
                     action_tx.send(Action::Query(vec![query], true))?;
                     self.popup = None;
                     self.state.focus = Focus::Editor;
+                  },
+                  Some(PopUpPayload::ConfirmExport(confirmed)) => {
+                    if confirmed {
+                      action_tx.send(Action::ExportData(ExportFormat::CSV))?;
+                      self.popup = Some(Box::new(Exporting::new()));
+                    } else {
+                      self.popup = None;
+                      self.state.focus = Focus::Data;
+                    }
                   },
                   None => {},
                 }
@@ -471,6 +483,14 @@ where
               );
             }
           },
+          Action::RequestExportData(row_count) => {
+            self.popup = Some(Box::new(ConfirmExport::<DB>::new(*row_count)));
+            self.state.focus = Focus::PopUp;
+          },
+          Action::ExportDataFinished => {
+            self.popup = None;
+            self.state.focus = Focus::Data;
+          },
           _ => {},
         }
         if !action_consumed {
@@ -520,7 +540,7 @@ where
     let hints_layout = Layout::default()
       .direction(Direction::Vertical)
       .constraints(match f.area().width {
-        x if x < 135 => [Constraint::Fill(1), Constraint::Length(2)],
+        x if x < 160 => [Constraint::Fill(1), Constraint::Length(2)],
         _ => [Constraint::Fill(1), Constraint::Length(1)],
       })
       .split(f.area());
@@ -623,7 +643,7 @@ where
             Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
             Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query",
             Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
-            Focus::Data if self.state.query_task.is_none() => "[j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
+            Focus::Data if self.state.query_task.is_none() => "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
             _ => "",
         }

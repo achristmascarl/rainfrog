@@ -5,6 +5,7 @@ use crossterm::{
   event::{KeyCode, KeyEvent, MouseEventKind},
   terminal::ScrollDown,
 };
+use csv::Writer;
 use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::Statement;
@@ -21,9 +22,10 @@ use crate::{
     Component,
   },
   config::{Config, KeyBindings},
-  database::{get_headers, row_to_json, row_to_vec, statement_type_string, DbError, Rows},
+  database::{get_headers, header_to_vec, row_to_json, row_to_vec, statement_type_string, DbError, Rows},
   focus::Focus,
   tui::Event,
+  utils::get_export_dir,
 };
 
 #[derive(Default)]
@@ -275,6 +277,11 @@ impl<DB: Database> Component<DB> for Data<'_> {
     }
     let input = Input::from(key);
     match input {
+      Input { key: Key::Char('P'), .. } => {
+        if let DataState::HasResults(rows) = &self.data_state {
+          self.command_tx.clone().unwrap().send(Action::RequestExportData(rows.rows.len() as i64))?;
+        }
+      },
       Input { key: Key::Right, .. } | Input { key: Key::Char('l'), .. } => {
         self.scroll(ScrollDirection::Right);
       },
@@ -379,6 +386,18 @@ impl<DB: Database> Component<DB> for Data<'_> {
   fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
     if let Action::Query(query, confirmed) = action {
       self.scrollable.reset_scroll();
+    } else if let Action::ExportData(format) = action {
+      let DataState::HasResults(rows) = &self.data_state else {
+        return Ok(None);
+      };
+      let name = format!("rainfrog_export_{}_rows_{}.csv", rows.rows.len(), chrono::Utc::now().timestamp());
+      let mut writer = Writer::from_path(get_export_dir().join(name))?;
+      writer.write_record(header_to_vec(&rows.headers))?;
+      for row in &rows.rows {
+        writer.write_record(row)?;
+      }
+      writer.flush()?;
+      self.command_tx.clone().unwrap().send(Action::ExportDataFinished)?;
     }
     Ok(None)
   }

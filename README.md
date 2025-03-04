@@ -5,7 +5,7 @@ a database management tui for postgres
 ![rainfrog demo](vhs/demo.gif)
 
 > [!WARNING]
-> rainfrog is currently in beta; the mysql and sqlite drivers are unstable.
+> rainfrog is currently in beta
 
 the goal for rainfrog is to provide a lightweight, terminal-based alternative to
 pgadmin/dbeaver.
@@ -25,8 +25,8 @@ pgadmin/dbeaver.
 ### supported databases
 
 rainfrog has mainly been tested with postgres, and postgres will be the primary
-database targeted. **mysql and sqlite are also supported, but they are
-currently unstable**; use with caution, and check out the
+database targeted. **mysql and sqlite are also supported, but they have not been 
+tested as extensively as postgres**; use with caution, and check out the
 [known issues](#known-issues-and-limitations) section for things to look out for!
 
 the postgres driver can also be used to connect to other databases that support 
@@ -40,8 +40,43 @@ this software is currently under active development; expect breaking changes,
 and use at your own risk. it is not recommended to use this tool with write
 access on a production database.
 
+## table of contents
+<!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
+
+- [installation](#installation)
+   * [cargo](#cargo)
+   * [homebrew](#homebrew)
+   * [arch linux](#arch-linux)
+   * [termux](#termux)
+   * [nix](#nix)
+   * [install script](#install-script)
+   * [release page binaries](#release-page-binaries)
+- [usage](#usage)
+   * [with connection options](#with-connection-options)
+   * [with connection url](#with-connection-url)
+   * [with environment variables](#with-environment-variables)
+   * [`docker run`](#docker-run)
+- [customization](#customization)
+   * [settings](#settings)
+   * [keybindings](#keybindings)
+      + [n.b. for mac users](#nb-for-mac-users)
+      + [general](#general)
+      + [menu (list of schemas and tables)](#menu-list-of-schemas-and-tables)
+      + [query editor](#query-editor)
+      + [query history](#query-history)
+      + [results](#results)
+- [exports](#exports)
+- [roadmap](#roadmap)
+- [known issues and limitations](#known-issues-and-limitations)
+- [Contributing](#contributing)
+- [acknowledgements](#acknowledgements)
+
+<!-- TOC end -->
+
+<!-- TOC --><a name="installation"></a>
 ## installation
 
+<!-- TOC --><a name="cargo"></a>
 ### cargo
 
 after installing rust (recommended to do so via
@@ -51,6 +86,13 @@ after installing rust (recommended to do so via
 cargo install rainfrog
 ```
 
+<!-- TOC --><a name="homebrew"></a>
+### homebrew
+```sh
+brew install rainfrog
+```
+
+<!-- TOC --><a name="arch-linux"></a>
 ### arch linux
 
 arch linux users can install from the
@@ -61,6 +103,7 @@ using [pacman](https://wiki.archlinux.org/title/pacman):
 pacman -S rainfrog
 ```
 
+<!-- TOC --><a name="termux"></a>
 ### termux
 
 if you are using [termux](https://termux.dev/), you'll need to install rust via
@@ -77,12 +120,14 @@ features):
 cargo install rainfrog --features termux --no-default-features
 ```
 
+<!-- TOC --><a name="nix"></a>
 ### nix
 
 ```sh
 nix-env -iA nixos.rainfrog
 ```
 
+<!-- TOC --><a name="install-script"></a>
 ### install script
 
 there is a simple install script that assists in downloading and unpacking a
@@ -97,6 +142,7 @@ script also needs [jq](https://github.com/jqlang/jq) and
 curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/install.sh | bash
 ```
 
+<!-- TOC --><a name="release-page-binaries"></a>
 ### release page binaries
 
 1. manually download and unpack the appropriate binary for your os from the
@@ -105,6 +151,7 @@ curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/instal
    running `rustc -vV` to see the "host" target)
 2. move the binary to a folder in your `PATH` environment variable
 
+<!-- TOC --><a name="usage"></a>
 ## usage
 
 ```sh
@@ -124,6 +171,7 @@ Options:
   -V, --version              Print version
 ```
 
+<!-- TOC --><a name="with-connection-options"></a>
 ### with connection options
 
 if any options are not provided, you will be prompted to input them.
@@ -139,6 +187,7 @@ rainfrog \
   --database <db_name>
 ```
 
+<!-- TOC --><a name="with-connection-url"></a>
 ### with connection url
 
 the `connection_url` must include all the necessary options for connecting
@@ -149,6 +198,13 @@ it will take precedence over all connection options.
 rainfrog --url $(connection_url)
 ```
 
+<!-- TOC --><a name="with-environment-variables"></a>
+### with environment variables
+if `connection_url` is not present, rainfrog will first check your `DATABASE_URL`
+environment variable, then it will check for `DATABASE_URL` in a `.env` file in
+the current directory or a parent directory.
+
+<!-- TOC --><a name="docker-run"></a>
 ### `docker run`
 
 for postgres and mysql, you can run it by specifying all
@@ -185,6 +241,7 @@ docker run --platform linux/amd64 -it --rm --name rainfrog \
   rainfrog --url sqlite:///rainfrog.sqlite3
 ```
 
+<!-- TOC --><a name="customization"></a>
 ## customization
 
 rainfrog can be customized by placing a `rainfrog_config.toml` file in
@@ -204,6 +261,7 @@ to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
 export RAINFROG_CONFIG=~/.config
 ```
 
+<!-- TOC --><a name="settings"></a>
 ### settings
 
 right now, the only setting available is whether rainfrog
@@ -212,6 +270,7 @@ allows you to change focus and scroll using the mouse.
 however, your terminal will not handle mouse events like it
 normally does (you won't be able to copy by highlighting, for example).
 
+<!-- TOC --><a name="keybindings"></a>
 ### keybindings
 
 you can customize some of the default keybindings, but not all of
@@ -219,6 +278,15 @@ them. to see a list of the ones you can customize, see the default
 config file at [.config/rainfrog_config.toml](./.config/rainfrog_config.toml). below
 are the default keybindings.
 
+<!-- TOC --><a name="nb-for-mac-users"></a>
+#### n.b. for mac users
+on mac, for VS Code, terminal, kitty, and others, a setting for
+"use option as meta key" needs to be turned
+on for Alt/Opt keybindings to work. (In VS Code, it's
+`"terminal.integrated.macOptionIsMeta": true` in the settings; in
+kitty, it's `macos_option_as_alt yes` in the config.)
+
+<!-- TOC --><a name="general"></a>
 #### general
 
 | keybinding                   | description                   |
@@ -232,6 +300,7 @@ are the default keybindings.
 | `Shift+Tab`                  | cycle focus backwards         |
 | `q`, `Alt+q` in query editor | abort current query           |
 
+<!-- TOC --><a name="menu-list-of-schemas-and-tables"></a>
 #### menu (list of schemas and tables)
 
 | keybinding                   | description                       |
@@ -250,6 +319,7 @@ are the default keybindings.
 | `Enter` with selected table  | preview table (100 rows)          |
 | `R`                          | reload schemas and tables         |
 
+<!-- TOC --><a name="query-editor"></a>
 #### query editor
 
 keybindings may not behave exactly like vim. the full list of active
@@ -285,6 +355,7 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `Ctrl+e`          | Scroll down                            |
 | `Ctrl+y`          | Scroll up                              |
 
+<!-- TOC --><a name="query-history"></a>
 #### query history
 
 | keybinding | description                   |
@@ -297,10 +368,12 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `I`        | edit selected query in editor |
 | `D`        | delete all history            |
 
+<!-- TOC --><a name="results"></a>
 #### results
 
 | keybinding                | description                    |
 | ------------------------- | ------------------------------ |
+| `P`                       | export results to csv          |
 | `j`, `↓`                  | scroll down by 1 row           |
 | `k`, `↑`                  | scroll up by 1 row             |
 | `h`, `←`                  | scroll left by 1 cell          |
@@ -320,6 +393,31 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `y`                       | copy selection                 |
 | `Esc`                     | stop selecting                 |
 
+<!-- TOC --><a name="exports"></a>
+## exports
+
+query results can be exported to csv. exporting is a blocking action, 
+so be careful about exporting too many rows at once, as it will freeze 
+the application.
+
+the file will be saved in your downloads directory, which is one of the 
+following depending on your os, as determined by
+the [directories](https://crates.io/crates/directories) crate:
+
+|Platform | Value                  | Example                  |
+| ------- | ---------------------- | ------------------------ |
+| Linux   | `XDG_DOWNLOAD_DIR`     | /home/alice/Downloads    |
+| macOS   | `$HOME`/Downloads      | /Users/Alice/Downloads   |
+| Windows | `{FOLDERID_Downloads}` | C:\Users\Alice\Downloads |
+
+you can change the default export location by exporting an environment variable.
+to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
+
+```sh
+export RAINFROG_EXPORT=~/Documents
+```
+
+<!-- TOC --><a name="roadmap"></a>
 ## roadmap
 
 <details>
@@ -361,19 +459,12 @@ now that rainfrog is in beta, check out the
 [issues tab](https://github.com/achristmascarl/rainfrog/issues) for planned
 features
 
+<!-- TOC --><a name="known-issues-and-limitations"></a>
 ## known issues and limitations
 
 - geometry types are not currently supported
 - for x11 and wayland, yanking does not copy to the system clipboard, only
   to the query editor's buffer. see <https://github.com/achristmascarl/rainfrog/issues/83>
-- for query results with many columns, the height of the rendered `Table` widget
-  may be limited due to the same limitation mentioned above. Could be fixed by
-  <https://github.com/ratatui-org/ratatui/issues/1250>
-- on mac, for VS Code, terminal, kitty, and others, a setting for
-  "use option as meta key" needs to be turned
-  on for Alt/Opt keybindings to work. (In VS Code, it's
-  `"terminal.integrated.macOptionIsMeta": true` in the settings; in
-  kitty, it's `macos_option_as_alt yes` in the config.)
 - in visual mode, when selecting an entire line, the behavior is not the same as
   vim's, as it simply starts the selection at the head of the line, so
   moving up or down in lines will break the selection.
@@ -384,6 +475,7 @@ features
 you can find other reported issues in the
 [issues tab](https://github.com/achristmascarl/rainfrog/issues)
 
+<!-- TOC --><a name="contributing"></a>
 ## Contributing
 
 for bug reports and feature requests, please [create an issue](https://github.com/achristmascarl/rainfrog/issues/new/choose).
@@ -391,6 +483,7 @@ for bug reports and feature requests, please [create an issue](https://github.co
 please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening issues
 or creating PRs.
 
+<!-- TOC --><a name="acknowledgements"></a>
 ## acknowledgements
 
 - [ratatui](https://github.com/ratatui-org/ratatui) (this project used ratatui's

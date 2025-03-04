@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use color_eyre::eyre::Result;
-use directories::ProjectDirs;
+use directories::{ProjectDirs, UserDirs};
 use lazy_static::lazy_static;
 use tracing::error;
 use tracing_error::ErrorLayer;
@@ -16,12 +16,18 @@ lazy_static! {
     std::env::var(format!("{}_DATA", PROJECT_NAME.clone())).ok().map(PathBuf::from);
   pub static ref CONFIG_FOLDER: Option<PathBuf> =
     std::env::var(format!("{}_CONFIG", PROJECT_NAME.clone())).ok().map(PathBuf::from);
+  pub static ref EXPORT_FOLDER: Option<PathBuf> =
+    std::env::var(format!("{}_EXPORT", PROJECT_NAME.clone())).ok().map(PathBuf::from);
   pub static ref LOG_ENV: String = format!("{}_LOGLEVEL", PROJECT_NAME.clone());
   pub static ref LOG_FILE: String = format!("{}.log", env!("CARGO_PKG_NAME"));
 }
 
 fn project_directory() -> Option<ProjectDirs> {
   ProjectDirs::from("dev", "rainfrog", env!("CARGO_PKG_NAME"))
+}
+
+fn user_directory() -> Option<UserDirs> {
+  UserDirs::new()
 }
 
 pub fn initialize_panic_handler() -> Result<()> {
@@ -91,6 +97,21 @@ pub fn get_config_dir() -> PathBuf {
   directory
 }
 
+pub fn get_export_dir() -> PathBuf {
+  let directory = if let Some(s) = EXPORT_FOLDER.clone() {
+    s
+  } else if let Some(user_dir) = user_directory() {
+    if let Some(download_dir) = user_dir.download_dir() {
+      download_dir.to_path_buf()
+    } else {
+      PathBuf::from(".").join(".export")
+    }
+  } else {
+    PathBuf::from(".").join(".export")
+  };
+  directory
+}
+
 pub fn initialize_logging() -> Result<()> {
   let directory = get_data_dir();
   std::fs::create_dir_all(directory.clone())?;
@@ -142,8 +163,8 @@ macro_rules! trace_dbg {
 pub fn version() -> String {
   let author = clap::crate_authors!();
 
-  // let current_exe_path = PathBuf::from(clap::crate_name!()).display().to_string();
   let config_dir_path = get_config_dir().display().to_string();
+  let export_dir_path = get_export_dir().display().to_string();
   let data_dir_path = get_data_dir().display().to_string();
 
   format!(
@@ -153,6 +174,7 @@ pub fn version() -> String {
 Authors: {author}
 
 Config directory: {config_dir_path}
+Export directory: {export_dir_path}
 Data directory: {data_dir_path}"
   )
 }
