@@ -7,14 +7,21 @@ use std::{
 #[cfg(not(feature = "termux"))]
 use arboard::Clipboard;
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
-use rat_text::text_area::TextArea;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind};
+use rat_text::{
+  clipboard::global_clipboard,
+  event::{
+    crossterm::modifiers::{ALT, CONTROL, NONE, SHIFT},
+    ct_event,
+  },
+  text_area::{TextArea, TextAreaState},
+};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use sqlx::{Database, Executor, Pool};
 use tokio::sync::mpsc::UnboundedSender;
+use tui_textarea::Key;
 
-// use tui_textarea::{Input, Key, Scrolling, TextArea};
 use super::{Component, Frame};
 use crate::{
   action::{Action, MenuPreview},
@@ -43,19 +50,19 @@ fn keyword_regex() -> String {
 }
 
 #[derive(Default)]
-pub struct Editor<'a> {
+pub struct Editor {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   selection: Option<Selection>,
-  textarea: TextArea<'a>,
+  textarea: TextAreaState,
   vim_state: Vim,
   cursor_style: Style,
   last_query_duration: Option<chrono::Duration>,
 }
 
-impl Editor<'_> {
+impl Editor {
   pub fn new() -> Self {
-    let textarea = TextArea::default();
+    let textarea = TextAreaState::default();
     // textarea.set_search_pattern(keyword_regex()).unwrap();
     Editor {
       command_tx: None,
@@ -70,31 +77,37 @@ impl Editor<'_> {
 
   pub fn transition_vim_state<DB: Database + DatabaseQueries>(
     &mut self,
-    input: Input,
+    input: KeyEvent,
     app_state: &AppState<'_, DB>,
   ) -> Result<()> {
     match input {
-      Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
+      KeyEvent { code: KeyCode::Enter, modifiers: ALT, .. }
+      | KeyEvent { code: KeyCode::Enter, modifiers: CONTROL, .. } => {
         if app_state.query_task.is_none() {
           if let Some(sender) = &self.command_tx {
-            sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
+            sender.send(Action::Query(self.textarea.text(), false))?;
             self.vim_state = Vim::new(Mode::Normal);
             self.vim_state.register_action_handler(self.command_tx.clone())?;
             self.cursor_style = Mode::Normal.cursor_style();
           }
         }
       },
-      Input { key: Key::Tab, shift: false, .. } if self.vim_state.mode != Mode::Insert => {
+      KeyEvent { code: KeyCode::Tab, modifiers: NONE, .. } if self.vim_state.mode != Mode::Insert => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::CycleFocusForwards)?;
         }
       },
-      Input { key: Key::Char('c'), ctrl: true, .. } if matches!(self.vim_state.mode, Mode::Normal) => {
+      KeyEvent { code: KeyCode::Tab, modifiers: SHIFT, .. } if self.vim_state.mode != Mode::Insert => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::CycleFocusBackwards)?;
+        }
+      },
+      KeyEvent { code: KeyCode::Char('c'), modifiers: CONTROL, .. } if matches!(self.vim_state.mode, Mode::Normal) => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::Quit)?;
         }
       },
-      Input { key: Key::Char('q'), .. } if matches!(self.vim_state.mode, Mode::Normal) => {
+      KeyEvent { code: KeyCode::Char('q'), .. } if matches!(self.vim_state.mode, Mode::Normal) => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::AbortQuery)?;
         }
@@ -116,7 +129,7 @@ impl Editor<'_> {
   }
 }
 
-impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
+impl<DB: Database + DatabaseQueries> Component<DB> for Editor {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.vim_state.register_action_handler(self.command_tx.clone())?;
     self.command_tx = Some(tx);
@@ -134,16 +147,16 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
     }
     match mouse.kind {
       MouseEventKind::ScrollDown => {
-        self.textarea.scroll((1, 0));
+        self.textarea.scroll_down(1);
       },
       MouseEventKind::ScrollUp => {
-        self.textarea.scroll((-1, 0));
+        self.textarea.scroll_up(1);
       },
       MouseEventKind::ScrollLeft => {
-        self.transition_vim_state(Input { key: Key::Char('h'), ctrl: false, alt: false, shift: false }, app_state)?;
+        self.textarea.move_left(1, true);
       },
       MouseEventKind::ScrollRight => {
-        self.transition_vim_state(Input { key: Key::Char('j'), ctrl: false, alt: false, shift: false }, app_state)?;
+        self.textarea.move_right(1, true);
       },
       _ => {},
     };
@@ -164,8 +177,7 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
     } else if let Some(Event::Mouse(event)) = event {
       self.handle_mouse_events(event, app_state).unwrap();
     } else if let Some(Event::Key(key)) = event {
-      let input = Input::from(key);
-      self.transition_vim_state(input, app_state)?;
+      self.transition_vim_state(key, app_state)?;
     };
     Ok(None)
   }
@@ -183,21 +195,21 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
           MenuPreview::Indexes => DB::preview_indexes_query(&schema, &table),
           MenuPreview::Policies => DB::preview_policies_query(&schema, &table),
         };
-        self.textarea = TextArea::from(vec![query.clone()]);
-        self.textarea.set_search_pattern(keyword_regex()).unwrap();
-        self.command_tx.as_ref().unwrap().send(Action::Query(vec![query.clone()], false))?;
+        self.textarea.clear();
+        self.textarea.set_text(query.clone());
+        self.command_tx.as_ref().unwrap().send(Action::Query(query.clone(), false))?;
       },
       Action::SubmitEditorQuery => {
         if let Some(sender) = &self.command_tx {
-          sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
+          sender.send(Action::Query(self.textarea.text(), false))?;
         }
       },
-      Action::HistoryToEditor(lines) => {
-        self.textarea = TextArea::from(lines.clone());
-        self.textarea.set_search_pattern(keyword_regex()).unwrap();
+      Action::HistoryToEditor(query) => {
+        self.textarea.clear();
+        self.textarea.set_text(query);
       },
       Action::CopyData(data) => {
-        self.textarea.set_yank_text(data);
+        let _ = global_clipboard().set_string(&data).map_err(|err| log::error!("Clipboard error: {}", err));
       },
       _ => {},
     }
@@ -216,7 +228,8 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
 
     let duration_string = self.last_query_duration.map_or("".to_string(), |d| {
       let seconds: f64 = (d.num_milliseconds()
-        % std::cmp::max(1, d.num_minutes()).saturating_mul(60).saturating_mul(1000)) as f64
+        % std::cmp::max::<i64>(1, d.num_minutes()).saturating_mul(60).saturating_mul(1000))
+        as f64
         / 1000_f64;
       format!(
         " {}{}:{}{:.3}s ",
@@ -233,14 +246,16 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
       .border_style(if focused { Style::new().green() } else { Style::new().dim() })
       .title(Line::from(duration_string).right_aligned());
 
-    self.textarea.set_cursor_style(self.cursor_style);
-    self.textarea.set_block(block);
-    self.textarea.set_line_number_style(if focused { Style::default().fg(Color::Yellow) } else { Style::new().dim() });
-    self.textarea.set_cursor_line_style(Style::default().not_underlined());
-    self.textarea.set_hard_tab_indent(false);
-    self.textarea.set_tab_length(2);
-    self.textarea.set_search_style(Style::default().fg(Color::Magenta).bold());
-    f.render_widget(&self.textarea, area);
+    let textarea_widget = TextArea::default().block(block);
+    // self.textarea.set_cursor_style(self.cursor_style);
+    // self.textarea.set_block(block);
+    // self.textarea.set_line_number_style(if focused { Style::default().fg(Color::Yellow) } else { Style::new().dim() });
+    // self.textarea.set_cursor_line_style(Style::default().not_underlined());
+    // self.textarea.set_hard_tab_indent(false);
+    // self.textarea.set_tab_length(2);
+    // self.textarea.set_search_style(Style::default().fg(Color::Magenta).bold());
+    // f.render_widget(&self.textarea, area);
+    f.render_stateful_widget(textarea_widget, area, &mut self.textarea);
     Ok(())
   }
 }

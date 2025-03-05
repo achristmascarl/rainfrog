@@ -60,7 +60,7 @@ pub enum DbTask<'a, DB: sqlx::Database> {
 }
 
 pub struct HistoryEntry {
-  pub query_lines: Vec<String>,
+  pub query: String,
   pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
@@ -144,8 +144,8 @@ where
     })
   }
 
-  fn add_to_history(&mut self, query_lines: Vec<String>) {
-    self.state.history.insert(0, HistoryEntry { query_lines, timestamp: chrono::Local::now() });
+  fn add_to_history(&mut self, query: String) {
+    self.state.history.insert(0, HistoryEntry { query, timestamp: chrono::Local::now() });
     if self.state.history.len() > 50 {
       self.state.history.pop();
     }
@@ -245,7 +245,7 @@ where
                     self.state.focus = Focus::Editor;
                   },
                   Some(PopUpPayload::ConfirmQuery(query)) => {
-                    action_tx.send(Action::Query(vec![query], true))?;
+                    action_tx.send(Action::Query(query, true))?;
                     self.popup = None;
                     self.state.focus = Focus::Editor;
                   },
@@ -374,10 +374,10 @@ where
               self.components.menu.set_table_list(Some(results));
             }
           },
-          Action::Query(query_lines, confirmed) => {
-            let query_string = query_lines.clone().join(" \n");
+          Action::Query(query, confirmed) => {
+            let query_string = query.clone();
             if !query_string.is_empty() {
-              self.add_to_history(query_lines.clone());
+              self.add_to_history(query.clone());
               let first_query = database::get_first_query(query_string.clone(), self.state.dialect.as_ref());
               let execution_type = first_query.map(|(_, statement_type)| {
                 (database::get_execution_type(statement_type.clone(), *confirmed), statement_type)

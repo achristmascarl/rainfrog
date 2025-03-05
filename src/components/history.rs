@@ -97,11 +97,11 @@ impl<DB: sqlx::Database> Component<DB> for History {
         },
         KeyCode::Char('G') => self.list_state.select(Some(app_state.history.len().saturating_sub(1))),
         KeyCode::Char('I') => {
-          self.command_tx.as_ref().unwrap().send(Action::HistoryToEditor(app_state.history[i].query_lines.clone()))?;
+          self.command_tx.as_ref().unwrap().send(Action::HistoryToEditor(app_state.history[i].query.clone()))?;
           self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
         },
         KeyCode::Char('y') => {
-          self.command_tx.as_ref().unwrap().send(Action::CopyData(app_state.history[i].query_lines.join("\n")))?;
+          self.command_tx.as_ref().unwrap().send(Action::CopyData(app_state.history[i].query.clone()))?;
           self.copied = true;
         },
         KeyCode::Char('D') => {
@@ -152,13 +152,13 @@ impl<DB: sqlx::Database> Component<DB> for History {
         let selected = self.list_state.selected() == Some(i);
         let color = if selected && focused { Color::Blue } else { Color::default() };
         let max_lines = 1_usize.max(area.height.saturating_sub(6) as usize);
-        let mut lines = h
-          .query_lines[0..max_lines.min(h.query_lines.len())]
+        let query_lines = h.query.split('\n').collect::<Vec<_>>();
+        let mut lines = query_lines[0..max_lines.min(query_lines.len())]
           .iter()
-          .map(|s| Line::from(s.clone()).style(Style::default().fg(color)))
+          .map(|s| Line::from(*s).style(Style::default().fg(color)))
           .collect::<Vec<Line>>();
-        if h.query_lines.len() > max_lines {
-          lines.push(Line::from(format!("... and {} more lines", h.query_lines.len().saturating_sub(max_lines))).style(Style::default().fg(color)));
+        if query_lines.len() > max_lines {
+          lines.push(Line::from(format!("... and {} more lines", query_lines.len().saturating_sub(max_lines))).style(Style::default().fg(color)));
         }
         lines.insert(
           0,

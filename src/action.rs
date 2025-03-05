@@ -36,9 +36,9 @@ pub enum Action {
   Error(String),
   Help,
   SubmitEditorQuery,
-  Query(Vec<String>, bool),                 // (query_lines, execution_confirmed)
+  Query(String, bool),                      // (query, execution_confirmed)
   MenuPreview(MenuPreview, String, String), // (preview, schema, table)
-  HistoryToEditor(Vec<String>),
+  HistoryToEditor(String),
   ClearHistory,
   AbortQuery,
   FocusMenu,

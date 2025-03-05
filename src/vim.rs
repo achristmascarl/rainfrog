@@ -6,8 +6,16 @@ use std::{env, fmt, fs, io, io::BufRead};
 use arboard::Clipboard;
 use color_eyre::eyre::Result;
 use crossterm::{
-  event::{DisableMouseCapture, EnableMouseCapture},
+  event::{DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent},
   terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use rat_text::{
+  event::{
+    crossterm::modifiers::{ALT, CONTROL, NONE, SHIFT},
+    HandleEvent,
+  },
+  text_area::TextAreaState,
+  TextRange,
 };
 use ratatui::{
   backend::CrosstermBackend,
@@ -17,7 +25,6 @@ use ratatui::{
   Terminal,
 };
 use tokio::sync::mpsc::UnboundedSender;
-use tui_textarea::{CursorMove, Input, Key, Scrolling, TextArea};
 
 use crate::action::Action;
 
@@ -88,24 +95,24 @@ impl fmt::Display for Mode {
 pub enum Transition {
   Nop,
   Mode(Mode),
-  Pending(Input),
+  Pending(KeyEvent),
 }
 
 // State of Vim emulation
 #[derive(Default, Clone)]
 pub struct Vim {
   pub mode: Mode,
-  pub pending: Input, // Pending input to handle a sequence with two keys like gg
+  pub pending: Option<KeyEvent>, // Pending input to handle a sequence with two keys like gg
   command_tx: Option<UnboundedSender<Action>>,
 }
 
 impl Vim {
   pub fn new(mode: Mode) -> Self {
-    Self { mode, pending: Input::default(), command_tx: None }
+    Self { mode, pending: None, command_tx: None }
   }
 
-  pub fn with_pending(self, pending: Input) -> Self {
-    Self { mode: self.mode, pending, command_tx: None }
+  pub fn with_pending(self, pending: KeyEvent) -> Self {
+    Self { mode: self.mode, pending: Some(pending), command_tx: None }
   }
 
   pub fn register_action_handler(&mut self, tx: Option<UnboundedSender<Action>>) -> Result<()> {
@@ -113,274 +120,325 @@ impl Vim {
     Ok(())
   }
 
-  pub fn transition(&self, input: Input, textarea: &mut TextArea<'_>) -> Transition {
-    if input.key == Key::Null {
-      return Transition::Nop;
-    }
-
+  pub fn transition(&self, input: KeyEvent, textarea: &mut TextAreaState) -> Transition {
+    let extend_selection = self.mode != Mode::Normal;
     match self.mode {
       Mode::Normal | Mode::Visual | Mode::Operator(_) => {
         match input {
-          Input { key: Key::Char('h'), .. } | Input { key: Key::Left, .. } => textarea.move_cursor(CursorMove::Back),
-          Input { key: Key::Char('j'), .. } | Input { key: Key::Down, .. } => textarea.move_cursor(CursorMove::Down),
-          Input { key: Key::Char('k'), .. } | Input { key: Key::Up, .. } => textarea.move_cursor(CursorMove::Up),
-          Input { key: Key::Char('l'), .. } | Input { key: Key::Right, .. } => {
-            textarea.move_cursor(CursorMove::Forward)
+          KeyEvent { code: KeyCode::Char('h'), .. } | KeyEvent { code: KeyCode::Left, .. } => {
+            textarea.move_left(1, extend_selection);
           },
-          Input { key: Key::Char('w'), .. } => textarea.move_cursor(CursorMove::WordForward),
-          Input { key: Key::Char('e'), ctrl: false, .. } if matches!(self.mode, Mode::Operator(_)) => {
-            textarea.move_cursor(CursorMove::WordForward) // `e` behaves like `w` in operator-pending mode
+          KeyEvent { code: KeyCode::Char('j'), .. } | KeyEvent { code: KeyCode::Down, .. } => {
+            textarea.move_down(1, extend_selection);
           },
-          Input { key: Key::Char('e'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordEnd),
-          Input { key: Key::Char('b'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordBack),
-          Input { key: Key::Char('^'), .. } => textarea.move_cursor(CursorMove::Head),
-          Input { key: Key::Char('0'), .. } => textarea.move_cursor(CursorMove::Head),
-          Input { key: Key::Char('$'), .. } => textarea.move_cursor(CursorMove::End),
-          Input { key: Key::Char('D'), .. } => {
-            textarea.delete_line_by_end();
+          KeyEvent { code: KeyCode::Char('k'), .. } | KeyEvent { code: KeyCode::Up, .. } => {
+            textarea.move_up(1, extend_selection);
+          },
+          KeyEvent { code: KeyCode::Char('l'), .. } | KeyEvent { code: KeyCode::Right, .. } => {
+            textarea.move_right(1, extend_selection);
+          },
+          KeyEvent { code: KeyCode::Char('w'), .. } => {
+            textarea.move_to_next_word(extend_selection);
+          },
+          KeyEvent { code: KeyCode::Char('e'), modifiers: NONE, .. } if matches!(self.mode, Mode::Operator(_)) => {
+            textarea.move_to_next_word(extend_selection); // `e` behaves like `w` in operator-pending mode
+          },
+          KeyEvent { code: KeyCode::Char('e'), modifiers: NONE, .. } => {
+            textarea.next_word_end(textarea.cursor());
+          },
+          KeyEvent { code: KeyCode::Char('b'), modifiers: NONE, .. } => {
+            textarea.prev_word_start(textarea.cursor());
+          },
+          KeyEvent { code: KeyCode::Char('^'), .. } => {
+            textarea.move_to_line_start(extend_selection);
+          },
+          KeyEvent { code: KeyCode::Char('0'), .. } => {
+            textarea.move_to_line_start(extend_selection);
+          },
+          KeyEvent { code: KeyCode::Char('$'), .. } => {
+            textarea.move_to_line_end(extend_selection);
+          },
+          KeyEvent { code: KeyCode::Char('D'), .. } => {
+            textarea.move_to_line_end(true);
+            self.send_copy_action_with_text(textarea.selected_text().to_string());
+            textarea.delete_range(textarea.selection());
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
             return Transition::Mode(Mode::Normal);
           },
-          Input { key: Key::Char('C'), .. } => {
-            textarea.delete_line_by_end();
-            textarea.cancel_selection();
+          KeyEvent { code: KeyCode::Char('C'), .. } => {
+            textarea.move_to_line_end(true);
+            self.send_copy_action_with_text(textarea.selected_text().to_string());
+            textarea.delete_range(textarea.selection());
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
             return Transition::Mode(Mode::Insert);
           },
-          Input { key: Key::Char('p'), .. } => {
+          KeyEvent { code: KeyCode::Char('p'), .. } => {
+            textarea.delete_range(textarea.selection());
             #[cfg(not(feature = "termux"))]
             {
               Clipboard::new().map_or_else(
                 |e| log::error!("{e:?}"),
                 |mut clipboard| {
-                  clipboard.get_text().map_or_else(|e| log::error!("{e:?}"), |text| textarea.set_yank_text(text))
+                  clipboard.get_text().map_or_else(
+                    |e| log::error!("{e:?}"),
+                    |text| {
+                      textarea.insert_str(text);
+                    },
+                  );
                 },
               );
             }
-            textarea.paste();
+            #[cfg(feature = "termux")]
+            {
+              textarea.paste_from_clip();
+            }
             return Transition::Mode(Mode::Normal);
           },
-          Input { key: Key::Char('u'), ctrl: false, .. } => {
+          KeyEvent { code: KeyCode::Char('u'), modifiers: NONE, .. } => {
             textarea.undo();
             return Transition::Mode(Mode::Normal);
           },
-          Input { key: Key::Char('r'), ctrl: true, .. } => {
+          KeyEvent { code: KeyCode::Char('r'), modifiers: CONTROL, .. } => {
             textarea.redo();
             return Transition::Mode(Mode::Normal);
           },
-          Input { key: Key::Char('r'), ctrl: false, .. } => {
+          KeyEvent { code: KeyCode::Char('r'), modifiers: NONE, .. } => {
             return Transition::Mode(Mode::Replace);
           },
-          Input { key: Key::Char('x'), .. } => {
-            if !textarea.is_selecting() {
-              textarea.start_selection();
+          KeyEvent { code: KeyCode::Char('x'), .. } => {
+            if !textarea.has_selection() {
+              textarea.move_right(1, true);
             }
-            if let Some(selection_range) = textarea.selection_range() {
-              let selection_direction = get_selection_direction(selection_range, textarea.cursor());
-              match selection_direction {
-                SelectionDirection::Backward => {},
-                _ => {
-                  textarea.move_cursor(CursorMove::Forward); // Vim's forward text selection is inclusive
-                },
-              }
-            }
-            textarea.cut();
-            self.send_copy_action_with_text(textarea.yank_text());
+            self.send_copy_action_with_text(textarea.selected_text().to_string());
+            textarea.cut_to_clip();
             return Transition::Mode(Mode::Normal);
           },
-          Input { key: Key::Char('X'), .. } => {
+          KeyEvent { code: KeyCode::Char('X'), .. } => {
             if self.mode == Mode::Visual {
-              textarea.move_cursor(CursorMove::Head);
-              textarea.start_selection();
-              textarea.move_cursor(CursorMove::End);
+              textarea.move_to_line_start(false);
+              textarea.move_to_line_end(true);
             } else {
-              textarea.start_selection();
-              textarea.move_cursor(CursorMove::Back);
+              textarea.move_left(1, true);
             }
-            textarea.cut();
-            self.send_copy_action_with_text(textarea.yank_text());
+            self.send_copy_action_with_text(textarea.selected_text().to_string());
+            textarea.cut_to_clip();
             return Transition::Mode(Mode::Normal);
           },
-          Input { key: Key::Char('i'), .. } => {
-            textarea.cancel_selection();
+          KeyEvent { code: KeyCode::Char('i'), .. } => {
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
             return Transition::Mode(Mode::Insert);
           },
-          Input { key: Key::Char('a'), ctrl: false, .. }
+          KeyEvent { code: KeyCode::Char('a'), modifiers: NONE, .. }
             if matches!(self.mode, Mode::Operator('d')) || matches!(self.mode, Mode::Operator('y')) =>
           {
-            textarea.cancel_selection();
-            textarea.move_cursor(CursorMove::Forward);
-            textarea.move_cursor(CursorMove::WordBack);
-            textarea.start_selection();
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
+            textarea.move_right(1, false);
+            textarea.word_start(textarea.cursor());
             return Transition::Nop;
           },
-          Input { key: Key::Char('a'), .. } => {
-            textarea.cancel_selection();
-            textarea.move_cursor(CursorMove::Forward);
+          KeyEvent { code: KeyCode::Char('a'), .. } => {
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
+            textarea.move_right(1, false);
             return Transition::Mode(Mode::Insert);
           },
-          Input { key: Key::Char('A'), .. } => {
-            textarea.cancel_selection();
-            textarea.move_cursor(CursorMove::End);
+          KeyEvent { code: KeyCode::Char('A'), .. } => {
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
+            textarea.move_to_line_end(false);
             return Transition::Mode(Mode::Insert);
           },
-          Input { key: Key::Char('o'), .. } => {
-            textarea.move_cursor(CursorMove::End);
+          KeyEvent { code: KeyCode::Char('o'), .. } => {
+            textarea.move_to_line_end(false);
             textarea.insert_newline();
             return Transition::Mode(Mode::Insert);
           },
-          Input { key: Key::Char('O'), .. } => {
-            textarea.move_cursor(CursorMove::Head);
+          KeyEvent { code: KeyCode::Char('O'), .. } => {
+            textarea.move_to_line_start(false);
             textarea.insert_newline();
-            textarea.move_cursor(CursorMove::Up);
+            textarea.move_up(1, false);
             return Transition::Mode(Mode::Insert);
           },
-          Input { key: Key::Char('I'), .. } => {
-            textarea.cancel_selection();
-            textarea.move_cursor(CursorMove::Head);
+          KeyEvent { code: KeyCode::Char('I'), .. } => {
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
+            textarea.move_to_line_start(false);
             return Transition::Mode(Mode::Insert);
           },
-          Input { key: Key::Char('e'), ctrl: true, .. } => textarea.scroll((1, 0)),
-          Input { key: Key::Char('y'), ctrl: true, .. } => textarea.scroll((-1, 0)),
-          Input { key: Key::Char('d'), ctrl: true, .. } => textarea.scroll(Scrolling::HalfPageDown),
-          Input { key: Key::Char('u'), ctrl: true, .. } => textarea.scroll(Scrolling::HalfPageUp),
-          Input { key: Key::Char('f'), ctrl: true, .. } | Input { key: Key::PageDown, .. } => {
-            textarea.scroll(Scrolling::PageDown)
+          KeyEvent { code: KeyCode::Char('e'), modifiers: CONTROL, .. } => {
+            textarea.scroll_down(1);
           },
-          Input { key: Key::Char('b'), ctrl: true, .. } | Input { key: Key::PageUp, .. } => {
-            textarea.scroll(Scrolling::PageUp)
+          KeyEvent { code: KeyCode::Char('y'), modifiers: CONTROL, .. } => {
+            textarea.scroll_up(1);
           },
-          Input { key: Key::Char('v'), ctrl: false, .. } if self.mode == Mode::Normal => {
-            textarea.start_selection();
+          KeyEvent { code: KeyCode::Char('d'), modifiers: CONTROL, .. } => {
+            textarea.scroll_down(textarea.vertical_page().saturating_div(2));
+          },
+          KeyEvent { code: KeyCode::Char('u'), modifiers: CONTROL, .. } => {
+            textarea.scroll_up(textarea.vertical_page().saturating_div(2));
+          },
+          KeyEvent { code: KeyCode::Char('f'), modifiers: CONTROL, .. } | KeyEvent { code: KeyCode::PageDown, .. } => {
+            textarea.scroll_down(textarea.vertical_page());
+          },
+          KeyEvent { code: KeyCode::Char('b'), modifiers: CONTROL, .. } | KeyEvent { code: KeyCode::PageUp, .. } => {
+            textarea.scroll_up(textarea.vertical_page());
+          },
+          KeyEvent { code: KeyCode::Char('v'), modifiers: NONE, .. } if self.mode == Mode::Normal => {
+            textarea.move_right(1, true);
             return Transition::Mode(Mode::Visual);
           },
-          Input { key: Key::Char('V'), ctrl: false, .. } if self.mode == Mode::Normal => {
-            textarea.move_cursor(CursorMove::Head);
-            textarea.start_selection();
-            textarea.move_cursor(CursorMove::End);
+          KeyEvent { code: KeyCode::Char('V'), modifiers: NONE, .. } if self.mode == Mode::Normal => {
+            textarea.move_to_line_start(false);
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
+            textarea.move_to_line_end(true);
             return Transition::Mode(Mode::Visual);
           },
-          Input { key: Key::Esc, .. }
-          | Input { key: Key::Char('c'), ctrl: true, .. }
-          | Input { key: Key::Char('v'), ctrl: false, .. }
+          KeyEvent { code: KeyCode::Esc, .. }
+          | KeyEvent { code: KeyCode::Char('c'), modifiers: CONTROL, .. }
+          | KeyEvent { code: KeyCode::Char('v'), modifiers: NONE, .. }
             if self.mode == Mode::Visual =>
           {
-            textarea.cancel_selection();
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
             return Transition::Mode(Mode::Normal);
           },
-          Input { key: Key::Char('g'), ctrl: false, .. }
-            if matches!(self.pending, Input { key: Key::Char('g'), ctrl: false, .. }) =>
+          KeyEvent { code: KeyCode::Char('g'), modifiers: NONE, .. }
+            if matches!(self.pending, Some(KeyEvent { code: KeyCode::Char('g'), modifiers: NONE, .. })) =>
           {
-            textarea.move_cursor(CursorMove::Top)
+            textarea.move_to_start(extend_selection);
           },
-          Input { key: Key::Char('G'), ctrl: false, .. } => textarea.move_cursor(CursorMove::Bottom),
-          Input { key: Key::Char(c), ctrl: false, .. } if self.mode == Mode::Operator(c) => {
+          KeyEvent { code: KeyCode::Char('G'), modifiers: NONE, .. } => {
+            textarea.move_to_end(extend_selection);
+          },
+          KeyEvent { code: KeyCode::Char(c), modifiers: NONE, .. } if self.mode == Mode::Operator(c) => {
             // Handle yy, dd, cc. (This is not strictly the same behavior as Vim)
-            textarea.move_cursor(CursorMove::Head);
-            textarea.start_selection();
-            let cursor = textarea.cursor();
-            textarea.move_cursor(CursorMove::Down);
-            if cursor == textarea.cursor() {
-              textarea.move_cursor(CursorMove::End); // At the last line, move to end of the line instead
-            }
+            textarea.move_to_line_start(false);
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
+            textarea.move_to_line_end(true);
           },
-          Input { key: Key::Char(op @ ('y' | 'd' | 'c')), ctrl: false, .. } if self.mode == Mode::Normal => {
-            textarea.start_selection();
+          KeyEvent { code: KeyCode::Char(op @ ('y' | 'd' | 'c')), modifiers: NONE, .. }
+            if self.mode == Mode::Normal =>
+          {
             return Transition::Mode(Mode::Operator(op));
           },
-          Input { key: Key::Char('y'), ctrl: false, .. } if self.mode == Mode::Visual => {
-            if let Some(selection_range) = textarea.selection_range() {
-              let selection_direction = get_selection_direction(selection_range, textarea.cursor());
-              match selection_direction {
-                SelectionDirection::Backward => {},
-                _ => {
-                  textarea.move_cursor(CursorMove::Forward); // Vim's forward text selection is inclusive
-                },
-              }
+          KeyEvent { code: KeyCode::Char('y'), modifiers: NONE, .. } if self.mode == Mode::Visual => {
+            if textarea.has_selection() {
+              self.send_copy_action_with_text(textarea.selected_text().to_string());
+              textarea.copy_to_clip();
             }
-            textarea.copy();
-            self.send_copy_action_with_text(textarea.yank_text());
             return Transition::Mode(Mode::Normal);
           },
-          Input { key: Key::Char('d'), ctrl: false, .. } if self.mode == Mode::Visual => {
-            if let Some(selection_range) = textarea.selection_range() {
-              let selection_direction = get_selection_direction(selection_range, textarea.cursor());
-              match selection_direction {
-                SelectionDirection::Backward => {},
-                _ => {
-                  textarea.move_cursor(CursorMove::Forward); // Vim's forward text selection is inclusive
-                },
-              }
+          KeyEvent { code: KeyCode::Char('d'), modifiers: NONE, .. } if self.mode == Mode::Visual => {
+            if textarea.has_selection() {
+              textarea.cut_to_clip();
             }
-            textarea.cut();
             return Transition::Mode(Mode::Normal);
           },
-          Input { key: Key::Char('c'), ctrl: false, .. } if self.mode == Mode::Visual => {
-            if let Some(selection_range) = textarea.selection_range() {
-              let selection_direction = get_selection_direction(selection_range, textarea.cursor());
-              match selection_direction {
-                SelectionDirection::Backward => {},
-                _ => {
-                  textarea.move_cursor(CursorMove::Forward); // Vim's forward text selection is inclusive
-                },
-              }
+          KeyEvent { code: KeyCode::Char('c'), modifiers: NONE, .. } if self.mode == Mode::Visual => {
+            if textarea.has_selection() {
+              self.send_copy_action_with_text(textarea.selected_text().to_string());
+              textarea.cut_to_clip();
             }
-            textarea.cut();
-            self.send_copy_action_with_text(textarea.yank_text());
             return Transition::Mode(Mode::Insert);
           },
-          Input { key: Key::Char('S'), ctrl: false, .. } => {
-            textarea.move_cursor(CursorMove::Head);
-            textarea.start_selection();
-            textarea.move_cursor(CursorMove::End);
-            textarea.cut();
-            self.send_copy_action_with_text(textarea.yank_text());
+          KeyEvent { code: KeyCode::Char('S'), modifiers: NONE, .. } => {
+            textarea.move_to_line_start(false);
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
+            textarea.move_to_line_end(true);
+            self.send_copy_action_with_text(textarea.selected_text().to_string());
+            textarea.cut_to_clip();
             return Transition::Mode(Mode::Insert);
           },
-          Input { key: Key::Esc, .. } => {
-            textarea.cancel_selection();
+          KeyEvent { code: KeyCode::Esc, .. } => {
+            textarea.set_selection(textarea.cursor(), textarea.cursor());
             return Transition::Mode(Mode::Normal);
           },
           input => return Transition::Pending(input),
         }
 
         // Handle the pending operator
-        match self.mode {
+        return match self.mode {
           Mode::Operator('y') => {
-            textarea.copy();
-            self.send_copy_action_with_text(textarea.yank_text());
+            self.send_copy_action_with_text(textarea.selected_text().to_string());
+            textarea.copy_to_clip();
             Transition::Mode(Mode::Normal)
           },
           Mode::Operator('d') => {
-            textarea.cut();
+            self.send_copy_action_with_text(textarea.selected_text().to_string());
+            textarea.cut_to_clip();
             Transition::Mode(Mode::Normal)
           },
           Mode::Operator('c') => {
-            textarea.cut();
-            self.send_copy_action_with_text(textarea.yank_text());
+            self.send_copy_action_with_text(textarea.selected_text().to_string());
+            textarea.cut_to_clip();
             Transition::Mode(Mode::Insert)
           },
           _ => Transition::Nop,
+        };
+      },
+      Mode::Replace => {
+        return match input {
+          KeyEvent { code: KeyCode::Esc, .. } | KeyEvent { code: KeyCode::Char('c'), modifiers: CONTROL, .. } => {
+            Transition::Mode(Mode::Normal)
+          },
+          input => {
+            let c = match input.code {
+              KeyCode::Char(c) => Some(c),
+              KeyCode::Enter => Some('\n'),
+              _ => None,
+            };
+            if let Some(c) = c {
+              textarea.delete_next_char();
+              textarea.insert_char(c);
+            }
+            Transition::Mode(Mode::Normal)
+          },
         }
       },
       Mode::Insert => {
         match input {
-          Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
-          input => {
-            textarea.input(input); // Use default key mappings in insert mode
-            Transition::Mode(Mode::Insert)
+          KeyEvent { code: KeyCode::Esc, .. } | KeyEvent { code: KeyCode::Char('c'), modifiers: CONTROL, .. } => {
+            return Transition::Mode(Mode::Normal);
           },
-        }
-      },
-      Mode::Replace => {
-        match input {
-          Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
-          input => {
-            textarea.delete_str(1);
-            textarea.input(input);
-            Transition::Mode(Mode::Normal)
+          KeyEvent { code: KeyCode::Backspace, modifiers: NONE, .. } => {
+            textarea.delete_prev_char();
           },
-        }
+          KeyEvent { code: KeyCode::Backspace, modifiers: ALT, .. } => {
+            textarea.delete_prev_word();
+          },
+          KeyEvent { code: KeyCode::Tab, modifiers: NONE, .. } => {
+            textarea.insert_tab();
+          },
+          KeyEvent { code: KeyCode::Tab, modifiers: SHIFT, .. } => {
+            textarea.insert_backtab();
+          },
+          KeyEvent { code, modifiers: SHIFT, .. } => {
+            match code {
+              KeyCode::Left => {
+                textarea.prev_word_start(textarea.cursor());
+              },
+              KeyCode::Right => {
+                textarea.next_word_end(textarea.cursor());
+              },
+              KeyCode::Up => {
+                textarea.scroll_up(textarea.vertical_page());
+              },
+              KeyCode::Down => {
+                textarea.scroll_down(textarea.vertical_page());
+              },
+              _ => {},
+            }
+          },
+          input => {
+            let c = match input.code {
+              KeyCode::Char(c) => Some(c),
+              KeyCode::Enter => Some('\n'),
+              _ => None,
+            };
+            if let Some(c) = c {
+              textarea.insert_char(c);
+            }
+          },
+        };
+        return Transition::Nop;
       },
-    }
+    };
   }
 
   fn send_copy_action_with_text(&self, text: String) {
