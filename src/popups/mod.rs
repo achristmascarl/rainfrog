@@ -17,6 +17,7 @@ pub mod exporting;
 // all input, we have a payload representing when a popup is exited
 // and some action by the main thread is desired. easier than making
 // it work with Actions for now.
+#[allow(clippy::large_enum_variant)]
 pub enum PopUpPayload {
   SetDataTable(Option<Result<Rows, DbError>>, Option<Statement>),
   ConfirmQuery(String),

@@ -52,6 +52,7 @@ use crate::{
   ui::center,
 };
 
+#[allow(clippy::large_enum_variant)]
 pub enum DbTask<'a, DB: sqlx::Database> {
   Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
   TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, DB>)>),
