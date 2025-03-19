@@ -23,8 +23,8 @@ main() {
   echo "temp dir: $temp"
 
   echo "installing 🐸 rainfrog..."
-  release_json=$(curl -s https://api.github.com/repos/achristmascarl/rainfrog/releases/latest | jq)
-  binary=$(jq <<<$release_json | jq -r '.["assets"] | .[] | .name' | sed -u "s/^.*[.sha256]$//" | sed -u "s/[.]tar[.]gz//" | awk 'NF' | fzf --header "choose a binary from the latest rainfrog release:" --reverse)
+  release_json=$(curl -s https://api.github.com/repos/achristmascarl/rainfrog/releases/latest | jq .)
+  binary=$(jq . <<<$release_json | jq -r '.["assets"] | .[] | .name' | sed -u "s/^.*[.sha256]$//" | sed -u "s/[.]tar[.]gz//" | awk 'NF' | fzf --header "choose a binary from the latest rainfrog release:" --reverse)
   if [ -z "$binary" ]; then
     echo "no binary selected"
     exit 1
@@ -36,8 +36,8 @@ main() {
 
   # download binary and hash
   echo "downloading binary and hash..."
-  curl -fL $(jq <<<$release_json | jq -r ".assets[] | select(.name | contains(\"$binary.tar.gz\")) | .browser_download_url") >"$temp/$binary.tar.gz"
-  curl -fL $(jq <<<$release_json | jq -r ".assets[] | select(.name | contains(\"$binary.sha256\")) | .browser_download_url") >"$temp/$binary.sha256"
+  curl -fL $(jq . <<<$release_json | jq -r ".assets[] | select(.name | contains(\"$binary.tar.gz\")) | .browser_download_url") >"$temp/$binary.tar.gz"
+  curl -fL $(jq . <<<$release_json | jq -r ".assets[] | select(.name | contains(\"$binary.sha256\")) | .browser_download_url") >"$temp/$binary.sha256"
   current=$(pwd)
   cd $temp
   shasum -c "$temp/$binary.sha256"
