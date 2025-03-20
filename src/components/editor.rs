@@ -15,6 +15,7 @@ use rat_text::{
     ct_event,
   },
   text_area::{TextArea, TextAreaState},
+  HasScreenCursor,
 };
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
@@ -247,6 +248,10 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor {
       .title(Line::from(duration_string).right_aligned());
 
     let textarea_widget = TextArea::default().block(block);
+    if let Some(cursor) = self.textarea.screen_cursor() {
+      log::info!("Cursor: {:?}", cursor);
+      f.set_cursor_position(cursor);
+    }
     // self.textarea.set_cursor_style(self.cursor_style);
     // self.textarea.set_block(block);
     // self.textarea.set_line_number_style(if focused { Style::default().fg(Color::Yellow) } else { Style::new().dim() });
