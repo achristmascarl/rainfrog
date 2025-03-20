@@ -129,6 +129,17 @@ cargo install rainfrog --features termux --no-default-features
 nix-env -iA nixos.rainfrog
 ```
 
+<!-- TOC --><a name="conda"></a>
+### conda
+
+```sh
+conda install -c conda-forge rainfrog
+```
+
+```sh
+mamba install -c conda-forge rainfrog
+```
+
 <!-- TOC --><a name="install-script"></a>
 ### install script
 
