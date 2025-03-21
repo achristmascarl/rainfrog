@@ -21,6 +21,8 @@ pub struct AppConfig {
   pub _data_dir: PathBuf,
   #[serde(default)]
   pub _config_dir: PathBuf,
+  #[serde(default)]
+  pub _favorites_dir: PathBuf,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -40,9 +42,11 @@ impl Config {
     let default_config: Config = toml::from_str(CONFIG).unwrap();
     let data_dir = crate::utils::get_data_dir();
     let config_dir = crate::utils::get_config_dir();
+    let favorites_dir = crate::utils::get_favorites_dir();
     let mut builder = config::Config::builder()
       .set_default("_data_dir", data_dir.to_str().unwrap())?
-      .set_default("_config_dir", config_dir.to_str().unwrap())?;
+      .set_default("_config_dir", config_dir.to_str().unwrap())?
+      .set_default("_favorites_dir", favorites_dir.to_str().unwrap())?;
 
     let config_files = [
       ("rainfrog_config.json5", config::FileFormat::Json5),

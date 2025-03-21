@@ -18,6 +18,8 @@ lazy_static! {
     std::env::var(format!("{}_CONFIG", PROJECT_NAME.clone())).ok().map(PathBuf::from);
   pub static ref EXPORT_FOLDER: Option<PathBuf> =
     std::env::var(format!("{}_EXPORT", PROJECT_NAME.clone())).ok().map(PathBuf::from);
+  pub static ref FAVORITES_FOLDER: Option<PathBuf> =
+    std::env::var(format!("{}_FAVORITES", PROJECT_NAME.clone())).ok().map(PathBuf::from);
   pub static ref LOG_ENV: String = format!("{}_LOGLEVEL", PROJECT_NAME.clone());
   pub static ref LOG_FILE: String = format!("{}.log", env!("CARGO_PKG_NAME"));
 }
@@ -73,6 +75,17 @@ pub fn initialize_panic_handler() -> Result<()> {
     std::process::exit(libc::EXIT_FAILURE);
   }));
   Ok(())
+}
+
+pub fn get_favorites_dir() -> PathBuf {
+  let directory = if let Some(s) = FAVORITES_FOLDER.clone() {
+    s
+  } else if let Some(proj_dirs) = project_directory() {
+    proj_dirs.data_local_dir().to_path_buf()
+  } else {
+    PathBuf::from(".").join(".favorites")
+  };
+  directory
 }
 
 pub fn get_data_dir() -> PathBuf {
@@ -166,6 +179,7 @@ pub fn version() -> String {
   let config_dir_path = get_config_dir().display().to_string();
   let export_dir_path = get_export_dir().display().to_string();
   let data_dir_path = get_data_dir().display().to_string();
+  let favorites_dir_path = get_favorites_dir().display().to_string();
 
   format!(
     "\
@@ -175,6 +189,7 @@ Authors: {author}
 
 Config directory: {config_dir_path}
 Export directory: {export_dir_path}
-Data directory: {data_dir_path}"
+Data directory: {data_dir_path}
+Favorites directory: {favorites_dir_path}"
   )
 }

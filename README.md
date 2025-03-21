@@ -289,16 +289,17 @@ kitty, it's `macos_option_as_alt yes` in the config.)
 <!-- TOC --><a name="general"></a>
 #### general
 
-| keybinding                   | description                   |
-| ---------------------------- | ----------------------------- |
-| `Ctrl+c`                     | quit program                  |
-| `Alt+1`, `Ctrl+k`            | change focus to menu          |
-| `Alt+2`, `Ctrl+j`            | change focus to query editor  |
-| `Alt+3`, `Ctrl+h`            | change focus to results       |
-| `Alt+4`, `Ctrl+g`            | change focus to query history |
-| `Tab`                        | cycle focus forwards          |
-| `Shift+Tab`                  | cycle focus backwards         |
-| `q`, `Alt+q` in query editor | abort current query           |
+| keybinding                   | description                     |
+| ---------------------------- | ------------------------------- |
+| `Ctrl+c`                     | quit program                    |
+| `Alt+1`, `Ctrl+k`            | change focus to menu            |
+| `Alt+2`, `Ctrl+j`            | change focus to query editor    |
+| `Alt+3`, `Ctrl+h`            | change focus to results         |
+| `Alt+4`, `Ctrl+g`            | change focus to query history   |
+| `Alt+5`, `Ctrl+m`            | change focus to query favorites |
+| `Tab`                        | cycle focus forwards            |
+| `Shift+Tab`                  | cycle focus backwards           |
+| `q`, `Alt+q` in query editor | abort current query             |
 
 <!-- TOC --><a name="menu-list-of-schemas-and-tables"></a>
 #### menu (list of schemas and tables)
@@ -354,6 +355,7 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `Ctrl+r`          | Redo                                   |
 | `Ctrl+e`          | Scroll down                            |
 | `Ctrl+y`          | Scroll up                              |
+| `Ctrl+f`          | Save query to favorites                |
 
 <!-- TOC --><a name="query-history"></a>
 #### query history
@@ -367,6 +369,20 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `y`        | copy selected query           |
 | `I`        | edit selected query in editor |
 | `D`        | delete all history            |
+
+<!-- TOC --><a name="query-favorites"></a>
+
+#### query favorites
+
+| keybinding | description                   |
+| ---------- | ----------------------------- |
+| `j`, `↓`   | move selection down by 1      |
+| `k`, `↑`   | move selection up by 1        |
+| `g`        | jump to top of list           |
+| `G`        | jump to bottom of list        |
+| `y`        | copy selected query           |
+| `I`        | edit selected query in editor |
+| `D`        | delete selected query         |
 
 <!-- TOC --><a name="results"></a>
 #### results
