@@ -140,6 +140,15 @@ conda install -c conda-forge rainfrog
 mamba install -c conda-forge rainfrog
 ```
 
+<!-- TOC --><a name="pixi"></a>
+### pixi
+
+The command below obtains rainfrog from conda-forge, the same repository as conda, but unlike conda it can be installed user-globally using [pixi](https://pixi.sh/).
+
+```sh
+pixi global install rainfrog
+```
+
 <!-- TOC --><a name="install-script"></a>
 ### install script
 
