@@ -93,6 +93,11 @@ impl Editor<'_> {
           sender.send(Action::SaveFavorite(self.textarea.lines().to_vec()))?;
         }
       },
+      Input { key: Key::Char('f'), alt: true, .. } => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::SaveFavorite(self.textarea.lines().to_vec()))?;
+        }
+      },
       Input { key: Key::Char('c'), ctrl: true, .. } if matches!(self.vim_state.mode, Mode::Normal) => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::Quit)?;

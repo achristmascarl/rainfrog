@@ -355,7 +355,7 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `Ctrl+r`          | Redo                                   |
 | `Ctrl+e`          | Scroll down                            |
 | `Ctrl+y`          | Scroll up                              |
-| `Ctrl+f`          | Save query to favorites                |
+| `Ctrl+f`, `Alt+f`   | Save query to favorites                |
 
 <!-- TOC --><a name="query-history"></a>
 #### query history
