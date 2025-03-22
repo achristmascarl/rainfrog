@@ -13,7 +13,7 @@ pub enum Focus {
 }
 
 impl Focus {
-  pub fn color(&self) -> Color {
+  pub fn tab_color(&self) -> Color {
     match self {
       Focus::Editor | Focus::History | Focus::Favorites => Color::Green,
       Focus::Menu | Focus::Data | Focus::PopUp => Color::default(),

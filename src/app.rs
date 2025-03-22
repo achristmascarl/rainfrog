@@ -646,7 +646,7 @@ where
       }
     }
     let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+4>", "   favorites <alt+5>"])
-      .highlight_style(Style::new().fg(self.state.focus.color()).reversed())
+      .highlight_style(Style::new().fg(self.state.focus.tab_color()).reversed())
       .select(self.last_focused_tab.tab_index())
       .padding(" ", "")
       .divider(" ");
