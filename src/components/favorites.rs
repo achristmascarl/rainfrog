@@ -289,7 +289,7 @@ impl<DB: sqlx::Database> Component<DB> for Favorites {
     let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
       .symbols(scrollbar::VERTICAL)
       .style(if focused { Style::default().fg(Color::Green) } else { Style::default() });
-    let mut vertical_scrollbar_state = ScrollbarState::new(app_state.history.len().saturating_sub(1))
+    let mut vertical_scrollbar_state = ScrollbarState::new(app_state.favorites.len().saturating_sub(1))
       .position(self.list_state.selected().map_or(0, |x| x));
     f.render_stateful_widget(vertical_scrollbar, scrollbar_margin, &mut vertical_scrollbar_state);
 
