@@ -24,6 +24,7 @@ use sqlx::{
   postgres::{PgConnectOptions, Postgres},
   Connection, Database, Either, Executor, Pool, Transaction,
 };
+use strum::IntoEnumIterator;
 use tokio::{
   sync::{
     mpsc::{self},
@@ -37,9 +38,10 @@ use crate::{
   components::{
     data::{Data, DataComponent},
     editor::Editor,
+    favorites::{FavoriteEntries, Favorites},
     history::History,
     menu::{Menu, MenuComponent},
-    Component,
+    Component, ComponentImpls,
   },
   config::Config,
   database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, ExecutionType, Rows},
@@ -71,6 +73,7 @@ pub struct AppState<'a, DB: Database> {
   pub focus: Focus,
   pub query_task: Option<DbTask<'a, DB>>,
   pub history: Vec<HistoryEntry>,
+  pub favorites: FavoriteEntries,
   pub last_query_start: Option<chrono::DateTime<chrono::Utc>>,
   pub last_query_end: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -80,6 +83,7 @@ pub struct Components<'a, DB> {
   pub editor: Box<dyn Component<DB>>,
   pub history: Box<dyn Component<DB>>,
   pub data: Box<dyn DataComponent<'a, DB>>,
+  pub favorites: Box<dyn Component<DB>>,
 }
 
 #[derive(Debug)]
@@ -118,12 +122,16 @@ where
     let history = History::new();
     let data = Data::new();
     let config = Config::new()?;
+    let favorites = Favorites::new();
+    let favorite_entries = FavoriteEntries::new(&config.config._favorites_dir)?;
+
     Ok(Self {
       components: Components {
         menu: Box::new(menu),
         editor: Box::new(editor),
         history: Box::new(history),
         data: Box::new(data),
+        favorites: Box::new(favorites),
       },
       should_quit: false,
       mouse_mode_override,
@@ -139,6 +147,7 @@ where
         history: vec![],
         last_query_start: None,
         last_query_end: None,
+        favorites: favorite_entries,
       },
       last_focused_tab: Focus::Editor,
       popup: None,
@@ -174,17 +183,20 @@ where
     self.components.editor.register_action_handler(action_tx.clone())?;
     self.components.history.register_action_handler(action_tx.clone())?;
     self.components.data.register_action_handler(action_tx.clone())?;
+    self.components.favorites.register_action_handler(action_tx.clone())?;
 
     self.components.menu.register_config_handler(self.config.clone())?;
     self.components.editor.register_config_handler(self.config.clone())?;
     self.components.history.register_config_handler(self.config.clone())?;
     self.components.data.register_config_handler(self.config.clone())?;
+    self.components.favorites.register_config_handler(self.config.clone())?;
 
     let size = tui.size()?;
     self.components.menu.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
     self.components.editor.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
     self.components.history.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
     self.components.data.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
+    self.components.favorites.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
 
     action_tx.send(Action::LoadMenu)?;
 
@@ -279,25 +291,35 @@ where
           _ => {},
         }
         if !event_consumed {
-          if let Some(action) =
-            self.components.menu.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
-          {
-            action_tx.send(action)?;
-          }
-          if let Some(action) =
-            self.components.editor.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
-          {
-            action_tx.send(action)?;
-          }
-          if let Some(action) =
-            self.components.history.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
-          {
-            action_tx.send(action)?;
-          }
-          if let Some(action) =
-            self.components.data.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
-          {
-            action_tx.send(action)?;
+          for i in ComponentImpls::iter() {
+            let action = match i {
+              ComponentImpls::Menu => {
+                self.components.menu.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
+              },
+              ComponentImpls::Editor => {
+                self.components.editor.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
+              },
+              ComponentImpls::History => {
+                self.components.history.handle_events(
+                  Some(e.clone()),
+                  self.last_tick_key_events.clone(),
+                  &self.state,
+                )?
+              },
+              ComponentImpls::Data => {
+                self.components.data.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
+              },
+              ComponentImpls::Favorites => {
+                self.components.favorites.handle_events(
+                  Some(e.clone()),
+                  self.last_tick_key_events.clone(),
+                  &self.state,
+                )?
+              },
+            };
+            if let Some(action) = action {
+              action_tx.send(action)?;
+            }
           }
         }
       }
@@ -334,6 +356,10 @@ where
             self.state.focus = Focus::History;
             self.last_focused_tab = Focus::History;
           },
+          Action::FocusFavorites => {
+            self.state.focus = Focus::Favorites;
+            self.last_focused_tab = Focus::Favorites;
+          },
           Action::CycleFocusForwards => {
             match self.state.focus {
               Focus::Menu => {
@@ -347,8 +373,12 @@ where
                 self.state.focus = Focus::History;
                 self.last_focused_tab = Focus::History;
               },
-              Focus::History => self.state.focus = Focus::Menu,
-              _ => {},
+              Focus::History => {
+                self.state.focus = Focus::Favorites;
+                self.last_focused_tab = Focus::Favorites;
+              },
+              Focus::Favorites => self.state.focus = Focus::Menu,
+              Focus::PopUp => {},
             }
           },
           Action::CycleFocusBackwards => {
@@ -362,10 +392,14 @@ where
               },
               Focus::Editor => self.state.focus = Focus::Menu,
               Focus::Menu => {
+                self.state.focus = Focus::Favorites;
+                self.last_focused_tab = Focus::Favorites;
+              },
+              Focus::Favorites => {
                 self.state.focus = Focus::History;
                 self.last_focused_tab = Focus::History;
               },
-              _ => {},
+              Focus::PopUp => {},
             }
           },
           Action::LoadMenu => {
@@ -466,6 +500,12 @@ where
               _ => {},
             }
           },
+          Action::SaveFavorite(query_lines) => {
+            self.state.favorites.add_entry(query_lines.to_vec());
+          },
+          Action::DeleteFavorite(index) => {
+            self.state.favorites.delete_entry(*index);
+          },
           Action::ClearHistory => {
             self.clear_history();
           },
@@ -495,20 +535,22 @@ where
           _ => {},
         }
         if !action_consumed {
-          if let Some(action) = self.components.menu.update(action.clone(), &self.state)? {
-            action_tx.send(action)?;
-          }
-          if let Some(action) = self.components.editor.update(action.clone(), &self.state)? {
-            action_tx.send(action)?;
-          }
-          if let Some(action) = self.components.history.update(action.clone(), &self.state)? {
-            action_tx.send(action)?;
-          }
-          if let Some(action) = self.components.data.update(action.clone(), &self.state)? {
-            action_tx.send(action)?;
+          for i in ComponentImpls::iter() {
+            let action = match i {
+              ComponentImpls::Menu => self.components.menu.update(action.clone(), &self.state)?,
+              ComponentImpls::Editor => self.components.editor.update(action.clone(), &self.state)?,
+              ComponentImpls::History => self.components.history.update(action.clone(), &self.state)?,
+              ComponentImpls::Data => self.components.data.update(action.clone(), &self.state)?,
+              ComponentImpls::Favorites => self.components.favorites.update(action.clone(), &self.state)?,
+            };
+            if let Some(action) = action {
+              log::info!("{action:?}");
+              action_tx.send(action)?;
+            }
           }
         }
       }
+
       if self.last_frame_mouse_event.is_some() {
         tui.draw(|f| {
           self.draw_layout(f);
@@ -580,6 +622,12 @@ where
             },
             Focus::History => {
               if matches!(event.kind, MouseEventKind::Up(_)) {
+                self.state.focus = Focus::Favorites;
+                self.last_focused_tab = Focus::Favorites;
+              }
+            },
+            Focus::Favorites => {
+              if matches!(event.kind, MouseEventKind::Up(_)) {
                 self.state.focus = Focus::Editor;
                 self.last_focused_tab = Focus::Editor;
               }
@@ -597,18 +645,9 @@ where
         }
       }
     }
-
-    let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+4>"])
-      .highlight_style(
-        Style::new()
-          .fg(if self.state.focus == Focus::Editor || self.state.focus == Focus::History {
-            Color::Green
-          } else {
-            Color::default()
-          })
-          .reversed(),
-      )
-      .select(if self.last_focused_tab == Focus::Editor { 0 } else { 1 })
+    let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+4>", "   favorites <alt+5>"])
+      .highlight_style(Style::new().fg(self.state.focus.tab_color()).reversed())
+      .select(self.last_focused_tab.tab_index())
       .padding(" ", "")
       .divider(" ");
 
@@ -616,11 +655,20 @@ where
 
     f.render_widget(tabs, tabs_layout[0]);
     f.render_widget(Clear, tabs_layout[1]);
-    if self.last_focused_tab == Focus::Editor {
-      self.components.editor.draw(f, tabs_layout[1], state).unwrap();
-    } else {
-      self.components.history.draw(f, tabs_layout[1], state).unwrap();
-    }
+
+    match self.last_focused_tab {
+      Focus::Editor => {
+        self.components.editor.draw(f, tabs_layout[1], state).unwrap();
+      },
+      Focus::History => {
+        self.components.history.draw(f, tabs_layout[1], state).unwrap();
+      },
+      Focus::Favorites => {
+        self.components.favorites.draw(f, tabs_layout[1], state).unwrap();
+      },
+      Focus::Menu | Focus::Data | Focus::PopUp => (),
+    };
+
     self.components.menu.draw(f, root_layout[0], state).unwrap();
     self.components.data.draw(f, right_layout[1], state).unwrap();
     self.render_hints(f, hints_layout[1]);
@@ -642,8 +690,9 @@ where
         },
         match self.state.focus {
             Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
-            Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query",
+            Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
             Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
+            Focus::Favorites => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry",
             Focus::Data if self.state.query_task.is_none() => "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
             _ => "",

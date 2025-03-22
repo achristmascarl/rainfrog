@@ -88,6 +88,16 @@ impl Editor<'_> {
           sender.send(Action::CycleFocusForwards)?;
         }
       },
+      Input { key: Key::Char('f'), ctrl: true, .. } if self.vim_state.mode != Mode::Insert => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::SaveFavorite(self.textarea.lines().to_vec()))?;
+        }
+      },
+      Input { key: Key::Char('f'), alt: true, .. } => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::SaveFavorite(self.textarea.lines().to_vec()))?;
+        }
+      },
       Input { key: Key::Char('c'), ctrl: true, .. } if matches!(self.vim_state.mode, Mode::Normal) => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::Quit)?;
@@ -192,6 +202,10 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
         }
       },
       Action::HistoryToEditor(lines) => {
+        self.textarea = TextArea::from(lines.clone());
+        self.textarea.set_search_pattern(keyword_regex()).unwrap();
+      },
+      Action::FavoriteToEditor(lines) => {
         self.textarea = TextArea::from(lines.clone());
         self.textarea.set_search_pattern(keyword_regex()).unwrap();
       },
