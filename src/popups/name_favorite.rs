@@ -14,39 +14,47 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct ConfirmExport<DB: sqlx::Database> {
-  row_count: i64,
+pub struct NameFavorite<DB: sqlx::Database> {
+  name: String,
+  query_lines: Vec<String>,
   phantom: PhantomData<DB>,
 }
 
-impl<DB: sqlx::Database> ConfirmExport<DB> {
-  pub fn new(row_count: i64) -> Self {
-    Self { row_count, phantom: PhantomData }
+impl<DB: sqlx::Database> NameFavorite<DB> {
+  pub fn new(query_lines: Vec<String>) -> Self {
+    Self { name: "".to_string(), query_lines, phantom: PhantomData }
   }
 }
 
 #[async_trait(?Send)]
-impl<DB: sqlx::Database> PopUp<DB> for ConfirmExport<DB> {
+impl<DB: sqlx::Database> PopUp<DB> for NameFavorite<DB> {
   async fn handle_key_events(
     &mut self,
     key: crossterm::event::KeyEvent,
     app_state: &mut crate::app::AppState<'_, DB>,
   ) -> color_eyre::eyre::Result<Option<PopUpPayload>> {
     match key.code {
-      KeyCode::Char('Y') => Ok(Some(PopUpPayload::ConfirmExport(true))),
-      KeyCode::Char('N') | KeyCode::Esc => Ok(Some(PopUpPayload::ConfirmExport(false))),
+      KeyCode::Char(c) => {
+        self.name.push(c);
+        Ok(None)
+      },
+      KeyCode::Enter => Ok(None),
+      KeyCode::Esc => Ok(Some(PopUpPayload::Cancel)),
+      KeyCode::Backspace => {
+        if !self.name.is_empty() {
+          self.name.pop();
+        }
+        Ok(None)
+      },
       _ => Ok(None),
     }
   }
 
   fn get_cta_text(&self, app_state: &crate::app::AppState<'_, DB>) -> String {
-    format!(
-      "Are you sure you want to export {} rows? Exporting too many rows may cause the app to hang.",
-      self.row_count,
-    )
+    "Input a name for the favorite and then press [Enter]. No spaces or special characters allowed.".to_string()
   }
 
   fn get_actions_text(&self, app_state: &crate::app::AppState<'_, DB>) -> String {
-    "[Y]es to confirm | [N]o to cancel".to_string()
+    format!("{}.sql", self.name)
   }
 }

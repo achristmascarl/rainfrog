@@ -90,12 +90,12 @@ impl Editor<'_> {
       },
       Input { key: Key::Char('f'), ctrl: true, .. } if self.vim_state.mode != Mode::Insert => {
         if let Some(sender) = &self.command_tx {
-          sender.send(Action::SaveFavorite(self.textarea.lines().to_vec()))?;
+          sender.send(Action::RequestSaveFavorite(self.textarea.lines().to_vec()))?;
         }
       },
       Input { key: Key::Char('f'), alt: true, .. } => {
         if let Some(sender) = &self.command_tx {
-          sender.send(Action::SaveFavorite(self.textarea.lines().to_vec()))?;
+          sender.send(Action::RequestSaveFavorite(self.textarea.lines().to_vec()))?;
         }
       },
       Input { key: Key::Char('c'), ctrl: true, .. } if matches!(self.vim_state.mode, Mode::Normal) => {

@@ -27,7 +27,7 @@ impl<DB: sqlx::Database> ConfirmTx<DB> {
 #[async_trait(?Send)]
 impl<DB: sqlx::Database> PopUp<DB> for ConfirmTx<DB> {
   async fn handle_key_events(
-    &self,
+    &mut self,
     key: crossterm::event::KeyEvent,
     app_state: &mut crate::app::AppState<'_, DB>,
   ) -> color_eyre::eyre::Result<Option<PopUpPayload>> {

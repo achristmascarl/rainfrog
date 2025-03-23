@@ -53,7 +53,8 @@ pub enum Action {
   RequestExportData(i64),
   ExportData(ExportFormat),
   ExportDataFinished,
-  SaveFavorite(Vec<String>),
+  RequestSaveFavorite(Vec<String>),
+  SaveFavorite(String, Vec<String>),
   FavoriteToEditor(Vec<String>),
   DeleteFavorite(usize),
 }

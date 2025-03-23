@@ -32,17 +32,17 @@ pub struct FavoriteEntries {
 }
 
 pub struct FavoriteEntry {
+  name: String,
   query_lines: Vec<String>,
-  creation_time: DateTime<chrono::Local>,
 }
 
 impl FavoriteEntry {
   pub fn path(&self, base: PathBuf) -> PathBuf {
-    Self::path_impl(base, self.creation_time)
+    Self::path_impl(base, self.name.clone())
   }
 
-  pub fn path_impl(mut base: PathBuf, creation_time: DateTime<chrono::Local>) -> PathBuf {
-    base.push(format!("{}.sql", creation_time.timestamp_nanos_opt().unwrap()));
+  pub fn path_impl(mut base: PathBuf, name: String) -> PathBuf {
+    base.push(format!("{}.sql", name));
     base
   }
 }
@@ -73,14 +73,14 @@ impl FavoriteEntries {
     }
   }
 
-  pub fn add_entry(&mut self, query_lines: Vec<String>) {
+  pub fn add_entry(&mut self, name: String, query_lines: Vec<String>) {
     if query_lines.iter().map(|l| l.len()).sum::<usize>() > 0 {
       let creation_time = Local::now();
       let content = query_lines.join("\n");
 
-      match std::fs::write(FavoriteEntry::path_impl(self.dir.clone(), creation_time), content) {
+      match std::fs::write(FavoriteEntry::path_impl(self.dir.clone(), name.clone()), content) {
         Ok(_) => {
-          self.entries.push(FavoriteEntry { query_lines, creation_time });
+          self.entries.push(FavoriteEntry { name, query_lines });
         },
         Err(e) => {
           log::error!("failed to create favorite query disk content: {e}");
@@ -101,27 +101,20 @@ impl FavoriteEntries {
             if !file_name.ends_with(".sql") {
               continue;
             }
-            let Some(epoch_part) = file_name.split('.').next() else {
+            let Some(name) = file_name.split('.').next() else {
               continue;
             };
-            match epoch_part.parse::<u64>() {
+            match std::fs::read_to_string(p.path()) {
+              Ok(query_text) => {
+                out.push(FavoriteEntry {
+                  name: name.to_string(),
+                  query_lines: query_text.split('\n').map(|s| s.to_string()).collect(),
+                });
+              },
               Err(e) => {
-                log::error!("failed to parse favorite query file_name '{file_name}', error:  {e}");
+                log::error!("failed to read favorite query disk content file_name: '{file_name}' error: {e}");
               },
-              Ok(epoch) => {
-                match std::fs::read_to_string(p.path()) {
-                  Ok(query_text) => {
-                    out.push(FavoriteEntry {
-                      query_lines: query_text.split('\n').map(|s| s.to_string()).collect(),
-                      creation_time: DateTime::from_timestamp_nanos(epoch as i64).into(),
-                    });
-                  },
-                  Err(e) => {
-                    log::error!("failed to read favorite query disk content file_name: '{file_name}' error: {e}");
-                  },
-                };
-              },
-            }
+            };
           }
         },
         Err(e) => {
@@ -257,7 +250,7 @@ impl<DB: sqlx::Database> Component<DB> for Favorites {
         }
         lines.insert(
           0,
-          Line::from(format!("{}{}", if self.copied && selected { " copied! - " } else { "" }, h.creation_time))
+          Line::from(format!("{}{}", if self.copied && selected { " copied! - " } else { "" }, h.name))
             .style(if focused { Color::Yellow } else { Color::default() }),
         );
         lines.push(
