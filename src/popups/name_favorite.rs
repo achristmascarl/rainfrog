@@ -16,13 +16,14 @@ use crate::{
 #[derive(Debug)]
 pub struct NameFavorite<DB: sqlx::Database> {
   name: String,
+  existing_names: Vec<String>,
   query_lines: Vec<String>,
   phantom: PhantomData<DB>,
 }
 
 impl<DB: sqlx::Database> NameFavorite<DB> {
-  pub fn new(query_lines: Vec<String>) -> Self {
-    Self { name: "".to_string(), query_lines, phantom: PhantomData }
+  pub fn new(existing_names: Vec<String>, query_lines: Vec<String>) -> Self {
+    Self { name: "".to_string(), existing_names, query_lines, phantom: PhantomData }
   }
 }
 
@@ -65,6 +66,14 @@ impl<DB: sqlx::Database> PopUp<DB> for NameFavorite<DB> {
   }
 
   fn get_actions_text(&self, app_state: &crate::app::AppState<'_, DB>) -> String {
-    format!("{}.sql", self.name)
+    format!(
+      "{}.sql{}",
+      self.name,
+      if self.existing_names.iter().any(|n| n.as_str() == self.name.as_str()) {
+        " (WARNING! a favorite with this name already exists, saving now will overwrite it.)"
+      } else {
+        ""
+      }
+    )
   }
 }

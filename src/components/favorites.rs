@@ -45,6 +45,10 @@ impl FavoriteEntry {
     base.push(format!("{}.sql", name));
     base
   }
+
+  pub fn get_name(&self) -> &str {
+    &self.name
+  }
 }
 
 impl FavoriteEntries {

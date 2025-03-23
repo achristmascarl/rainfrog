@@ -499,7 +499,10 @@ where
             }
           },
           Action::RequestSaveFavorite(query_lines) => {
-            self.popup = Some(Box::new(NameFavorite::<DB>::new(query_lines.clone())));
+            self.popup = Some(Box::new(NameFavorite::<DB>::new(
+              self.state.favorites.iter().map(|f| f.get_name().to_string()).collect(),
+              query_lines.clone(),
+            )));
             self.state.focus = Focus::PopUp;
           },
           Action::DeleteFavorite(index) => {
