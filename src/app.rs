@@ -47,8 +47,8 @@ use crate::{
   database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, ExecutionType, Rows},
   focus::Focus,
   popups::{
-    confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, exporting::Exporting, PopUp,
-    PopUpPayload,
+    confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, exporting::Exporting,
+    name_favorite::NameFavorite, PopUp, PopUpPayload,
   },
   tui,
   ui::center,
@@ -102,6 +102,7 @@ pub struct App<'a, DB: sqlx::Database> {
   pub pool: Option<database::DbPool<DB>>,
   pub state: AppState<'a, DB>,
   last_focused_tab: Focus,
+  last_focused_component: Focus,
   popup: Option<Box<dyn PopUp<DB>>>,
 }
 
@@ -150,6 +151,7 @@ where
         favorites: favorite_entries,
       },
       last_focused_tab: Focus::Editor,
+      last_focused_component: focus,
       popup: None,
     })
   }
@@ -255,12 +257,12 @@ where
                   Some(PopUpPayload::SetDataTable(result, statement)) => {
                     self.components.data.set_data_state(result, statement);
                     self.popup = None;
-                    self.state.focus = Focus::Editor;
+                    action_tx.send(Action::FocusEditor)?;
                   },
                   Some(PopUpPayload::ConfirmQuery(query)) => {
                     action_tx.send(Action::Query(vec![query], true))?;
                     self.popup = None;
-                    self.state.focus = Focus::Editor;
+                    action_tx.send(Action::FocusEditor)?;
                   },
                   Some(PopUpPayload::ConfirmExport(confirmed)) => {
                     if confirmed {
@@ -268,8 +270,17 @@ where
                       self.popup = Some(Box::new(Exporting::new()));
                     } else {
                       self.popup = None;
-                      self.state.focus = Focus::Data;
+                      action_tx.send(Action::FocusData)?;
                     }
+                  },
+                  Some(PopUpPayload::Cancel) => {
+                    self.popup = None;
+                    self.last_focused_component(action_tx.clone())?;
+                  },
+                  Some(PopUpPayload::NamedFavorite(name, query_lines)) => {
+                    self.state.favorites.add_entry(name, query_lines);
+                    self.popup = None;
+                    action_tx.send(Action::FocusEditor)?;
                   },
                   None => {},
                 }
@@ -337,68 +348,55 @@ where
           Action::Resize(w, h) => {
             tui.resize(Rect::new(0, 0, *w, *h))?;
             tui.draw(|f| {
-              self.draw_layout(f);
+              self.draw_layout(f, action_tx.clone()).expect("Couldn't draw layout");
             })?;
           },
           Action::Render => {
             tui.draw(|f| {
-              self.draw_layout(f);
+              self.draw_layout(f, action_tx.clone()).expect("Couldn't draw layout");
             })?;
             self.last_frame_mouse_event = None;
           },
-          Action::FocusMenu => self.state.focus = Focus::Menu,
+          Action::FocusMenu => {
+            self.state.focus = Focus::Menu;
+            self.last_focused_component = Focus::Menu;
+          },
           Action::FocusEditor => {
             self.state.focus = Focus::Editor;
             self.last_focused_tab = Focus::Editor;
+            self.last_focused_component = Focus::Editor;
           },
-          Action::FocusData => self.state.focus = Focus::Data,
+          Action::FocusData => {
+            self.state.focus = Focus::Data;
+            self.last_focused_component = Focus::Data;
+          },
           Action::FocusHistory => {
             self.state.focus = Focus::History;
             self.last_focused_tab = Focus::History;
+            self.last_focused_component = Focus::History;
           },
           Action::FocusFavorites => {
             self.state.focus = Focus::Favorites;
             self.last_focused_tab = Focus::Favorites;
+            self.last_focused_component = Focus::Favorites;
           },
           Action::CycleFocusForwards => {
             match self.state.focus {
-              Focus::Menu => {
-                self.state.focus = Focus::Editor;
-                self.last_focused_tab = Focus::Editor;
-              },
-              Focus::Editor => {
-                self.state.focus = Focus::Data;
-              },
-              Focus::Data => {
-                self.state.focus = Focus::History;
-                self.last_focused_tab = Focus::History;
-              },
-              Focus::History => {
-                self.state.focus = Focus::Favorites;
-                self.last_focused_tab = Focus::Favorites;
-              },
-              Focus::Favorites => self.state.focus = Focus::Menu,
+              Focus::Menu => action_tx.send(Action::FocusEditor)?,
+              Focus::Editor => action_tx.send(Action::FocusData)?,
+              Focus::Data => action_tx.send(Action::FocusHistory)?,
+              Focus::History => action_tx.send(Action::FocusFavorites)?,
+              Focus::Favorites => action_tx.send(Action::FocusMenu)?,
               Focus::PopUp => {},
             }
           },
           Action::CycleFocusBackwards => {
             match self.state.focus {
-              Focus::History => {
-                self.state.focus = Focus::Data;
-              },
-              Focus::Data => {
-                self.state.focus = Focus::Editor;
-                self.last_focused_tab = Focus::Editor;
-              },
-              Focus::Editor => self.state.focus = Focus::Menu,
-              Focus::Menu => {
-                self.state.focus = Focus::Favorites;
-                self.last_focused_tab = Focus::Favorites;
-              },
-              Focus::Favorites => {
-                self.state.focus = Focus::History;
-                self.last_focused_tab = Focus::History;
-              },
+              Focus::History => action_tx.send(Action::FocusData)?,
+              Focus::Data => action_tx.send(Action::FocusEditor)?,
+              Focus::Editor => action_tx.send(Action::FocusMenu)?,
+              Focus::Menu => action_tx.send(Action::FocusFavorites)?,
+              Focus::Favorites => action_tx.send(Action::FocusHistory)?,
               Focus::PopUp => {},
             }
           },
@@ -500,11 +498,15 @@ where
               _ => {},
             }
           },
-          Action::SaveFavorite(query_lines) => {
-            self.state.favorites.add_entry(query_lines.to_vec());
+          Action::RequestSaveFavorite(query_lines) => {
+            self.popup = Some(Box::new(NameFavorite::<DB>::new(
+              self.state.favorites.iter().map(|f| f.get_name().to_string()).collect(),
+              query_lines.clone(),
+            )));
+            self.state.focus = Focus::PopUp;
           },
-          Action::DeleteFavorite(index) => {
-            self.state.favorites.delete_entry(*index);
+          Action::DeleteFavorite(name) => {
+            self.state.favorites.delete_entry(name.clone());
           },
           Action::ClearHistory => {
             self.clear_history();
@@ -530,7 +532,7 @@ where
           },
           Action::ExportDataFinished => {
             self.popup = None;
-            self.state.focus = Focus::Data;
+            action_tx.send(Action::FocusData)?;
           },
           _ => {},
         }
@@ -553,7 +555,7 @@ where
 
       if self.last_frame_mouse_event.is_some() {
         tui.draw(|f| {
-          self.draw_layout(f);
+          self.draw_layout(f, action_tx.clone()).expect("Couldn't draw layout");
         })?;
       }
       if self.should_quit {
@@ -579,7 +581,7 @@ where
     Ok(())
   }
 
-  fn draw_layout(&mut self, f: &mut Frame) {
+  fn draw_layout(&mut self, f: &mut Frame, action_tx: mpsc::UnboundedSender<Action>) -> Result<()> {
     let hints_layout = Layout::default()
       .direction(Direction::Vertical)
       .constraints(match f.area().width {
@@ -611,25 +613,26 @@ where
         let tab_content_target = tabs_layout[1];
         let data_target = right_layout[1];
         if menu_target.contains(position) {
-          self.state.focus = Focus::Menu;
+          action_tx.send(Action::FocusMenu)?;
+        } else if data_target.contains(position) {
+          action_tx.send(Action::FocusData)?;
+        } else if tab_content_target.contains(position) {
+          self.last_focused_tab(action_tx.clone())?;
         } else if tabs_target.contains(position) {
           match self.state.focus {
             Focus::Editor => {
               if matches!(event.kind, MouseEventKind::Up(_)) {
-                self.state.focus = Focus::History;
-                self.last_focused_tab = Focus::History;
+                action_tx.send(Action::FocusHistory)?;
               }
             },
             Focus::History => {
               if matches!(event.kind, MouseEventKind::Up(_)) {
-                self.state.focus = Focus::Favorites;
-                self.last_focused_tab = Focus::Favorites;
+                action_tx.send(Action::FocusFavorites)?;
               }
             },
             Focus::Favorites => {
               if matches!(event.kind, MouseEventKind::Up(_)) {
-                self.state.focus = Focus::Editor;
-                self.last_focused_tab = Focus::Editor;
+                action_tx.send(Action::FocusEditor)?;
               }
             },
             Focus::PopUp => {},
@@ -638,10 +641,6 @@ where
             },
           }
           self.last_frame_mouse_event = None;
-        } else if tab_content_target.contains(position) {
-          self.state.focus = self.last_focused_tab;
-        } else if data_target.contains(position) {
-          self.state.focus = Focus::Data;
         }
       }
     }
@@ -676,6 +675,7 @@ where
     if let Some(popup) = &self.popup {
       self.render_popup(f, popup.as_ref());
     }
+    Ok(())
   }
 
   fn render_hints(&self, frame: &mut Frame, area: Rect) {
@@ -692,7 +692,7 @@ where
             Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
             Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
             Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
-            Focus::Favorites => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry",
+            Focus::Favorites => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
             Focus::Data if self.state.query_task.is_none() => "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
             _ => "",
@@ -720,5 +720,27 @@ where
     frame.render_widget(block, area);
     frame.render_widget(popup_cta, layout[0]);
     frame.render_widget(popup_actions, center(layout[1], Constraint::Fill(1), Constraint::Percentage(50)));
+  }
+
+  fn last_focused_tab(&self, action_tx: mpsc::UnboundedSender<Action>) -> Result<()> {
+    match self.last_focused_tab {
+      Focus::Editor => action_tx.send(Action::FocusEditor)?,
+      Focus::History => action_tx.send(Action::FocusHistory)?,
+      Focus::Favorites => action_tx.send(Action::FocusFavorites)?,
+      _ => {},
+    };
+    Ok(())
+  }
+
+  fn last_focused_component(&self, action_tx: mpsc::UnboundedSender<Action>) -> Result<()> {
+    match self.last_focused_component {
+      Focus::Menu => action_tx.send(Action::FocusMenu)?,
+      Focus::Editor => action_tx.send(Action::FocusEditor)?,
+      Focus::Data => action_tx.send(Action::FocusData)?,
+      Focus::History => action_tx.send(Action::FocusHistory)?,
+      Focus::Favorites => action_tx.send(Action::FocusFavorites)?,
+      Focus::PopUp => {},
+    };
+    Ok(())
   }
 }

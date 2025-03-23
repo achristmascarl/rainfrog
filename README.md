@@ -64,8 +64,10 @@ access on a production database.
       + [menu (list of schemas and tables)](#menu-list-of-schemas-and-tables)
       + [query editor](#query-editor)
       + [query history](#query-history)
+      + [query favorites](#query-favorites)
       + [results](#results)
 - [exports](#exports)
+- [favorites](#favorites)
 - [roadmap](#roadmap)
 - [known issues and limitations](#known-issues-and-limitations)
 - [Contributing](#contributing)
@@ -258,7 +260,7 @@ you can change the default config location by exporting an environment variable.
 to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
 
 ```sh
-export RAINFROG_CONFIG=~/.config
+export RAINFROG_CONFIG=~/.config/rainfrog
 ```
 
 <!-- TOC --><a name="settings"></a>
@@ -313,7 +315,7 @@ kitty, it's `macos_option_as_alt yes` in the config.)
 | `h`, `←`                     | focus on schemas (if more than 1) |
 | `l`, `→`                     | focus on tables                   |
 | `/`                          | filter tables                     |
-| `Esc`                        | clear search                      |
+| `Esc`                        | clear filter                      |
 | `Backspace`                  | focus on tables                   |
 | `Enter` when searching       | focus on tables                   |
 | `Enter` with selected schema | focus on tables                   |
@@ -355,7 +357,8 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `Ctrl+r`          | Redo                                   |
 | `Ctrl+e`          | Scroll down                            |
 | `Ctrl+y`          | Scroll up                              |
-| `Ctrl+f`, `Alt+f`   | Save query to favorites                |
+| `Ctrl+f`*, `Alt+f`  | Save query to favorites                |
+*only works in normal mode
 
 <!-- TOC --><a name="query-history"></a>
 #### query history
@@ -371,7 +374,6 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `D`        | delete all history            |
 
 <!-- TOC --><a name="query-favorites"></a>
-
 #### query favorites
 
 | keybinding | description                   |
@@ -383,6 +385,8 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `y`        | copy selected query           |
 | `I`        | edit selected query in editor |
 | `D`        | delete selected query         |
+| `/`        | filter favorites                     |
+| `Esc`      | clear filter                      |
 
 <!-- TOC --><a name="results"></a>
 #### results
@@ -431,6 +435,29 @@ to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
 
 ```sh
 export RAINFROG_EXPORT=~/Documents
+```
+
+<!-- TOC --><a name="favorites"></a>
+## favorites
+
+frequently used queries can be saved as favorites. by default, 
+favorites are written to the application's data directory (the 
+same place that logs are written to), which is one of the 
+following depending on your os, as determined by 
+the [directories](https://crates.io/crates/directories) crate:
+
+|Platform | Value                                                                      | Example                                                       |
+| ------- | -------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Linux   | `$XDG_DATA_HOME`/`_project_path_` or `$HOME`/.local/share/`_project_path_` | /home/alice/.local/share/barapp                               |
+| macOS   | `$HOME`/Library/Application Support/`_project_path_`                       | /Users/Alice/Library/Application Support/com.Foo-Corp.Bar-App |
+| Windows | `{FOLDERID_LocalAppData}`\\`_project_path_`\\data                          | C:\Users\Alice\AppData\Local\Foo Corp\Bar App\data            |
+
+each favorite will be a separate `.sql` file.
+you can change the default export location by exporting an environment variable.
+to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
+
+```sh
+export RAINFROG_FAVORITES=~/.config/rainfrog/favorites
 ```
 
 <!-- TOC --><a name="roadmap"></a>
