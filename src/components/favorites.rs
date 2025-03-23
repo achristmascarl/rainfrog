@@ -296,7 +296,7 @@ impl<DB: sqlx::Database> Component<DB> for Favorites {
 
     match self.list_state.selected() {
       Some(x) if x > filtered_items.len().saturating_sub(1) => {
-        self.list_state.select(Some(0));
+        self.list_state.select(Some(filtered_items.len().saturating_sub(1)));
       },
       None if !self.search_focused => {
         self.list_state.select(Some(0));
