@@ -130,7 +130,7 @@ nix-env -iA nixos.rainfrog
 ```
 
 <!-- TOC --><a name="conda"></a>
-### conda
+### conda / mamba
 
 ```sh
 conda install -c conda-forge rainfrog
