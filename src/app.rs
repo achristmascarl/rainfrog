@@ -692,7 +692,7 @@ where
             Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
             Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
             Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
-            Focus::Favorites => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry",
+            Focus::Favorites => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
             Focus::Data if self.state.query_task.is_none() => "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
             _ => "",

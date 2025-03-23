@@ -315,7 +315,7 @@ kitty, it's `macos_option_as_alt yes` in the config.)
 | `h`, `←`                     | focus on schemas (if more than 1) |
 | `l`, `→`                     | focus on tables                   |
 | `/`                          | filter tables                     |
-| `Esc`                        | clear search                      |
+| `Esc`                        | clear filter                      |
 | `Backspace`                  | focus on tables                   |
 | `Enter` when searching       | focus on tables                   |
 | `Enter` with selected schema | focus on tables                   |
@@ -385,6 +385,8 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `y`        | copy selected query           |
 | `I`        | edit selected query in editor |
 | `D`        | delete selected query         |
+| `/`        | filter favorites                     |
+| `Esc`      | clear filter                      |
 
 <!-- TOC --><a name="results"></a>
 #### results
