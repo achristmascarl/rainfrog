@@ -95,7 +95,6 @@ impl FavoriteEntries {
 
   pub fn add_entry(&mut self, name: String, query_lines: Vec<String>) {
     if query_lines.iter().map(|l| l.len()).sum::<usize>() > 0 {
-      let creation_time = Local::now();
       let content = query_lines.join("\n");
 
       match std::fs::write(FavoriteEntry::path_impl(self.dir.clone(), name.clone()), content) {

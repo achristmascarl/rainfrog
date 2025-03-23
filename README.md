@@ -441,7 +441,7 @@ export RAINFROG_EXPORT=~/Documents
 ## favorites
 
 frequently used queries can be saved as favorites. by default, 
-favorites are written to the application's data directory, (the 
+favorites are written to the application's data directory (the 
 same place that logs are written to), which is one of the 
 following depending on your os, as determined by 
 the [directories](https://crates.io/crates/directories) crate:
