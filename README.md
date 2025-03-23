@@ -450,6 +450,7 @@ the [directories](https://crates.io/crates/directories) crate:
 | macOS   | `$HOME`/Library/Application Support/`_project_path_`                       | /Users/Alice/Library/Application Support/com.Foo-Corp.Bar-App |
 | Windows | `{FOLDERID_LocalAppData}`\\`_project_path_`\\data                          | C:\Users\Alice\AppData\Local\Foo Corp\Bar App\data            |
 
+each favorite will be a separate `.sql` file.
 you can change the default export location by exporting an environment variable.
 to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
 

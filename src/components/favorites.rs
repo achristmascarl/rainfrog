@@ -42,7 +42,7 @@ impl FavoriteEntry {
   }
 
   pub fn path_impl(mut base: PathBuf, creation_time: DateTime<chrono::Local>) -> PathBuf {
-    base.push(format!("{}.query", creation_time.timestamp_nanos_opt().unwrap()));
+    base.push(format!("{}.sql", creation_time.timestamp_nanos_opt().unwrap()));
     base
   }
 }
@@ -98,7 +98,7 @@ impl FavoriteEntries {
       match path {
         Ok(p) => {
           if let Some(file_name) = p.path().file_name().and_then(|p| p.to_str()) {
-            if !file_name.ends_with(".query") {
+            if !file_name.ends_with(".sql") {
               continue;
             }
             let Some(epoch_part) = file_name.split('.').next() else {
