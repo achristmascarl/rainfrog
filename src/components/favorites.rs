@@ -80,7 +80,10 @@ impl FavoriteEntries {
 
       match std::fs::write(FavoriteEntry::path_impl(self.dir.clone(), name.clone()), content) {
         Ok(_) => {
-          self.entries.push(FavoriteEntry { name, query_lines });
+          self.entries = Self::read_queries(&self.dir).unwrap_or_else(|e| {
+            log::error!("failed to read favorite queries after writing new entry: {e}");
+            Vec::new()
+          });
         },
         Err(e) => {
           log::error!("failed to create favorite query disk content: {e}");
