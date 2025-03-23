@@ -35,10 +35,20 @@ impl<DB: sqlx::Database> PopUp<DB> for NameFavorite<DB> {
   ) -> color_eyre::eyre::Result<Option<PopUpPayload>> {
     match key.code {
       KeyCode::Char(c) => {
+        // ignore invalid characters
+        if c.is_ascii_whitespace() || (c.is_ascii_punctuation() && c != '_' && c != '-') {
+          return Ok(None);
+        }
         self.name.push(c);
         Ok(None)
       },
-      KeyCode::Enter => Ok(None),
+      KeyCode::Enter => {
+        let favorite_name = self.name.trim();
+        if !favorite_name.is_empty() {
+          return Ok(Some(PopUpPayload::NamedFavorite(favorite_name.to_string(), self.query_lines.clone())));
+        }
+        Ok(None)
+      },
       KeyCode::Esc => Ok(Some(PopUpPayload::Cancel)),
       KeyCode::Backspace => {
         if !self.name.is_empty() {
@@ -51,7 +61,7 @@ impl<DB: sqlx::Database> PopUp<DB> for NameFavorite<DB> {
   }
 
   fn get_cta_text(&self, app_state: &crate::app::AppState<'_, DB>) -> String {
-    "Input a name for the favorite and then press [Enter]. No spaces or special characters allowed.".to_string()
+    "Input a name for the favorite and then press [Enter]; press [Esc] to cancel. No spaces or special characters allowed.".to_string()
   }
 
   fn get_actions_text(&self, app_state: &crate::app::AppState<'_, DB>) -> String {
