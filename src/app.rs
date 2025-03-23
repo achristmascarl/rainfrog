@@ -505,8 +505,8 @@ where
             )));
             self.state.focus = Focus::PopUp;
           },
-          Action::DeleteFavorite(index) => {
-            self.state.favorites.delete_entry(*index);
+          Action::DeleteFavorite(name) => {
+            self.state.favorites.delete_entry(name.clone());
           },
           Action::ClearHistory => {
             self.clear_history();

@@ -56,5 +56,5 @@ pub enum Action {
   RequestSaveFavorite(Vec<String>),
   SaveFavorite(String, Vec<String>),
   FavoriteToEditor(Vec<String>),
-  DeleteFavorite(usize),
+  DeleteFavorite(String),
 }
