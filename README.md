@@ -49,7 +49,7 @@ access on a production database.
    * [arch linux](#arch-linux)
    * [termux](#termux)
    * [nix](#nix)
-   * [conda / mamba](#conda)
+   * [conda](#conda)
    * [pixi](#pixi)
    * [install script](#install-script)
    * [release page binaries](#release-page-binaries)
