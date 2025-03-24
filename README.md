@@ -49,6 +49,8 @@ access on a production database.
    * [arch linux](#arch-linux)
    * [termux](#termux)
    * [nix](#nix)
+   * [conda](#conda)
+   * [pixi](#pixi)
    * [install script](#install-script)
    * [release page binaries](#release-page-binaries)
 - [usage](#usage)
@@ -127,6 +129,22 @@ cargo install rainfrog --features termux --no-default-features
 
 ```sh
 nix-env -iA nixos.rainfrog
+```
+
+<!-- TOC --><a name="conda"></a>
+### conda
+
+```sh
+conda install -c conda-forge rainfrog
+```
+
+<!-- TOC --><a name="pixi"></a>
+### pixi
+
+The command below installs rainfrog from conda-forge, the same repository as conda, but unlike conda it can be installed user-globally using [pixi](https://pixi.sh/).
+
+```sh
+pixi global install rainfrog
 ```
 
 <!-- TOC --><a name="install-script"></a>
