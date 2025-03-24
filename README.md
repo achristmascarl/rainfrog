@@ -49,6 +49,8 @@ access on a production database.
    * [arch linux](#arch-linux)
    * [termux](#termux)
    * [nix](#nix)
+   * [conda / mamba](#conda)
+   * [pixi](#pixi)
    * [install script](#install-script)
    * [release page binaries](#release-page-binaries)
 - [usage](#usage)
@@ -130,14 +132,10 @@ nix-env -iA nixos.rainfrog
 ```
 
 <!-- TOC --><a name="conda"></a>
-### conda / mamba
+### conda
 
 ```sh
 conda install -c conda-forge rainfrog
-```
-
-```sh
-mamba install -c conda-forge rainfrog
 ```
 
 <!-- TOC --><a name="pixi"></a>
