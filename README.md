@@ -290,6 +290,32 @@ allows you to change focus and scroll using the mouse.
 however, your terminal will not handle mouse events like it
 normally does (you won't be able to copy by highlighting, for example).
 
+<!-- TOC --><a name="database connections"></a>
+
+### database connections
+
+Database connections can be configured in the configuration file as shown below:
+
+```
+[db]
+postgres-local = { ip = "localhost", driver = "postgres", port = 5432, database_name = "postgres", username = "postgres", password = "test123", default = true }
+postgres-dev = { connection_string = "postgresql://postgres:test123@127.0.0.1:5432", driver = "postgres" }
+mysql-local = { ip = "localhost", driver = "mysql", port = 32768, database_name = "rainfrog", username = "root", password = "password" }
+sqlite-memory = { connection_string = "sqlite://:memory:", driver = "sqlite"}
+sqlite-disk = { connection_string = "sqlite://./my_database.db", driver = "sqlite"}
+```
+
+The connection details can be provided in two formats: a raw connection string or specifying individual fields.
+Connections input are prioritized in the following order:
+
+- CLI input
+- `DATABASE_URL` env variable
+- Config file
+
+If no database connection in the config is set as the default connection, a prompt will appear to select the desired database.
+Future plans for database connections include keychain integration to avoid storing credentials in plaintext and switching database without having to restart
+rainfrog.
+
 <!-- TOC --><a name="keybindings"></a>
 ### keybindings
 

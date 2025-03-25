@@ -5,9 +5,13 @@ use std::{
 };
 
 use clap::Parser;
-use color_eyre::eyre::{self, Result};
+use color_eyre::eyre::{self, OptionExt, Result};
+use serde::Deserialize;
 
-use crate::utils::version;
+use crate::{
+  config::{Config, DatabaseConnection},
+  utils::version,
+};
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version = version(), about)]
@@ -47,10 +51,13 @@ pub struct Cli {
   pub driver: Option<Driver>,
 }
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Clone, Copy, Deserialize)]
 pub enum Driver {
+  #[serde(alias = "postgres", alias = "POSTGRES")]
   Postgres,
+  #[serde(alias = "mysql", alias = "MYSQL")]
   Mysql,
+  #[serde(alias = "sqlite", alias = "SQLITE")]
   Sqlite,
 }
 
@@ -76,10 +83,36 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
   }
 }
 
-pub fn prompt_for_driver() -> Result<Driver> {
-  let mut driver = String::new();
-  print!("Database driver (postgres, mysql, sqlite): ");
-  io::stdout().flush()?;
-  io::stdin().read_line(&mut driver)?;
-  driver.trim().to_lowercase().parse()
+pub fn prompt_for_database_selection(config: &Config) -> Result<Option<DatabaseConnection>> {
+  match config.db.len() {
+    0 => Ok(None),
+    1 => Ok(Some(config.db.values().next().unwrap().clone())),
+    _ => {
+      let defaults: Vec<_> = config.db.iter().filter(|(_, d)| d.default).collect();
+      match defaults.len() {
+        0 => {
+          let mut db_names: Vec<&str> = config.db.keys().map(|n| n.as_str()).collect();
+          db_names.sort();
+          for (i, name) in db_names.iter().enumerate() {
+            println!("[{i}] {}", name);
+          }
+          print!("Input desired database index: ");
+
+          let mut index = String::new();
+          io::stdout().flush()?;
+          io::stdin().read_line(&mut index)?;
+
+          let index: usize = index.trim().parse()?;
+
+          if index >= db_names.len() {
+            Err(eyre::Report::msg("Database index not recognized"))
+          } else {
+            Ok(Some(config.db[db_names[index]].clone()))
+          }
+        },
+        1 => Ok(Some(defaults[0].1.clone())),
+        _ => Err(eyre::Report::msg("Multiple default database connections defined")),
+      }
+    },
+  }
 }

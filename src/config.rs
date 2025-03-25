@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt, path::PathBuf};
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{self, Result};
 use config::Value;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use derive_deref::{Deref, DerefMut};
@@ -11,7 +11,7 @@ use serde::{
 };
 use serde_json::Value as JsonValue;
 
-use crate::{action::Action, focus::Focus};
+use crate::{action::Action, cli::Driver, focus::Focus};
 
 const CONFIG: &str = include_str!("../.config/rainfrog_config.toml");
 
@@ -25,6 +25,22 @@ pub struct AppConfig {
   pub _favorites_dir: PathBuf,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ConnectionString {
+  Raw { connection_string: String },
+  Structured { ip: String, port: u32, database_name: String, username: String, password: String },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct DatabaseConnection {
+  pub driver: Driver,
+  #[serde(flatten)]
+  pub connection: ConnectionString,
+  #[serde(default)]
+  pub default: bool,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Config {
   #[serde(default, flatten)]
@@ -35,6 +51,23 @@ pub struct Config {
   pub styles: Styles,
   #[serde(default)]
   pub settings: Settings,
+  #[serde(default)]
+  pub db: HashMap<String, DatabaseConnection>,
+}
+
+impl DatabaseConnection {
+  pub fn connection_string(&self) -> Result<String> {
+    match &self.connection {
+      ConnectionString::Raw { connection_string } => Ok(connection_string.clone()),
+      ConnectionString::Structured { ip, port, database_name, username, password } => {
+        match self.driver {
+          Driver::Postgres => Ok(format!("postgresql://{}:{}@{}:{}/{}", username, password, ip, port, database_name)),
+          Driver::Mysql => Ok(format!("mysql://{}:{}@{}:{}/{}", username, password, ip, port, database_name)),
+          Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
+        }
+      },
+    }
+  }
 }
 
 impl Config {

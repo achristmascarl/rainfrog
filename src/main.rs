@@ -24,8 +24,9 @@ use std::{
 };
 
 use clap::Parser;
-use cli::{extract_driver_from_url, prompt_for_driver, Cli, Driver};
+use cli::{extract_driver_from_url, prompt_for_database_selection, Cli, Driver};
 use color_eyre::eyre::{self, Result};
+use config::Config;
 use database::{BuildConnectionOptions, DatabaseQueries, HasRowsAffected, ValueParser};
 use dotenvy::dotenv;
 use sqlx::{postgres::PgConnectOptions, Connection, Database, Executor, MySql, Pool, Postgres, Sqlite};
@@ -35,7 +36,7 @@ use crate::{
   utils::{initialize_logging, initialize_panic_handler, version},
 };
 
-async fn run_app<DB>(mut args: Cli) -> Result<()>
+async fn run_app<DB>(mut args: Cli, config: Config) -> Result<()>
 where
   DB: Database + BuildConnectionOptions + ValueParser + DatabaseQueries,
   DB::QueryResult: HasRowsAffected,
@@ -44,9 +45,38 @@ where
 {
   let mouse_mode = args.mouse_mode.take();
   let connection_opts = DB::build_connection_opts(args)?;
-  let mut app = App::<'_, DB>::new(connection_opts, mouse_mode)?;
+  let mut app = App::<'_, DB>::new(connection_opts, mouse_mode, config)?;
   app.run().await?;
   Ok(())
+}
+
+fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
+  let url = args.connection_url.clone().or_else(|| {
+    env::var("DATABASE_URL").map_or(None, |url| {
+      if url.is_empty() {
+        None
+      } else {
+        println!("Using DATABASE_URL from environment variable");
+        Some(url)
+      }
+    })
+  });
+
+  let (driver, url) = match url {
+    Some(u) => {
+      if let Some(driver) = args.driver.take() { Ok(driver) } else { extract_driver_from_url(&u) }.map(|d| (d, Some(u)))
+    },
+    None => {
+      Ok(match prompt_for_database_selection(config)? {
+        Some(d) => (d.driver, Some(d.connection_string()?)),
+        None => (prompt_for_driver()?, None),
+      })
+    },
+  }?;
+
+  args.connection_url = url;
+
+  Ok(driver)
 }
 
 async fn tokio_main() -> Result<()> {
@@ -56,27 +86,15 @@ async fn tokio_main() -> Result<()> {
 
   let mut args = Cli::parse();
   dotenv().ok();
-  let url = args.connection_url.clone().or_else(|| {
-    env::var("DATABASE_URL").map_or(None, |url| {
-      if url.is_empty() {
-        return None;
-      }
-      println!("Using DATABASE_URL from environment variable");
-      Some(url)
-    })
-  });
-  let driver = if let Some(driver) = args.driver.take() {
-    driver
-  } else if let Some(ref url) = url {
-    extract_driver_from_url(url)?
-  } else {
-    prompt_for_driver()?
-  };
-  args.connection_url = url;
+
+  let config = Config::new()?;
+
+  let driver = resolve_driver(&mut args, &config)?;
+
   match driver {
-    Driver::Postgres => run_app::<Postgres>(args).await,
-    Driver::Mysql => run_app::<MySql>(args).await,
-    Driver::Sqlite => run_app::<Sqlite>(args).await,
+    Driver::Postgres => run_app::<Postgres>(args, config).await,
+    Driver::Mysql => run_app::<MySql>(args, config).await,
+    Driver::Sqlite => run_app::<Sqlite>(args, config).await,
   }
 }
 
@@ -88,4 +106,12 @@ async fn main() -> Result<()> {
   } else {
     Ok(())
   }
+}
+
+pub fn prompt_for_driver() -> Result<Driver> {
+  let mut driver = String::new();
+  print!("Database driver (postgres, mysql, sqlite): ");
+  io::stdout().flush()?;
+  io::stdin().read_line(&mut driver)?;
+  driver.trim().to_lowercase().parse()
 }
