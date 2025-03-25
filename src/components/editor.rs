@@ -194,6 +194,9 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
         };
         self.textarea = TextArea::from(vec![query.clone()]);
         self.textarea.set_search_pattern(keyword_regex()).unwrap();
+        // make sure the editor tab is visible, then refocus the menu
+        self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
+        self.command_tx.as_ref().unwrap().send(Action::FocusMenu)?;
         self.command_tx.as_ref().unwrap().send(Action::Query(vec![query.clone()], false))?;
       },
       Action::SubmitEditorQuery => {
