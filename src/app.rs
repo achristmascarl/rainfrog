@@ -167,6 +167,42 @@ where
     self.state.history = vec![];
   }
 
+  fn set_focus(&mut self, focus: Focus) {
+    self.state.focus = focus;
+    if focus != Focus::PopUp {
+      self.popup = None;
+      self.last_focused_component = focus;
+    }
+    if focus == Focus::Editor || focus == Focus::History || focus == Focus::Favorites {
+      self.last_focused_tab = focus;
+    }
+  }
+
+  fn set_popup(&mut self, popup: Box<dyn PopUp<DB>>) {
+    self.popup = Some(popup);
+    self.set_focus(Focus::PopUp);
+  }
+
+  fn last_focused_tab(&mut self) {
+    match self.last_focused_tab {
+      Focus::Editor => self.set_focus(Focus::Editor),
+      Focus::History => self.set_focus(Focus::History),
+      Focus::Favorites => self.set_focus(Focus::Favorites),
+      _ => {},
+    }
+  }
+
+  fn last_focused_component(&mut self) {
+    match self.last_focused_component {
+      Focus::Menu => self.set_focus(Focus::Menu),
+      Focus::Editor => self.set_focus(Focus::Editor),
+      Focus::Data => self.set_focus(Focus::Data),
+      Focus::History => self.set_focus(Focus::History),
+      Focus::Favorites => self.set_focus(Focus::Favorites),
+      Focus::PopUp => {},
+    }
+  }
+
   pub async fn run(&mut self) -> Result<()> {
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
     let connection_opts = self.state.connection_opts.clone();
@@ -204,7 +240,7 @@ where
 
     loop {
       if let Some(popup) = &mut self.popup {
-        self.state.focus = Focus::PopUp;
+        self.set_focus(Focus::PopUp);
       }
       match &mut self.state.query_task {
         Some(DbTask::Query(task)) => {
@@ -221,8 +257,7 @@ where
             match results.results {
               Ok(_) => {
                 self.state.query_task = Some(DbTask::TxPending(tx, results));
-                self.popup = Some(Box::new(ConfirmTx::<DB>::new()));
-                self.state.focus = Focus::PopUp;
+                self.set_popup(Box::new(ConfirmTx::<DB>::new()));
               },
               Err(_) => {
                 self.state.query_task = None;
@@ -256,31 +291,26 @@ where
                 match payload {
                   Some(PopUpPayload::SetDataTable(result, statement)) => {
                     self.components.data.set_data_state(result, statement);
-                    self.popup = None;
-                    action_tx.send(Action::FocusEditor)?;
+                    self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmQuery(query)) => {
                     action_tx.send(Action::Query(vec![query], true))?;
-                    self.popup = None;
-                    action_tx.send(Action::FocusEditor)?;
+                    self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmExport(confirmed)) => {
                     if confirmed {
                       action_tx.send(Action::ExportData(ExportFormat::CSV))?;
-                      self.popup = Some(Box::new(Exporting::new()));
+                      self.set_popup(Box::new(Exporting::new()));
                     } else {
-                      self.popup = None;
-                      action_tx.send(Action::FocusData)?;
+                      self.set_focus(Focus::Data);
                     }
                   },
                   Some(PopUpPayload::Cancel) => {
-                    self.popup = None;
-                    self.last_focused_component(action_tx.clone())?;
+                    self.last_focused_component();
                   },
                   Some(PopUpPayload::NamedFavorite(name, query_lines)) => {
                     self.state.favorites.add_entry(name, query_lines);
-                    self.popup = None;
-                    action_tx.send(Action::FocusEditor)?;
+                    self.set_focus(Focus::Editor);
                   },
                   None => {},
                 }
@@ -357,46 +387,28 @@ where
             })?;
             self.last_frame_mouse_event = None;
           },
-          Action::FocusMenu => {
-            self.state.focus = Focus::Menu;
-            self.last_focused_component = Focus::Menu;
-          },
-          Action::FocusEditor => {
-            self.state.focus = Focus::Editor;
-            self.last_focused_tab = Focus::Editor;
-            self.last_focused_component = Focus::Editor;
-          },
-          Action::FocusData => {
-            self.state.focus = Focus::Data;
-            self.last_focused_component = Focus::Data;
-          },
-          Action::FocusHistory => {
-            self.state.focus = Focus::History;
-            self.last_focused_tab = Focus::History;
-            self.last_focused_component = Focus::History;
-          },
-          Action::FocusFavorites => {
-            self.state.focus = Focus::Favorites;
-            self.last_focused_tab = Focus::Favorites;
-            self.last_focused_component = Focus::Favorites;
-          },
+          Action::FocusMenu => self.set_focus(Focus::Menu),
+          Action::FocusEditor => self.set_focus(Focus::Editor),
+          Action::FocusData => self.set_focus(Focus::Data),
+          Action::FocusHistory => self.set_focus(Focus::History),
+          Action::FocusFavorites => self.set_focus(Focus::Favorites),
           Action::CycleFocusForwards => {
             match self.state.focus {
-              Focus::Menu => action_tx.send(Action::FocusEditor)?,
-              Focus::Editor => action_tx.send(Action::FocusData)?,
-              Focus::Data => action_tx.send(Action::FocusHistory)?,
-              Focus::History => action_tx.send(Action::FocusFavorites)?,
-              Focus::Favorites => action_tx.send(Action::FocusMenu)?,
+              Focus::Menu => self.set_focus(Focus::Editor),
+              Focus::Editor => self.set_focus(Focus::Data),
+              Focus::Data => self.set_focus(Focus::History),
+              Focus::History => self.set_focus(Focus::Favorites),
+              Focus::Favorites => self.set_focus(Focus::Menu),
               Focus::PopUp => {},
             }
           },
           Action::CycleFocusBackwards => {
             match self.state.focus {
-              Focus::History => action_tx.send(Action::FocusData)?,
-              Focus::Data => action_tx.send(Action::FocusEditor)?,
-              Focus::Editor => action_tx.send(Action::FocusMenu)?,
-              Focus::Menu => action_tx.send(Action::FocusFavorites)?,
-              Focus::Favorites => action_tx.send(Action::FocusHistory)?,
+              Focus::History => self.set_focus(Focus::Data),
+              Focus::Data => self.set_focus(Focus::Editor),
+              Focus::Editor => self.set_focus(Focus::Menu),
+              Focus::Menu => self.set_focus(Focus::Favorites),
+              Focus::Favorites => self.set_focus(Focus::History),
               Focus::PopUp => {},
             }
           },
@@ -407,78 +419,77 @@ where
               self.components.menu.set_table_list(Some(results));
             }
           },
-          Action::Query(query_lines, confirmed) => {
+          Action::Query(query_lines, confirmed) => 'query_action: {
             let query_string = query_lines.clone().join(" \n");
-            if !query_string.is_empty() {
-              self.add_to_history(query_lines.clone());
-              let first_query = database::get_first_query(query_string.clone(), self.state.dialect.as_ref());
-              let execution_type = first_query.map(|(_, statement_type)| {
-                (database::get_execution_type(statement_type.clone(), *confirmed), statement_type)
-              });
-              let action_tx = action_tx.clone();
-              if let Some(pool) = &self.pool {
-                let pool = pool.clone();
-                let dialect = self.state.dialect.clone();
-                match execution_type {
-                  Ok((ExecutionType::Transaction, statement_type)) => {
-                    self.components.data.set_loading();
-                    let tx = pool.begin().await?;
-                    self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                      let (results, tx) =
-                        database::query_with_tx::<DB>(tx, dialect.as_ref(), query_string.clone()).await;
-                      match results {
-                        Ok(Either::Left(rows_affected)) => {
-                          log::info!("{:?} rows affected", rows_affected);
-                          (
-                            QueryResultsWithMetadata {
-                              results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
-                              statement_type,
-                            },
-                            tx,
-                          )
-                        },
-                        Ok(Either::Right(rows)) => {
-                          log::info!("{:?} rows affected", rows.rows_affected);
-                          (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
-                        },
-                        Err(e) => {
-                          log::error!("{e:?}");
-                          (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
-                        },
-                      }
-                    })));
-                    self.state.last_query_start = Some(chrono::Utc::now());
-                    self.state.last_query_end = None;
-                  },
-                  Ok((ExecutionType::Confirm, statement_type)) => {
-                    self.popup = Some(Box::new(ConfirmQuery::<DB>::new(query_string.clone(), statement_type)));
-                    self.state.focus = Focus::PopUp;
-                  },
-                  Ok((ExecutionType::Normal, statement_type)) => {
-                    self.components.data.set_loading();
-                    let dialect = self.state.dialect.clone();
-                    self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                      let results = database::query(query_string.clone(), dialect.as_ref(), &pool).await;
-                      match &results {
-                        Ok(rows) => {
-                          log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
-                        },
-                        Err(e) => {
-                          log::error!("{e:?}");
-                        },
-                      };
+            if query_string.is_empty() {
+              break 'query_action;
+            }
+            self.add_to_history(query_lines.clone());
+            let first_query = database::get_first_query(query_string.clone(), self.state.dialect.as_ref());
+            let execution_type = first_query.map(|(_, statement_type)| {
+              (database::get_execution_type(statement_type.clone(), *confirmed), statement_type)
+            });
+            let action_tx = action_tx.clone();
+            if let Some(pool) = &self.pool {
+              let pool = pool.clone();
+              let dialect = self.state.dialect.clone();
+              match execution_type {
+                Ok((ExecutionType::Transaction, statement_type)) => {
+                  self.components.data.set_loading();
+                  let tx = pool.begin().await?;
+                  self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
+                    let (results, tx) = database::query_with_tx::<DB>(tx, dialect.as_ref(), query_string.clone()).await;
+                    match results {
+                      Ok(Either::Left(rows_affected)) => {
+                        log::info!("{:?} rows affected", rows_affected);
+                        (
+                          QueryResultsWithMetadata {
+                            results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+                            statement_type,
+                          },
+                          tx,
+                        )
+                      },
+                      Ok(Either::Right(rows)) => {
+                        log::info!("{:?} rows affected", rows.rows_affected);
+                        (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
+                      },
+                      Err(e) => {
+                        log::error!("{e:?}");
+                        (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
+                      },
+                    }
+                  })));
+                  self.state.last_query_start = Some(chrono::Utc::now());
+                  self.state.last_query_end = None;
+                },
+                Ok((ExecutionType::Confirm, statement_type)) => {
+                  self.set_popup(Box::new(ConfirmQuery::<DB>::new(query_string.clone(), statement_type)));
+                },
+                Ok((ExecutionType::Normal, statement_type)) => {
+                  self.components.data.set_loading();
+                  let dialect = self.state.dialect.clone();
+                  self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
+                    let results = database::query(query_string.clone(), dialect.as_ref(), &pool).await;
+                    match &results {
+                      Ok(rows) => {
+                        log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
+                      },
+                      Err(e) => {
+                        log::error!("{e:?}");
+                      },
+                    };
 
-                      QueryResultsWithMetadata { results, statement_type }
-                    })));
-                    self.state.last_query_start = Some(chrono::Utc::now());
-                    self.state.last_query_end = None;
-                  },
-                  Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
-                }
-              } else {
-                log::error!("No connection pool");
-                self.components.data.set_data_state(Some(Err(DbError::Left(sqlx::Error::PoolTimedOut))), None)
+                    QueryResultsWithMetadata { results, statement_type }
+                  })));
+                  self.state.last_query_start = Some(chrono::Utc::now());
+                  self.state.last_query_end = None;
+                },
+                Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
               }
+            } else {
+              log::error!("No connection pool");
+              self.components.data.set_data_state(Some(Err(DbError::Left(sqlx::Error::PoolTimedOut))), None)
             }
           },
           Action::AbortQuery => {
@@ -499,11 +510,10 @@ where
             }
           },
           Action::RequestSaveFavorite(query_lines) => {
-            self.popup = Some(Box::new(NameFavorite::<DB>::new(
+            self.set_popup(Box::new(NameFavorite::<DB>::new(
               self.state.favorites.iter().map(|f| f.get_name().to_string()).collect(),
               query_lines.clone(),
             )));
-            self.state.focus = Focus::PopUp;
           },
           Action::DeleteFavorite(name) => {
             self.state.favorites.delete_entry(name.clone());
@@ -527,12 +537,10 @@ where
             }
           },
           Action::RequestExportData(row_count) => {
-            self.popup = Some(Box::new(ConfirmExport::<DB>::new(*row_count)));
-            self.state.focus = Focus::PopUp;
+            self.set_popup(Box::new(ConfirmExport::<DB>::new(*row_count)));
           },
           Action::ExportDataFinished => {
-            self.popup = None;
-            action_tx.send(Action::FocusData)?;
+            self.set_focus(Focus::Data);
           },
           _ => {},
         }
@@ -613,26 +621,26 @@ where
         let tab_content_target = tabs_layout[1];
         let data_target = right_layout[1];
         if menu_target.contains(position) {
-          action_tx.send(Action::FocusMenu)?;
+          self.set_focus(Focus::Menu);
         } else if data_target.contains(position) {
-          action_tx.send(Action::FocusData)?;
+          self.set_focus(Focus::Data);
         } else if tab_content_target.contains(position) {
-          self.last_focused_tab(action_tx.clone())?;
+          self.last_focused_tab();
         } else if tabs_target.contains(position) {
           match self.state.focus {
             Focus::Editor => {
               if matches!(event.kind, MouseEventKind::Up(_)) {
-                action_tx.send(Action::FocusHistory)?;
+                self.set_focus(Focus::History);
               }
             },
             Focus::History => {
               if matches!(event.kind, MouseEventKind::Up(_)) {
-                action_tx.send(Action::FocusFavorites)?;
+                self.set_focus(Focus::Favorites);
               }
             },
             Focus::Favorites => {
               if matches!(event.kind, MouseEventKind::Up(_)) {
-                action_tx.send(Action::FocusEditor)?;
+                self.set_focus(Focus::Editor);
               }
             },
             Focus::PopUp => {},
@@ -720,27 +728,5 @@ where
     frame.render_widget(block, area);
     frame.render_widget(popup_cta, layout[0]);
     frame.render_widget(popup_actions, center(layout[1], Constraint::Fill(1), Constraint::Percentage(50)));
-  }
-
-  fn last_focused_tab(&self, action_tx: mpsc::UnboundedSender<Action>) -> Result<()> {
-    match self.last_focused_tab {
-      Focus::Editor => action_tx.send(Action::FocusEditor)?,
-      Focus::History => action_tx.send(Action::FocusHistory)?,
-      Focus::Favorites => action_tx.send(Action::FocusFavorites)?,
-      _ => {},
-    };
-    Ok(())
-  }
-
-  fn last_focused_component(&self, action_tx: mpsc::UnboundedSender<Action>) -> Result<()> {
-    match self.last_focused_component {
-      Focus::Menu => action_tx.send(Action::FocusMenu)?,
-      Focus::Editor => action_tx.send(Action::FocusEditor)?,
-      Focus::Data => action_tx.send(Action::FocusData)?,
-      Focus::History => action_tx.send(Action::FocusHistory)?,
-      Focus::Favorites => action_tx.send(Action::FocusFavorites)?,
-      Focus::PopUp => {},
-    };
-    Ok(())
   }
 }
