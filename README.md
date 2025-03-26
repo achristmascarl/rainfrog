@@ -298,9 +298,9 @@ Database connections can be configured in the configuration file as shown below:
 
 ```
 [db]
-postgres-local = { ip = "localhost", driver = "postgres", port = 5432, database_name = "postgres", username = "postgres", password = "test123", default = true }
+postgres-local = { ip = "localhost", driver = "postgres", port = 5432, database_name = "postgres", username = "postgres",  default = true }
 postgres-dev = { connection_string = "postgresql://postgres:test123@127.0.0.1:5432", driver = "postgres" }
-mysql-local = { ip = "localhost", driver = "mysql", port = 32768, database_name = "rainfrog", username = "root", password = "password" }
+mysql-local = { ip = "localhost", driver = "mysql", port = 32768, database_name = "rainfrog", username = "root" }
 sqlite-memory = { connection_string = "sqlite://:memory:", driver = "sqlite"}
 sqlite-disk = { connection_string = "sqlite://./my_database.db", driver = "sqlite"}
 ```
@@ -313,8 +313,9 @@ Connections input are prioritized in the following order:
 - Config file
 
 If no database connection in the config is set as the default connection, a prompt will appear to select the desired database.
-Future plans for database connections include keychain integration to avoid storing credentials in plaintext and switching database without having to restart
-rainfrog.
+The user will also be prompted for the password for the selected database and will have the option to store it in a platform specific keychain
+for future reuse.
+Future plans for database connections include switching database without having to restart rainfrog.
 
 <!-- TOC --><a name="keybindings"></a>
 ### keybindings

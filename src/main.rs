@@ -11,6 +11,7 @@ pub mod components;
 pub mod config;
 pub mod database;
 pub mod focus;
+pub mod keyring;
 pub mod popups;
 pub mod tui;
 pub mod ui;
@@ -26,9 +27,10 @@ use std::{
 use clap::Parser;
 use cli::{extract_driver_from_url, prompt_for_database_selection, Cli, Driver};
 use color_eyre::eyre::{self, Result};
-use config::Config;
+use config::{Config, ConnectionString};
 use database::{BuildConnectionOptions, DatabaseQueries, HasRowsAffected, ValueParser};
 use dotenvy::dotenv;
+use keyring::get_password;
 use sqlx::{postgres::PgConnectOptions, Connection, Database, Executor, MySql, Pool, Postgres, Sqlite};
 
 use crate::{
@@ -68,7 +70,17 @@ fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
     },
     None => {
       Ok(match prompt_for_database_selection(config)? {
-        Some(d) => (d.driver, Some(d.connection_string()?)),
+        Some((conn, name)) => {
+          let url = match conn.connection {
+            ConnectionString::Raw { connection_string } => Ok(connection_string),
+            ConnectionString::Structured { details } => {
+              let password = get_password(&name, &details.username)?;
+              details.connection_string(conn.driver, password)
+            },
+          }?;
+
+          (conn.driver, Some(url))
+        },
         None => (prompt_for_driver()?, None),
       })
     },

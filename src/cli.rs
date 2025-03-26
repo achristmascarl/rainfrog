@@ -83,10 +83,10 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
   }
 }
 
-pub fn prompt_for_database_selection(config: &Config) -> Result<Option<DatabaseConnection>> {
+pub fn prompt_for_database_selection(config: &Config) -> Result<Option<(DatabaseConnection, String)>> {
   match config.db.len() {
     0 => Ok(None),
-    1 => Ok(Some(config.db.values().next().unwrap().clone())),
+    1 => Ok(Some(config.db.iter().map(|(name, db)| (db.clone(), name.to_string())).next().unwrap())),
     _ => {
       let defaults: Vec<_> = config.db.iter().filter(|(_, d)| d.default).collect();
       match defaults.len() {
@@ -107,10 +107,11 @@ pub fn prompt_for_database_selection(config: &Config) -> Result<Option<DatabaseC
           if index >= db_names.len() {
             Err(eyre::Report::msg("Database index not recognized"))
           } else {
-            Ok(Some(config.db[db_names[index]].clone()))
+            let name = db_names[index].to_string();
+            Ok(Some((config.db[&name].clone(), name)))
           }
         },
-        1 => Ok(Some(defaults[0].1.clone())),
+        1 => Ok(Some((defaults[0].1.clone(), defaults[0].0.clone()))),
         _ => Err(eyre::Report::msg("Multiple default database connections defined")),
       }
     },

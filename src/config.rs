@@ -11,7 +11,7 @@ use serde::{
 };
 use serde_json::Value as JsonValue;
 
-use crate::{action::Action, cli::Driver, focus::Focus};
+use crate::{action::Action, cli::Driver, focus::Focus, keyring::Password};
 
 const CONFIG: &str = include_str!("../.config/rainfrog_config.toml");
 
@@ -28,8 +28,21 @@ pub struct AppConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ConnectionString {
-  Raw { connection_string: String },
-  Structured { ip: String, port: u32, database_name: String, username: String, password: String },
+  Raw {
+    connection_string: String,
+  },
+  Structured {
+    #[serde(flatten)]
+    details: StructuredConnection,
+  },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct StructuredConnection {
+  pub ip: String,
+  pub port: u32,
+  pub database_name: String,
+  pub username: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -55,17 +68,23 @@ pub struct Config {
   pub db: HashMap<String, DatabaseConnection>,
 }
 
-impl DatabaseConnection {
-  pub fn connection_string(&self) -> Result<String> {
-    match &self.connection {
-      ConnectionString::Raw { connection_string } => Ok(connection_string.clone()),
-      ConnectionString::Structured { ip, port, database_name, username, password } => {
-        match self.driver {
-          Driver::Postgres => Ok(format!("postgresql://{}:{}@{}:{}/{}", username, password, ip, port, database_name)),
-          Driver::Mysql => Ok(format!("mysql://{}:{}@{}:{}/{}", username, password, ip, port, database_name)),
-          Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
-        }
+impl StructuredConnection {
+  pub fn connection_string(&self, driver: Driver, password: Password) -> Result<String> {
+    match driver {
+      Driver::Postgres => {
+        Ok(format!(
+          "postgresql://{}:{}@{}:{}/{}",
+          self.username,
+          password.as_ref(),
+          self.ip,
+          self.port,
+          self.database_name
+        ))
       },
+      Driver::Mysql => {
+        Ok(format!("mysql://{}:{}@{}:{}/{}", self.username, password.as_ref(), self.ip, self.port, self.database_name))
+      },
+      Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
     }
   }
 }
