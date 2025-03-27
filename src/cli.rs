@@ -96,7 +96,7 @@ pub fn prompt_for_database_selection(config: &Config) -> Result<Option<(Database
           for (i, name) in db_names.iter().enumerate() {
             println!("[{i}] {}", name);
           }
-          print!("Input desired database index: ");
+          print!("Input index of desired database: ");
 
           let mut index = String::new();
           io::stdout().flush()?;
