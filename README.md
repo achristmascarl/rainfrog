@@ -60,6 +60,7 @@ access on a production database.
    * [`docker run`](#docker-run)
 - [customization](#customization)
    * [settings](#settings)
+   * [database connections](#database-connections)
    * [keybindings](#keybindings)
       + [n.b. for mac users](#nb-for-mac-users)
       + [general](#general)
@@ -290,11 +291,10 @@ allows you to change focus and scroll using the mouse.
 however, your terminal will not handle mouse events like it
 normally does (you won't be able to copy by highlighting, for example).
 
-<!-- TOC --><a name="database connections"></a>
-
+<!-- TOC --><a name="database-connections"></a>
 ### database connections
 
-Database connections can be configured in the configuration file as shown below:
+database connections can be configured in the configuration file as shown below:
 
 ```
 [db]
@@ -305,17 +305,18 @@ sqlite-memory = { connection_string = "sqlite://:memory:", driver = "sqlite"}
 sqlite-disk = { connection_string = "sqlite://./my_database.db", driver = "sqlite"}
 ```
 
-The connection details can be provided in two formats: a raw connection string or specifying individual fields.
-Connections input are prioritized in the following order:
+the connection details can be provided in two formats: a raw connection string or specifying individual fields.
+connections input are prioritized in the following order:
 
-- CLI input
+- cli input
 - `DATABASE_URL` env variable
-- Config file
+- config file
 
-If no database connection in the config is set as the default connection, a prompt will appear to select the desired database.
-The user will also be prompted for the password for the selected database and will have the option to store it in a platform specific keychain
-for future reuse.
-Future plans for database connections include switching database without having to restart rainfrog.
+if no database connection in the config is set as the default connection, 
+a prompt will appear to select the desired database. The user will also be 
+prompted for the password for the selected database and will have the option to 
+store it in a platform specific keychain for future reuse.
+future plans for database connections include switching database without having to restart rainfrog.
 
 <!-- TOC --><a name="keybindings"></a>
 ### keybindings
