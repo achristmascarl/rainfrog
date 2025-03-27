@@ -63,12 +63,25 @@ fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
       }
     })
   });
+  let has_cli_input = args.driver.is_some()
+    || args.user.is_some()
+    || args.password.is_some()
+    || args.host.is_some()
+    || args.port.is_some()
+    || args.database.is_some();
 
-  let (driver, url) = match url {
-    Some(u) => {
+  let (driver, url) = match (url, has_cli_input) {
+    (Some(u), _) => {
       if let Some(driver) = args.driver.take() { Ok(driver) } else { extract_driver_from_url(&u) }.map(|d| (d, Some(u)))
     },
-    None => {
+    (None, true) => {
+      if let Some(driver) = args.driver.take() {
+        Ok((driver, None))
+      } else {
+        Ok((prompt_for_driver()?, None))
+      }
+    },
+    (None, false) => {
       Ok(match prompt_for_database_selection(config)? {
         Some((conn, name)) => {
           let url = match conn.connection {
