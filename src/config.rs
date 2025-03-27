@@ -39,7 +39,7 @@ pub enum ConnectionString {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct StructuredConnection {
-  pub ip: String,
+  pub host: String,
   pub port: u32,
   pub database_name: String,
   pub username: String,
@@ -76,13 +76,20 @@ impl StructuredConnection {
           "postgresql://{}:{}@{}:{}/{}",
           self.username,
           password.as_ref(),
-          self.ip,
+          self.host,
           self.port,
           self.database_name
         ))
       },
       Driver::Mysql => {
-        Ok(format!("mysql://{}:{}@{}:{}/{}", self.username, password.as_ref(), self.ip, self.port, self.database_name))
+        Ok(format!(
+          "mysql://{}:{}@{}:{}/{}",
+          self.username,
+          password.as_ref(),
+          self.host,
+          self.port,
+          self.database_name
+        ))
       },
       Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
     }
