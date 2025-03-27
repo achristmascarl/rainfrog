@@ -298,9 +298,9 @@ database connections can be configured in the configuration file as shown below:
 
 ```
 [db]
-postgres-local = { host = "localhost", driver = "postgres", port = 5432, database_name = "postgres", username = "postgres",  default = true }
+postgres-local = { host = "localhost", driver = "postgres", port = 5432, database = "postgres", username = "postgres",  default = true }
 postgres-dev = { connection_string = "postgresql://postgres:test123@127.0.0.1:5432", driver = "postgres" }
-mysql-local = { host = "localhost", driver = "mysql", port = 32768, database_name = "rainfrog", username = "root" }
+mysql-local = { host = "localhost", driver = "mysql", port = 32768, database = "rainfrog", username = "root" }
 sqlite-memory = { connection_string = "sqlite://:memory:", driver = "sqlite"}
 sqlite-disk = { connection_string = "sqlite://./my_database.db", driver = "sqlite"}
 ```

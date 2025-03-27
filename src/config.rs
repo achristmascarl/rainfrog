@@ -41,7 +41,7 @@ pub enum ConnectionString {
 pub struct StructuredConnection {
   pub host: String,
   pub port: u32,
-  pub database_name: String,
+  pub database: String,
   pub username: String,
 }
 
@@ -78,18 +78,11 @@ impl StructuredConnection {
           password.as_ref(),
           self.host,
           self.port,
-          self.database_name
+          self.database
         ))
       },
       Driver::Mysql => {
-        Ok(format!(
-          "mysql://{}:{}@{}:{}/{}",
-          self.username,
-          password.as_ref(),
-          self.host,
-          self.port,
-          self.database_name
-        ))
+        Ok(format!("mysql://{}:{}@{}:{}/{}", self.username, password.as_ref(), self.host, self.port, self.database))
       },
       Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
     }
