@@ -116,13 +116,13 @@ where
   pub fn new(
     connection_opts: <DB::Connection as Connection>::Options,
     mouse_mode_override: Option<bool>,
+    config: Config,
   ) -> Result<Self> {
     let focus = Focus::Menu;
     let menu = Menu::new();
     let editor = Editor::new();
     let history = History::new();
     let data = Data::new();
-    let config = Config::new()?;
     let favorites = Favorites::new();
     let favorite_entries = FavoriteEntries::new(&config.config._favorites_dir)?;
 
