@@ -45,6 +45,7 @@ pub enum Action {
   FocusEditor,
   FocusHistory,
   FocusData,
+  FocusFavorites,
   CycleFocusForwards,
   CycleFocusBackwards,
   LoadMenu,
@@ -52,4 +53,8 @@ pub enum Action {
   RequestExportData(i64),
   ExportData(ExportFormat),
   ExportDataFinished,
+  RequestSaveFavorite(Vec<String>),
+  SaveFavorite(String, Vec<String>),
+  FavoriteToEditor(Vec<String>),
+  DeleteFavorite(String),
 }

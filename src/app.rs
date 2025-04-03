@@ -24,6 +24,7 @@ use sqlx::{
   postgres::{PgConnectOptions, Postgres},
   Connection, Database, Either, Executor, Pool, Transaction,
 };
+use strum::IntoEnumIterator;
 use tokio::{
   sync::{
     mpsc::{self},
@@ -37,21 +38,23 @@ use crate::{
   components::{
     data::{Data, DataComponent},
     editor::Editor,
+    favorites::{FavoriteEntries, Favorites},
     history::History,
     menu::{Menu, MenuComponent},
-    Component,
+    Component, ComponentImpls,
   },
   config::Config,
   database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, ExecutionType, Rows},
   focus::Focus,
   popups::{
-    confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, exporting::Exporting, PopUp,
-    PopUpPayload,
+    confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, exporting::Exporting,
+    name_favorite::NameFavorite, PopUp, PopUpPayload,
   },
   tui,
   ui::center,
 };
 
+#[allow(clippy::large_enum_variant)]
 pub enum DbTask<'a, DB: sqlx::Database> {
   Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
   TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, DB>)>),
@@ -70,6 +73,7 @@ pub struct AppState<'a, DB: Database> {
   pub focus: Focus,
   pub query_task: Option<DbTask<'a, DB>>,
   pub history: Vec<HistoryEntry>,
+  pub favorites: FavoriteEntries,
   pub last_query_start: Option<chrono::DateTime<chrono::Utc>>,
   pub last_query_end: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -79,6 +83,7 @@ pub struct Components<'a, DB> {
   pub editor: Box<dyn Component<DB>>,
   pub history: Box<dyn Component<DB>>,
   pub data: Box<dyn DataComponent<'a, DB>>,
+  pub favorites: Box<dyn Component<DB>>,
 }
 
 #[derive(Debug)]
@@ -97,6 +102,7 @@ pub struct App<'a, DB: sqlx::Database> {
   pub pool: Option<database::DbPool<DB>>,
   pub state: AppState<'a, DB>,
   last_focused_tab: Focus,
+  last_focused_component: Focus,
   popup: Option<Box<dyn PopUp<DB>>>,
 }
 
@@ -110,19 +116,23 @@ where
   pub fn new(
     connection_opts: <DB::Connection as Connection>::Options,
     mouse_mode_override: Option<bool>,
+    config: Config,
   ) -> Result<Self> {
     let focus = Focus::Menu;
     let menu = Menu::new();
     let editor = Editor::new();
     let history = History::new();
     let data = Data::new();
-    let config = Config::new()?;
+    let favorites = Favorites::new();
+    let favorite_entries = FavoriteEntries::new(&config.config._favorites_dir)?;
+
     Ok(Self {
       components: Components {
         menu: Box::new(menu),
         editor: Box::new(editor),
         history: Box::new(history),
         data: Box::new(data),
+        favorites: Box::new(favorites),
       },
       should_quit: false,
       mouse_mode_override,
@@ -138,8 +148,10 @@ where
         history: vec![],
         last_query_start: None,
         last_query_end: None,
+        favorites: favorite_entries,
       },
       last_focused_tab: Focus::Editor,
+      last_focused_component: focus,
       popup: None,
     })
   }
@@ -153,6 +165,42 @@ where
 
   fn clear_history(&mut self) {
     self.state.history = vec![];
+  }
+
+  fn set_focus(&mut self, focus: Focus) {
+    self.state.focus = focus;
+    if focus != Focus::PopUp {
+      self.popup = None;
+      self.last_focused_component = focus;
+    }
+    if focus == Focus::Editor || focus == Focus::History || focus == Focus::Favorites {
+      self.last_focused_tab = focus;
+    }
+  }
+
+  fn set_popup(&mut self, popup: Box<dyn PopUp<DB>>) {
+    self.popup = Some(popup);
+    self.set_focus(Focus::PopUp);
+  }
+
+  fn last_focused_tab(&mut self) {
+    match self.last_focused_tab {
+      Focus::Editor => self.set_focus(Focus::Editor),
+      Focus::History => self.set_focus(Focus::History),
+      Focus::Favorites => self.set_focus(Focus::Favorites),
+      _ => {},
+    }
+  }
+
+  fn last_focused_component(&mut self) {
+    match self.last_focused_component {
+      Focus::Menu => self.set_focus(Focus::Menu),
+      Focus::Editor => self.set_focus(Focus::Editor),
+      Focus::Data => self.set_focus(Focus::Data),
+      Focus::History => self.set_focus(Focus::History),
+      Focus::Favorites => self.set_focus(Focus::Favorites),
+      Focus::PopUp => {},
+    }
   }
 
   pub async fn run(&mut self) -> Result<()> {
@@ -173,23 +221,26 @@ where
     self.components.editor.register_action_handler(action_tx.clone())?;
     self.components.history.register_action_handler(action_tx.clone())?;
     self.components.data.register_action_handler(action_tx.clone())?;
+    self.components.favorites.register_action_handler(action_tx.clone())?;
 
     self.components.menu.register_config_handler(self.config.clone())?;
     self.components.editor.register_config_handler(self.config.clone())?;
     self.components.history.register_config_handler(self.config.clone())?;
     self.components.data.register_config_handler(self.config.clone())?;
+    self.components.favorites.register_config_handler(self.config.clone())?;
 
     let size = tui.size()?;
     self.components.menu.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
     self.components.editor.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
     self.components.history.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
     self.components.data.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
+    self.components.favorites.init(Rect { width: size.width, height: size.height, x: 0, y: 0 })?;
 
     action_tx.send(Action::LoadMenu)?;
 
     loop {
       if let Some(popup) = &mut self.popup {
-        self.state.focus = Focus::PopUp;
+        self.set_focus(Focus::PopUp);
       }
       match &mut self.state.query_task {
         Some(DbTask::Query(task)) => {
@@ -206,8 +257,7 @@ where
             match results.results {
               Ok(_) => {
                 self.state.query_task = Some(DbTask::TxPending(tx, results));
-                self.popup = Some(Box::new(ConfirmTx::<DB>::new()));
-                self.state.focus = Focus::PopUp;
+                self.set_popup(Box::new(ConfirmTx::<DB>::new()));
               },
               Err(_) => {
                 self.state.query_task = None;
@@ -241,22 +291,26 @@ where
                 match payload {
                   Some(PopUpPayload::SetDataTable(result, statement)) => {
                     self.components.data.set_data_state(result, statement);
-                    self.popup = None;
-                    self.state.focus = Focus::Editor;
+                    self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmQuery(query)) => {
                     action_tx.send(Action::Query(vec![query], true))?;
-                    self.popup = None;
-                    self.state.focus = Focus::Editor;
+                    self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmExport(confirmed)) => {
                     if confirmed {
                       action_tx.send(Action::ExportData(ExportFormat::CSV))?;
-                      self.popup = Some(Box::new(Exporting::new()));
+                      self.set_popup(Box::new(Exporting::new()));
                     } else {
-                      self.popup = None;
-                      self.state.focus = Focus::Data;
+                      self.set_focus(Focus::Data);
                     }
+                  },
+                  Some(PopUpPayload::Cancel) => {
+                    self.last_focused_component();
+                  },
+                  Some(PopUpPayload::NamedFavorite(name, query_lines)) => {
+                    self.state.favorites.add_entry(name, query_lines);
+                    self.set_focus(Focus::Editor);
                   },
                   None => {},
                 }
@@ -278,25 +332,35 @@ where
           _ => {},
         }
         if !event_consumed {
-          if let Some(action) =
-            self.components.menu.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
-          {
-            action_tx.send(action)?;
-          }
-          if let Some(action) =
-            self.components.editor.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
-          {
-            action_tx.send(action)?;
-          }
-          if let Some(action) =
-            self.components.history.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
-          {
-            action_tx.send(action)?;
-          }
-          if let Some(action) =
-            self.components.data.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
-          {
-            action_tx.send(action)?;
+          for i in ComponentImpls::iter() {
+            let action = match i {
+              ComponentImpls::Menu => {
+                self.components.menu.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
+              },
+              ComponentImpls::Editor => {
+                self.components.editor.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
+              },
+              ComponentImpls::History => {
+                self.components.history.handle_events(
+                  Some(e.clone()),
+                  self.last_tick_key_events.clone(),
+                  &self.state,
+                )?
+              },
+              ComponentImpls::Data => {
+                self.components.data.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
+              },
+              ComponentImpls::Favorites => {
+                self.components.favorites.handle_events(
+                  Some(e.clone()),
+                  self.last_tick_key_events.clone(),
+                  &self.state,
+                )?
+              },
+            };
+            if let Some(action) = action {
+              action_tx.send(action)?;
+            }
           }
         }
       }
@@ -314,57 +378,38 @@ where
           Action::Resize(w, h) => {
             tui.resize(Rect::new(0, 0, *w, *h))?;
             tui.draw(|f| {
-              self.draw_layout(f);
+              self.draw_layout(f, action_tx.clone()).expect("Couldn't draw layout");
             })?;
           },
           Action::Render => {
             tui.draw(|f| {
-              self.draw_layout(f);
+              self.draw_layout(f, action_tx.clone()).expect("Couldn't draw layout");
             })?;
             self.last_frame_mouse_event = None;
           },
-          Action::FocusMenu => self.state.focus = Focus::Menu,
-          Action::FocusEditor => {
-            self.state.focus = Focus::Editor;
-            self.last_focused_tab = Focus::Editor;
-          },
-          Action::FocusData => self.state.focus = Focus::Data,
-          Action::FocusHistory => {
-            self.state.focus = Focus::History;
-            self.last_focused_tab = Focus::History;
-          },
+          Action::FocusMenu => self.set_focus(Focus::Menu),
+          Action::FocusEditor => self.set_focus(Focus::Editor),
+          Action::FocusData => self.set_focus(Focus::Data),
+          Action::FocusHistory => self.set_focus(Focus::History),
+          Action::FocusFavorites => self.set_focus(Focus::Favorites),
           Action::CycleFocusForwards => {
             match self.state.focus {
-              Focus::Menu => {
-                self.state.focus = Focus::Editor;
-                self.last_focused_tab = Focus::Editor;
-              },
-              Focus::Editor => {
-                self.state.focus = Focus::Data;
-              },
-              Focus::Data => {
-                self.state.focus = Focus::History;
-                self.last_focused_tab = Focus::History;
-              },
-              Focus::History => self.state.focus = Focus::Menu,
-              _ => {},
+              Focus::Menu => self.set_focus(Focus::Editor),
+              Focus::Editor => self.set_focus(Focus::Data),
+              Focus::Data => self.set_focus(Focus::History),
+              Focus::History => self.set_focus(Focus::Favorites),
+              Focus::Favorites => self.set_focus(Focus::Menu),
+              Focus::PopUp => {},
             }
           },
           Action::CycleFocusBackwards => {
             match self.state.focus {
-              Focus::History => {
-                self.state.focus = Focus::Data;
-              },
-              Focus::Data => {
-                self.state.focus = Focus::Editor;
-                self.last_focused_tab = Focus::Editor;
-              },
-              Focus::Editor => self.state.focus = Focus::Menu,
-              Focus::Menu => {
-                self.state.focus = Focus::History;
-                self.last_focused_tab = Focus::History;
-              },
-              _ => {},
+              Focus::History => self.set_focus(Focus::Data),
+              Focus::Data => self.set_focus(Focus::Editor),
+              Focus::Editor => self.set_focus(Focus::Menu),
+              Focus::Menu => self.set_focus(Focus::Favorites),
+              Focus::Favorites => self.set_focus(Focus::History),
+              Focus::PopUp => {},
             }
           },
           Action::LoadMenu => {
@@ -374,78 +419,77 @@ where
               self.components.menu.set_table_list(Some(results));
             }
           },
-          Action::Query(query_lines, confirmed) => {
+          Action::Query(query_lines, confirmed) => 'query_action: {
             let query_string = query_lines.clone().join(" \n");
-            if !query_string.is_empty() {
-              self.add_to_history(query_lines.clone());
-              let first_query = database::get_first_query(query_string.clone(), self.state.dialect.as_ref());
-              let execution_type = first_query.map(|(_, statement_type)| {
-                (database::get_execution_type(statement_type.clone(), *confirmed), statement_type)
-              });
-              let action_tx = action_tx.clone();
-              if let Some(pool) = &self.pool {
-                let pool = pool.clone();
-                let dialect = self.state.dialect.clone();
-                match execution_type {
-                  Ok((ExecutionType::Transaction, statement_type)) => {
-                    self.components.data.set_loading();
-                    let tx = pool.begin().await?;
-                    self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                      let (results, tx) =
-                        database::query_with_tx::<DB>(tx, dialect.as_ref(), query_string.clone()).await;
-                      match results {
-                        Ok(Either::Left(rows_affected)) => {
-                          log::info!("{:?} rows affected", rows_affected);
-                          (
-                            QueryResultsWithMetadata {
-                              results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
-                              statement_type,
-                            },
-                            tx,
-                          )
-                        },
-                        Ok(Either::Right(rows)) => {
-                          log::info!("{:?} rows affected", rows.rows_affected);
-                          (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
-                        },
-                        Err(e) => {
-                          log::error!("{e:?}");
-                          (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
-                        },
-                      }
-                    })));
-                    self.state.last_query_start = Some(chrono::Utc::now());
-                    self.state.last_query_end = None;
-                  },
-                  Ok((ExecutionType::Confirm, statement_type)) => {
-                    self.popup = Some(Box::new(ConfirmQuery::<DB>::new(query_string.clone(), statement_type)));
-                    self.state.focus = Focus::PopUp;
-                  },
-                  Ok((ExecutionType::Normal, statement_type)) => {
-                    self.components.data.set_loading();
-                    let dialect = self.state.dialect.clone();
-                    self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                      let results = database::query(query_string.clone(), dialect.as_ref(), &pool).await;
-                      match &results {
-                        Ok(rows) => {
-                          log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
-                        },
-                        Err(e) => {
-                          log::error!("{e:?}");
-                        },
-                      };
+            if query_string.is_empty() {
+              break 'query_action;
+            }
+            self.add_to_history(query_lines.clone());
+            let first_query = database::get_first_query(query_string.clone(), self.state.dialect.as_ref());
+            let execution_type = first_query.map(|(_, statement_type)| {
+              (database::get_execution_type(statement_type.clone(), *confirmed), statement_type)
+            });
+            let action_tx = action_tx.clone();
+            if let Some(pool) = &self.pool {
+              let pool = pool.clone();
+              let dialect = self.state.dialect.clone();
+              match execution_type {
+                Ok((ExecutionType::Transaction, statement_type)) => {
+                  self.components.data.set_loading();
+                  let tx = pool.begin().await?;
+                  self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
+                    let (results, tx) = database::query_with_tx::<DB>(tx, dialect.as_ref(), query_string.clone()).await;
+                    match results {
+                      Ok(Either::Left(rows_affected)) => {
+                        log::info!("{:?} rows affected", rows_affected);
+                        (
+                          QueryResultsWithMetadata {
+                            results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+                            statement_type,
+                          },
+                          tx,
+                        )
+                      },
+                      Ok(Either::Right(rows)) => {
+                        log::info!("{:?} rows affected", rows.rows_affected);
+                        (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
+                      },
+                      Err(e) => {
+                        log::error!("{e:?}");
+                        (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
+                      },
+                    }
+                  })));
+                  self.state.last_query_start = Some(chrono::Utc::now());
+                  self.state.last_query_end = None;
+                },
+                Ok((ExecutionType::Confirm, statement_type)) => {
+                  self.set_popup(Box::new(ConfirmQuery::<DB>::new(query_string.clone(), statement_type)));
+                },
+                Ok((ExecutionType::Normal, statement_type)) => {
+                  self.components.data.set_loading();
+                  let dialect = self.state.dialect.clone();
+                  self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
+                    let results = database::query(query_string.clone(), dialect.as_ref(), &pool).await;
+                    match &results {
+                      Ok(rows) => {
+                        log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
+                      },
+                      Err(e) => {
+                        log::error!("{e:?}");
+                      },
+                    };
 
-                      QueryResultsWithMetadata { results, statement_type }
-                    })));
-                    self.state.last_query_start = Some(chrono::Utc::now());
-                    self.state.last_query_end = None;
-                  },
-                  Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
-                }
-              } else {
-                log::error!("No connection pool");
-                self.components.data.set_data_state(Some(Err(DbError::Left(sqlx::Error::PoolTimedOut))), None)
+                    QueryResultsWithMetadata { results, statement_type }
+                  })));
+                  self.state.last_query_start = Some(chrono::Utc::now());
+                  self.state.last_query_end = None;
+                },
+                Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
               }
+            } else {
+              log::error!("No connection pool");
+              self.components.data.set_data_state(Some(Err(DbError::Left(sqlx::Error::PoolTimedOut))), None)
             }
           },
           Action::AbortQuery => {
@@ -464,6 +508,15 @@ where
               },
               _ => {},
             }
+          },
+          Action::RequestSaveFavorite(query_lines) => {
+            self.set_popup(Box::new(NameFavorite::<DB>::new(
+              self.state.favorites.iter().map(|f| f.get_name().to_string()).collect(),
+              query_lines.clone(),
+            )));
+          },
+          Action::DeleteFavorite(name) => {
+            self.state.favorites.delete_entry(name.clone());
           },
           Action::ClearHistory => {
             self.clear_history();
@@ -484,33 +537,33 @@ where
             }
           },
           Action::RequestExportData(row_count) => {
-            self.popup = Some(Box::new(ConfirmExport::<DB>::new(*row_count)));
-            self.state.focus = Focus::PopUp;
+            self.set_popup(Box::new(ConfirmExport::<DB>::new(*row_count)));
           },
           Action::ExportDataFinished => {
-            self.popup = None;
-            self.state.focus = Focus::Data;
+            self.set_focus(Focus::Data);
           },
           _ => {},
         }
         if !action_consumed {
-          if let Some(action) = self.components.menu.update(action.clone(), &self.state)? {
-            action_tx.send(action)?;
-          }
-          if let Some(action) = self.components.editor.update(action.clone(), &self.state)? {
-            action_tx.send(action)?;
-          }
-          if let Some(action) = self.components.history.update(action.clone(), &self.state)? {
-            action_tx.send(action)?;
-          }
-          if let Some(action) = self.components.data.update(action.clone(), &self.state)? {
-            action_tx.send(action)?;
+          for i in ComponentImpls::iter() {
+            let action = match i {
+              ComponentImpls::Menu => self.components.menu.update(action.clone(), &self.state)?,
+              ComponentImpls::Editor => self.components.editor.update(action.clone(), &self.state)?,
+              ComponentImpls::History => self.components.history.update(action.clone(), &self.state)?,
+              ComponentImpls::Data => self.components.data.update(action.clone(), &self.state)?,
+              ComponentImpls::Favorites => self.components.favorites.update(action.clone(), &self.state)?,
+            };
+            if let Some(action) = action {
+              log::info!("{action:?}");
+              action_tx.send(action)?;
+            }
           }
         }
       }
+
       if self.last_frame_mouse_event.is_some() {
         tui.draw(|f| {
-          self.draw_layout(f);
+          self.draw_layout(f, action_tx.clone()).expect("Couldn't draw layout");
         })?;
       }
       if self.should_quit {
@@ -536,7 +589,7 @@ where
     Ok(())
   }
 
-  fn draw_layout(&mut self, f: &mut Frame) {
+  fn draw_layout(&mut self, f: &mut Frame, action_tx: mpsc::UnboundedSender<Action>) -> Result<()> {
     let hints_layout = Layout::default()
       .direction(Direction::Vertical)
       .constraints(match f.area().width {
@@ -568,19 +621,26 @@ where
         let tab_content_target = tabs_layout[1];
         let data_target = right_layout[1];
         if menu_target.contains(position) {
-          self.state.focus = Focus::Menu;
+          self.set_focus(Focus::Menu);
+        } else if data_target.contains(position) {
+          self.set_focus(Focus::Data);
+        } else if tab_content_target.contains(position) {
+          self.last_focused_tab();
         } else if tabs_target.contains(position) {
           match self.state.focus {
             Focus::Editor => {
               if matches!(event.kind, MouseEventKind::Up(_)) {
-                self.state.focus = Focus::History;
-                self.last_focused_tab = Focus::History;
+                self.set_focus(Focus::History);
               }
             },
             Focus::History => {
               if matches!(event.kind, MouseEventKind::Up(_)) {
-                self.state.focus = Focus::Editor;
-                self.last_focused_tab = Focus::Editor;
+                self.set_focus(Focus::Favorites);
+              }
+            },
+            Focus::Favorites => {
+              if matches!(event.kind, MouseEventKind::Up(_)) {
+                self.set_focus(Focus::Editor);
               }
             },
             Focus::PopUp => {},
@@ -589,25 +649,12 @@ where
             },
           }
           self.last_frame_mouse_event = None;
-        } else if tab_content_target.contains(position) {
-          self.state.focus = self.last_focused_tab;
-        } else if data_target.contains(position) {
-          self.state.focus = Focus::Data;
         }
       }
     }
-
-    let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+4>"])
-      .highlight_style(
-        Style::new()
-          .fg(if self.state.focus == Focus::Editor || self.state.focus == Focus::History {
-            Color::Green
-          } else {
-            Color::default()
-          })
-          .reversed(),
-      )
-      .select(if self.last_focused_tab == Focus::Editor { 0 } else { 1 })
+    let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+4>", "   favorites <alt+5>"])
+      .highlight_style(Style::new().fg(self.state.focus.tab_color()).reversed())
+      .select(self.last_focused_tab.tab_index())
       .padding(" ", "")
       .divider(" ");
 
@@ -615,11 +662,20 @@ where
 
     f.render_widget(tabs, tabs_layout[0]);
     f.render_widget(Clear, tabs_layout[1]);
-    if self.last_focused_tab == Focus::Editor {
-      self.components.editor.draw(f, tabs_layout[1], state).unwrap();
-    } else {
-      self.components.history.draw(f, tabs_layout[1], state).unwrap();
-    }
+
+    match self.last_focused_tab {
+      Focus::Editor => {
+        self.components.editor.draw(f, tabs_layout[1], state).unwrap();
+      },
+      Focus::History => {
+        self.components.history.draw(f, tabs_layout[1], state).unwrap();
+      },
+      Focus::Favorites => {
+        self.components.favorites.draw(f, tabs_layout[1], state).unwrap();
+      },
+      Focus::Menu | Focus::Data | Focus::PopUp => (),
+    };
+
     self.components.menu.draw(f, root_layout[0], state).unwrap();
     self.components.data.draw(f, right_layout[1], state).unwrap();
     self.render_hints(f, hints_layout[1]);
@@ -627,6 +683,7 @@ where
     if let Some(popup) = &self.popup {
       self.render_popup(f, popup.as_ref());
     }
+    Ok(())
   }
 
   fn render_hints(&self, frame: &mut Frame, area: Rect) {
@@ -641,8 +698,9 @@ where
         },
         match self.state.focus {
             Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
-            Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query",
+            Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
             Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
+            Focus::Favorites => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
             Focus::Data if self.state.query_task.is_none() => "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
             _ => "",

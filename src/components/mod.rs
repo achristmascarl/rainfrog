@@ -1,6 +1,7 @@
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::layout::Rect;
+use strum::EnumIter;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
@@ -10,8 +11,18 @@ use crate::{
   tui::{Event, Frame},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
+pub enum ComponentImpls {
+  Menu,
+  Editor,
+  History,
+  Data,
+  Favorites,
+}
+
 pub mod data;
 pub mod editor;
+pub mod favorites;
 pub mod history;
 pub mod menu;
 pub mod scroll_table;

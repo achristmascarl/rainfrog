@@ -28,6 +28,7 @@ use crate::{
   utils::get_export_dir,
 };
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Default)]
 pub enum DataState<'a> {
   #[default]

@@ -49,6 +49,8 @@ access on a production database.
    * [arch linux](#arch-linux)
    * [termux](#termux)
    * [nix](#nix)
+   * [conda](#conda)
+   * [pixi](#pixi)
    * [install script](#install-script)
    * [release page binaries](#release-page-binaries)
 - [usage](#usage)
@@ -58,14 +60,17 @@ access on a production database.
    * [`docker run`](#docker-run)
 - [customization](#customization)
    * [settings](#settings)
+   * [database connections](#database-connections)
    * [keybindings](#keybindings)
       + [n.b. for mac users](#nb-for-mac-users)
       + [general](#general)
       + [menu (list of schemas and tables)](#menu-list-of-schemas-and-tables)
       + [query editor](#query-editor)
       + [query history](#query-history)
+      + [query favorites](#query-favorites)
       + [results](#results)
 - [exports](#exports)
+- [favorites](#favorites)
 - [roadmap](#roadmap)
 - [known issues and limitations](#known-issues-and-limitations)
 - [Contributing](#contributing)
@@ -125,6 +130,22 @@ cargo install rainfrog --features termux --no-default-features
 
 ```sh
 nix-env -iA nixos.rainfrog
+```
+
+<!-- TOC --><a name="conda"></a>
+### conda
+
+```sh
+conda install -c conda-forge rainfrog
+```
+
+<!-- TOC --><a name="pixi"></a>
+### pixi
+
+The command below installs rainfrog from conda-forge, the same repository as conda, but unlike conda it can be installed user-globally using [pixi](https://pixi.sh/).
+
+```sh
+pixi global install rainfrog
 ```
 
 <!-- TOC --><a name="install-script"></a>
@@ -258,7 +279,7 @@ you can change the default config location by exporting an environment variable.
 to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
 
 ```sh
-export RAINFROG_CONFIG=~/.config
+export RAINFROG_CONFIG=~/.config/rainfrog
 ```
 
 <!-- TOC --><a name="settings"></a>
@@ -269,6 +290,33 @@ captures mouse events by default. capturing mouse events
 allows you to change focus and scroll using the mouse.
 however, your terminal will not handle mouse events like it
 normally does (you won't be able to copy by highlighting, for example).
+
+<!-- TOC --><a name="database-connections"></a>
+### database connections
+
+database connections can be configured in the configuration file as shown below:
+
+```
+[db]
+postgres-local = { host = "localhost", driver = "postgres", port = 5432, database = "postgres", username = "postgres",  default = true }
+postgres-dev = { connection_string = "postgresql://postgres:test123@127.0.0.1:5432", driver = "postgres" }
+mysql-local = { host = "localhost", driver = "mysql", port = 32768, database = "rainfrog", username = "root" }
+sqlite-memory = { connection_string = "sqlite://:memory:", driver = "sqlite"}
+sqlite-disk = { connection_string = "sqlite://./my_database.db", driver = "sqlite"}
+```
+
+the connection details can be provided in two formats: a raw connection string or specifying individual fields.
+connections input are prioritized in the following order:
+
+- cli input
+- `DATABASE_URL` env variable
+- config file
+
+if no database connection in the config is set as the default connection, 
+a prompt will appear to select the desired database. The user will also be 
+prompted for the password for the selected database and will have the option to 
+store it in a platform specific keychain for future reuse.
+future plans for database connections include switching database without having to restart rainfrog.
 
 <!-- TOC --><a name="keybindings"></a>
 ### keybindings
@@ -289,16 +337,17 @@ kitty, it's `macos_option_as_alt yes` in the config.)
 <!-- TOC --><a name="general"></a>
 #### general
 
-| keybinding                   | description                   |
-| ---------------------------- | ----------------------------- |
-| `Ctrl+c`                     | quit program                  |
-| `Alt+1`, `Ctrl+k`            | change focus to menu          |
-| `Alt+2`, `Ctrl+j`            | change focus to query editor  |
-| `Alt+3`, `Ctrl+h`            | change focus to results       |
-| `Alt+4`, `Ctrl+g`            | change focus to query history |
-| `Tab`                        | cycle focus forwards          |
-| `Shift+Tab`                  | cycle focus backwards         |
-| `q`, `Alt+q` in query editor | abort current query           |
+| keybinding                   | description                     |
+| ---------------------------- | ------------------------------- |
+| `Ctrl+c`                     | quit program                    |
+| `Alt+1`, `Ctrl+k`            | change focus to menu            |
+| `Alt+2`, `Ctrl+j`            | change focus to query editor    |
+| `Alt+3`, `Ctrl+h`            | change focus to results         |
+| `Alt+4`, `Ctrl+g`            | change focus to query history   |
+| `Alt+5`, `Ctrl+m`            | change focus to query favorites |
+| `Tab`                        | cycle focus forwards            |
+| `Shift+Tab`                  | cycle focus backwards           |
+| `q`, `Alt+q` in query editor | abort current query             |
 
 <!-- TOC --><a name="menu-list-of-schemas-and-tables"></a>
 #### menu (list of schemas and tables)
@@ -312,7 +361,7 @@ kitty, it's `macos_option_as_alt yes` in the config.)
 | `h`, `←`                     | focus on schemas (if more than 1) |
 | `l`, `→`                     | focus on tables                   |
 | `/`                          | filter tables                     |
-| `Esc`                        | clear search                      |
+| `Esc`                        | clear filter                      |
 | `Backspace`                  | focus on tables                   |
 | `Enter` when searching       | focus on tables                   |
 | `Enter` with selected schema | focus on tables                   |
@@ -354,6 +403,8 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `Ctrl+r`          | Redo                                   |
 | `Ctrl+e`          | Scroll down                            |
 | `Ctrl+y`          | Scroll up                              |
+| `Ctrl+f`*, `Alt+f`  | Save query to favorites                |
+*only works in normal mode
 
 <!-- TOC --><a name="query-history"></a>
 #### query history
@@ -367,6 +418,21 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `y`        | copy selected query           |
 | `I`        | edit selected query in editor |
 | `D`        | delete all history            |
+
+<!-- TOC --><a name="query-favorites"></a>
+#### query favorites
+
+| keybinding | description                   |
+| ---------- | ----------------------------- |
+| `j`, `↓`   | move selection down by 1      |
+| `k`, `↑`   | move selection up by 1        |
+| `g`        | jump to top of list           |
+| `G`        | jump to bottom of list        |
+| `y`        | copy selected query           |
+| `I`        | edit selected query in editor |
+| `D`        | delete selected query         |
+| `/`        | filter favorites                     |
+| `Esc`      | clear filter                      |
 
 <!-- TOC --><a name="results"></a>
 #### results
@@ -415,6 +481,29 @@ to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
 
 ```sh
 export RAINFROG_EXPORT=~/Documents
+```
+
+<!-- TOC --><a name="favorites"></a>
+## favorites
+
+frequently used queries can be saved as favorites. by default, 
+favorites are written to the application's data directory (the 
+same place that logs are written to), which is one of the 
+following depending on your os, as determined by 
+the [directories](https://crates.io/crates/directories) crate:
+
+|Platform | Value                                                                      | Example                                                       |
+| ------- | -------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Linux   | `$XDG_DATA_HOME`/`_project_path_` or `$HOME`/.local/share/`_project_path_` | /home/alice/.local/share/barapp                               |
+| macOS   | `$HOME`/Library/Application Support/`_project_path_`                       | /Users/Alice/Library/Application Support/com.Foo-Corp.Bar-App |
+| Windows | `{FOLDERID_LocalAppData}`\\`_project_path_`\\data                          | C:\Users\Alice\AppData\Local\Foo Corp\Bar App\data            |
+
+each favorite will be a separate `.sql` file.
+you can change the default export location by exporting an environment variable.
+to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
+
+```sh
+export RAINFROG_FAVORITES=~/.config/rainfrog/favorites
 ```
 
 <!-- TOC --><a name="roadmap"></a>

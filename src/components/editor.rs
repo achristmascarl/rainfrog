@@ -88,6 +88,16 @@ impl Editor<'_> {
           sender.send(Action::CycleFocusForwards)?;
         }
       },
+      Input { key: Key::Char('f'), ctrl: true, .. } if self.vim_state.mode != Mode::Insert => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::RequestSaveFavorite(self.textarea.lines().to_vec()))?;
+        }
+      },
+      Input { key: Key::Char('f'), alt: true, .. } => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::RequestSaveFavorite(self.textarea.lines().to_vec()))?;
+        }
+      },
       Input { key: Key::Char('c'), ctrl: true, .. } if matches!(self.vim_state.mode, Mode::Normal) => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::Quit)?;
@@ -184,6 +194,9 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
         };
         self.textarea = TextArea::from(vec![query.clone()]);
         self.textarea.set_search_pattern(keyword_regex()).unwrap();
+        // make sure the editor tab is visible, then refocus the menu
+        self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
+        self.command_tx.as_ref().unwrap().send(Action::FocusMenu)?;
         self.command_tx.as_ref().unwrap().send(Action::Query(vec![query.clone()], false))?;
       },
       Action::SubmitEditorQuery => {
@@ -192,6 +205,10 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
         }
       },
       Action::HistoryToEditor(lines) => {
+        self.textarea = TextArea::from(lines.clone());
+        self.textarea.set_search_pattern(keyword_regex()).unwrap();
+      },
+      Action::FavoriteToEditor(lines) => {
         self.textarea = TextArea::from(lines.clone());
         self.textarea.set_search_pattern(keyword_regex()).unwrap();
       },

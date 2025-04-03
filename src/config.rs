@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt, path::PathBuf};
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{self, Result};
 use config::Value;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use derive_deref::{Deref, DerefMut};
@@ -11,7 +11,7 @@ use serde::{
 };
 use serde_json::Value as JsonValue;
 
-use crate::{action::Action, focus::Focus};
+use crate::{action::Action, cli::Driver, focus::Focus, keyring::Password};
 
 const CONFIG: &str = include_str!("../.config/rainfrog_config.toml");
 
@@ -21,6 +21,37 @@ pub struct AppConfig {
   pub _data_dir: PathBuf,
   #[serde(default)]
   pub _config_dir: PathBuf,
+  #[serde(default)]
+  pub _favorites_dir: PathBuf,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ConnectionString {
+  Raw {
+    connection_string: String,
+  },
+  Structured {
+    #[serde(flatten)]
+    details: StructuredConnection,
+  },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct StructuredConnection {
+  pub host: String,
+  pub port: u32,
+  pub database: String,
+  pub username: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct DatabaseConnection {
+  pub driver: Driver,
+  #[serde(flatten)]
+  pub connection: ConnectionString,
+  #[serde(default)]
+  pub default: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -33,6 +64,29 @@ pub struct Config {
   pub styles: Styles,
   #[serde(default)]
   pub settings: Settings,
+  #[serde(default)]
+  pub db: HashMap<String, DatabaseConnection>,
+}
+
+impl StructuredConnection {
+  pub fn connection_string(&self, driver: Driver, password: Password) -> Result<String> {
+    match driver {
+      Driver::Postgres => {
+        Ok(format!(
+          "postgresql://{}:{}@{}:{}/{}",
+          self.username,
+          password.as_ref(),
+          self.host,
+          self.port,
+          self.database
+        ))
+      },
+      Driver::Mysql => {
+        Ok(format!("mysql://{}:{}@{}:{}/{}", self.username, password.as_ref(), self.host, self.port, self.database))
+      },
+      Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
+    }
+  }
 }
 
 impl Config {
@@ -40,9 +94,11 @@ impl Config {
     let default_config: Config = toml::from_str(CONFIG).unwrap();
     let data_dir = crate::utils::get_data_dir();
     let config_dir = crate::utils::get_config_dir();
+    let favorites_dir = crate::utils::get_favorites_dir();
     let mut builder = config::Config::builder()
       .set_default("_data_dir", data_dir.to_str().unwrap())?
-      .set_default("_config_dir", config_dir.to_str().unwrap())?;
+      .set_default("_config_dir", config_dir.to_str().unwrap())?
+      .set_default("_favorites_dir", favorites_dir.to_str().unwrap())?;
 
     let config_files = [
       ("rainfrog_config.json5", config::FileFormat::Json5),
