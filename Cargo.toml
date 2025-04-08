@@ -72,7 +72,7 @@ sqlx = { version = "0.8.1", features = [
 ] }
 strip-ansi-escapes = "0.2.0"
 strum = { version = "0.26.1", features = ["derive"] }
-tokio = { version = "1.32.0", features = ["full"] }
+tokio = { version = "1.43.1", features = ["full"] }
 tokio-util = "0.7.9"
 toml = "0.8.19"
 tracing = "0.1.37"
