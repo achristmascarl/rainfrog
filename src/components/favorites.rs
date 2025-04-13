@@ -176,7 +176,7 @@ impl Favorites {
   }
 }
 
-impl<DB: sqlx::Database> Component<DB> for Favorites {
+impl Component for Favorites {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -187,7 +187,7 @@ impl<DB: sqlx::Database> Component<DB> for Favorites {
     Ok(())
   }
 
-  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
+  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
     if app_state.focus != Focus::Favorites {
       return Ok(None);
     }
@@ -204,7 +204,7 @@ impl<DB: sqlx::Database> Component<DB> for Favorites {
     Ok(None)
   }
 
-  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
     if app_state.focus != Focus::Favorites {
       return Ok(None);
     }
@@ -268,7 +268,7 @@ impl<DB: sqlx::Database> Component<DB> for Favorites {
       KeyCode::Char('G') => self.list_state.select(Some(filtered.len().saturating_sub(1))),
       KeyCode::Char('I') => {
         if let Some(i) = current_selected {
-          self.command_tx.as_ref().unwrap().send(Action::FavoriteToEditor(filtered[i].query_lines.clone()))?;
+          self.command_tx.as_ref().unwrap().send(Action::QueryToEditor(filtered[i].query_lines.clone()))?;
           self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
         }
       },
@@ -277,11 +277,11 @@ impl<DB: sqlx::Database> Component<DB> for Favorites {
     Ok(None)
   }
 
-  fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
+  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Favorites;
     let block = Block::default().borders(Borders::ALL).border_style(if focused {
       Style::new().green()

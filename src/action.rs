@@ -6,10 +6,7 @@ use serde::{
 };
 use strum::Display;
 
-use crate::{
-  database::{DbError, Rows},
-  focus::Focus,
-};
+use crate::{database::Rows, focus::Focus};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
 pub enum MenuPreview {
@@ -38,7 +35,7 @@ pub enum Action {
   SubmitEditorQuery,
   Query(Vec<String>, bool),                 // (query_lines, execution_confirmed)
   MenuPreview(MenuPreview, String, String), // (preview, schema, table)
-  HistoryToEditor(Vec<String>),
+  QueryToEditor(Vec<String>),
   ClearHistory,
   AbortQuery,
   FocusMenu,
@@ -55,6 +52,5 @@ pub enum Action {
   ExportDataFinished,
   RequestSaveFavorite(Vec<String>),
   SaveFavorite(String, Vec<String>),
-  FavoriteToEditor(Vec<String>),
   DeleteFavorite(String),
 }

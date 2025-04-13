@@ -3,10 +3,7 @@ use color_eyre::eyre::Result;
 use crossterm::event::KeyEvent;
 use sqlparser::ast::Statement;
 
-use crate::{
-  app::AppState,
-  database::{DbError, Rows},
-};
+use crate::{app::AppState, database::Rows};
 
 pub mod confirm_export;
 pub mod confirm_query;
@@ -21,28 +18,26 @@ pub mod name_favorite;
 #[allow(clippy::large_enum_variant)]
 pub enum PopUpPayload {
   Cancel, // does nothing and closes the popup
-  SetDataTable(Option<Result<Rows, DbError>>, Option<Statement>),
+  SetDataTable(Option<Result<Rows>>, Option<Statement>),
+  CommitTx,
+  RollbackTx,
   ConfirmQuery(String),
   ConfirmExport(bool),
   NamedFavorite(String, Vec<String>),
 }
 
 #[async_trait(?Send)]
-pub trait PopUp<DB: sqlx::Database> {
+pub trait PopUp {
   #[allow(unused_variables)]
-  async fn handle_key_events(
-    &mut self,
-    key: KeyEvent,
-    app_state: &mut AppState<'_, DB>,
-  ) -> Result<Option<PopUpPayload>>;
+  async fn handle_key_events(&mut self, key: KeyEvent, app_state: &mut AppState) -> Result<Option<PopUpPayload>>;
 
   #[allow(unused_variables)]
-  fn get_cta_text(&self, app_state: &AppState<'_, DB>) -> String {
+  fn get_cta_text(&self, app_state: &AppState) -> String {
     "".to_string()
   }
 
   #[allow(unused_variables)]
-  fn get_actions_text(&self, app_state: &AppState<'_, DB>) -> String {
+  fn get_actions_text(&self, app_state: &AppState) -> String {
     "".to_string()
   }
 }

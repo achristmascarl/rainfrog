@@ -191,8 +191,8 @@ impl<'a> ScrollTable<'a> {
   }
 }
 
-impl<DB: Database> Component<DB> for ScrollTable<'_> {
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
+impl Component for ScrollTable<'_> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     self.parent_area = area;
     let render_area = self.block.inner_if_some(area);
     self.pg_height = std::cmp::min(self.max_height, render_area.height).saturating_sub(3);
