@@ -87,35 +87,44 @@ impl Database for PostgresDriver<'_> {
   }
 
   async fn get_query_results(&mut self) -> Result<DbTaskResult> {
-    let task_result = match &mut self.task {
-      None => DbTaskResult::NoTask,
-      Some(PostgresTask::Query(handle)) | Some(PostgresTask::TxCommit(handle)) => {
+    let (task_result, next_task) = match self.task.take() {
+      None => (DbTaskResult::NoTask, None),
+      Some(PostgresTask::Query(handle)) => {
         if !handle.is_finished() {
-          DbTaskResult::Pending
+          (DbTaskResult::Pending, Some(PostgresTask::Query(handle)))
         } else {
           let result = handle.await?;
-          DbTaskResult::Finished(result)
+          (DbTaskResult::Finished(result), None)
+        }
+      },
+      Some(PostgresTask::TxCommit(handle)) => {
+        if !handle.is_finished() {
+          (DbTaskResult::Pending, Some(PostgresTask::TxCommit(handle)))
+        } else {
+          let result = handle.await?;
+          (DbTaskResult::Finished(result), None)
         }
       },
       Some(PostgresTask::TxStart(handle)) => {
         if !handle.is_finished() {
-          DbTaskResult::Pending
+          (DbTaskResult::Pending, Some(PostgresTask::TxStart(handle)))
         } else {
           let (result, tx) = handle.await?;
-          DbTaskResult::Finished(result)
+          let rows_affected = match &result.results {
+            Ok(rows) => rows.rows_affected,
+            _ => None,
+          };
+          (
+            DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+            Some(PostgresTask::TxPending((tx, result))),
+          )
         }
       },
       Some(PostgresTask::TxPending((tx, results))) => {
-        let rows_affected = match &results.results {
-          Ok(rows) => rows.rows_affected,
-          _ => None,
-        };
-        DbTaskResult::ConfirmTx(rows_affected, results.statement_type.clone())
+        (DbTaskResult::Pending, Some(PostgresTask::TxPending((tx, results))))
       },
     };
-    if let DbTaskResult::Finished(_) = task_result {
-      self.task = None;
-    }
+    self.task = next_task;
     Ok(task_result)
   }
 
