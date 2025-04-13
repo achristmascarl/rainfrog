@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{self, Result};
 use crossterm::{
   event::{KeyCode, KeyEvent, MouseEventKind},
   terminal::ScrollDown,
@@ -37,7 +37,7 @@ pub enum DataState<'a> {
   NoResults,
   HasResults(Rows),
   Explain(Text<'a>),
-  Error(color_eyre::eyre::Report),
+  Error(eyre::Report),
   Cancelled,
   RowsAffected(u64),
   StatementCompleted(Statement),

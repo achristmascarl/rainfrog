@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{self, Result};
 use futures::stream::{BoxStream, StreamExt};
 use sqlparser::{
   ast::Statement,
@@ -75,22 +75,52 @@ pub enum DbTaskResult {
 }
 
 pub trait Database: Sized {
+  /// Initialize the database connection. Should handle create
+  /// a pool or connection that's reused for other operations.
   async fn init(args: Cli) -> Result<Self>;
+
+  /// Spawns a tokio task that runs the query. The task should
+  /// expect to be polled via the `get_query_results()` method.
   fn start_query(&mut self, query: String) -> Result<()>;
+
+  /// Aborts the tokio task running the active query or transaction.
   fn abort_query(&mut self) -> Result<bool>;
+
+  /// Polls the tokio task for the active query or transaction if
+  /// it exists. Returns `DbTaskResult::NoTask` if no task is running,
+  /// `DbTaskResult::Pending` if the task is still running.
   async fn get_query_results(&mut self) -> Result<DbTaskResult>;
 
-  // transactions
+  /// Spawns a tokio task that runs the query in a transaction.
+  /// The task should also expect to be polled via the `get_query_results()`
+  /// method.
   async fn start_tx(&mut self, query: String) -> Result<()>;
+
+  /// Commits the pending transaction and returns the results.
+  /// Should do nothing or fail gracefully if no transaction is pending.
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>>;
+
+  /// Rolls back the pending transaction. Should do nothing or fail gracefully
+  /// if no transaction is pending.
   async fn rollback_tx(&mut self) -> Result<()>;
 
-  // preciews
+  /// Returns rows representing the database menu. The menu component
+  /// expects each row to be combination of schema and table name.
   async fn load_menu(&self) -> Result<Rows>;
+
+  /// Returns a query that can be used to preview the rows in a table.
   fn preview_rows_query(&self, schema: &str, table: &str) -> String;
+
+  /// Returns a query that can be used to preview the columns in a table.
   fn preview_columns_query(&self, schema: &str, table: &str) -> String;
+
+  /// Returns a query that can be used to preview the constraints in a table.
   fn preview_constraints_query(&self, schema: &str, table: &str) -> String;
+
+  /// Returns a query that can be used to preview the indexes in a table.
   fn preview_indexes_query(&self, schema: &str, table: &str) -> String;
+
+  /// Returns a query that can be used to preview the policies in a table.
   fn preview_policies_query(&self, schema: &str, table: &str) -> String;
 }
 
@@ -114,7 +144,7 @@ pub fn get_execution_type(query: String, confirmed: bool, driver: Driver) -> Res
 
   match first_query {
     Ok((_, statement)) => Ok((get_default_execution_type(statement.clone(), confirmed), statement.clone())),
-    Err(e) => Err(color_eyre::eyre::Report::new(e)),
+    Err(e) => Err(eyre::Report::new(e)),
   }
 }
 

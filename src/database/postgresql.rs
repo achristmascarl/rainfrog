@@ -9,7 +9,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{self, Result};
 use futures::{
   stream::{BoxStream, StreamExt},
   Stream,
@@ -319,7 +319,7 @@ where
           headers = get_headers(&row);
         }
       },
-      Err(e) => return Err(color_eyre::eyre::Report::new(e)),
+      Err(e) => return Err(eyre::Report::new(e)),
     }
   }
   Ok(Rows { rows_affected: query_rows_affected, headers, rows: query_rows })
@@ -351,7 +351,7 @@ where
         }
       },
     },
-    Err(e) => (Err(color_eyre::eyre::Report::new(e)), tx),
+    Err(e) => (Err(eyre::Report::new(e)), tx),
   }
 }
 

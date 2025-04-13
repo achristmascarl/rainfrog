@@ -33,7 +33,7 @@ impl super::BuildConnectionOptions for sqlx::Sqlite {
           io::stdin().read_line(&mut database)?;
           let database = database.trim().to_string();
           if database.is_empty() {
-            return Err(color_eyre::eyre::Report::msg("Database file path is required"));
+            return Err(eyre::Report::msg("Database file path is required"));
           }
           database
         };
