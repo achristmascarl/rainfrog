@@ -70,7 +70,7 @@ impl Editor<'_> {
   pub fn transition_vim_state(&mut self, input: Input, app_state: &AppState) -> Result<()> {
     match input {
       Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
-        if app_state.query_task_running {
+        if !app_state.query_task_running {
           if let Some(sender) = &self.command_tx {
             sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
             self.vim_state = Vim::new(Mode::Normal);
