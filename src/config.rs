@@ -71,16 +71,14 @@ pub struct Config {
 impl StructuredConnection {
   pub fn connection_string(&self, driver: Driver, password: Password) -> Result<String> {
     match driver {
-      Driver::Postgres => {
-        Ok(format!(
-          "postgresql://{}:{}@{}:{}/{}",
-          self.username,
-          password.as_ref(),
-          self.host,
-          self.port,
-          self.database
-        ))
-      },
+      Driver::Postgres => Ok(format!(
+        "postgresql://{}:{}@{}:{}/{}",
+        self.username,
+        password.as_ref(),
+        self.host,
+        self.port,
+        self.database
+      )),
       Driver::Mysql => {
         Ok(format!("mysql://{}:{}@{}:{}/{}", self.username, password.as_ref(), self.host, self.port, self.database))
       },
