@@ -1,20 +1,14 @@
 // vim emulation for tui_textarea. based on:
 // https://github.com/rhysd/tui-textarea/blob/main/examples/vim.rs
-use std::{env, fmt, fs, io, io::BufRead};
+use std::fmt;
 
 #[cfg(not(feature = "termux"))]
 use arboard::Clipboard;
 use color_eyre::eyre::Result;
-use crossterm::{
-  event::{DisableMouseCapture, EnableMouseCapture},
-  terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
 use ratatui::{
-  backend::CrosstermBackend,
-  style::{Color, Modifier, Style, Stylize},
+  style::{Color, Modifier, Style},
   text::Line,
   widgets::{Block, Borders},
-  Terminal,
 };
 use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{CursorMove, Input, Key, Scrolling, TextArea};
@@ -370,15 +364,13 @@ impl Vim {
           },
         }
       },
-      Mode::Replace => {
-        match input {
-          Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
-          input => {
-            textarea.delete_str(1);
-            textarea.input(input);
-            Transition::Mode(Mode::Normal)
-          },
-        }
+      Mode::Replace => match input {
+        Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
+        input => {
+          textarea.delete_str(1);
+          textarea.input(input);
+          Transition::Mode(Mode::Normal)
+        },
       },
     }
   }

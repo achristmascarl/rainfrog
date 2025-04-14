@@ -1,19 +1,10 @@
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
-use serde::{Deserialize, Serialize};
-use sqlx::{Database, Executor, Pool};
 use tokio::sync::mpsc::UnboundedSender;
-use tui_textarea::{Input, Key, Scrolling, TextArea};
 
 use super::{Component, Frame};
-use crate::{
-  action::{Action, MenuPreview},
-  app::{App, AppState},
-  config::{Config, KeyBindings},
-  focus::Focus,
-  tui::Event,
-};
+use crate::{action::Action, app::AppState, config::Config, focus::Focus};
 
 #[derive(Default)]
 pub struct History {
@@ -50,7 +41,7 @@ impl History {
   }
 }
 
-impl<DB: sqlx::Database> Component<DB> for History {
+impl Component for History {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -61,7 +52,7 @@ impl<DB: sqlx::Database> Component<DB> for History {
     Ok(())
   }
 
-  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
+  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
     if app_state.focus != Focus::History {
       return Ok(None);
     }
@@ -78,7 +69,7 @@ impl<DB: sqlx::Database> Component<DB> for History {
     Ok(None)
   }
 
-  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
     if app_state.focus != Focus::History {
       return Ok(None);
     }
@@ -97,7 +88,7 @@ impl<DB: sqlx::Database> Component<DB> for History {
         },
         KeyCode::Char('G') => self.list_state.select(Some(app_state.history.len().saturating_sub(1))),
         KeyCode::Char('I') => {
-          self.command_tx.as_ref().unwrap().send(Action::HistoryToEditor(app_state.history[i].query_lines.clone()))?;
+          self.command_tx.as_ref().unwrap().send(Action::QueryToEditor(app_state.history[i].query_lines.clone()))?;
           self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
         },
         KeyCode::Char('y') => {
@@ -113,11 +104,11 @@ impl<DB: sqlx::Database> Component<DB> for History {
     Ok(None)
   }
 
-  fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
+  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::History;
     if let Some(query_start) = app_state.last_query_start {
       self.last_query_duration = match app_state.last_query_end {

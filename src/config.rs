@@ -1,15 +1,10 @@
-use std::{collections::HashMap, fmt, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf};
 
 use color_eyre::eyre::{self, Result};
-use config::Value;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use derive_deref::{Deref, DerefMut};
 use ratatui::style::{Color, Modifier, Style};
-use serde::{
-  de::{self, Deserializer, MapAccess, Visitor},
-  Deserialize, Serialize,
-};
-use serde_json::Value as JsonValue;
+use serde::{de::Deserializer, Deserialize};
 
 use crate::{action::Action, cli::Driver, focus::Focus, keyring::Password};
 
@@ -71,17 +66,15 @@ pub struct Config {
 impl StructuredConnection {
   pub fn connection_string(&self, driver: Driver, password: Password) -> Result<String> {
     match driver {
-      Driver::Postgres => {
-        Ok(format!(
-          "postgresql://{}:{}@{}:{}/{}",
-          self.username,
-          password.as_ref(),
-          self.host,
-          self.port,
-          self.database
-        ))
-      },
-      Driver::Mysql => {
+      Driver::Postgres => Ok(format!(
+        "postgresql://{}:{}@{}:{}/{}",
+        self.username,
+        password.as_ref(),
+        self.host,
+        self.port,
+        self.database
+      )),
+      Driver::MySql => {
         Ok(format!("mysql://{}:{}@{}:{}/{}", self.username, password.as_ref(), self.host, self.port, self.database))
       },
       Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
@@ -133,7 +126,7 @@ impl Config {
       }
     }
     match cfg.settings.mouse_mode {
-      Some(mouse_mode) => {},
+      Some(_) => {},
       None => {
         cfg.settings.mouse_mode = default_config.settings.mouse_mode;
       },

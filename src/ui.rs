@@ -1,4 +1,4 @@
-use ratatui::{layout::*, prelude};
+use ratatui::layout::*;
 
 pub fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
   let [area] = Layout::horizontal([horizontal]).flex(Flex::Center).areas(area);

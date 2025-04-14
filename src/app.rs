@@ -1,11 +1,7 @@
-use std::{borrow::Borrow, fmt::format, sync::Arc};
-
 #[cfg(not(feature = "termux"))]
 use arboard::Clipboard;
 use color_eyre::eyre::Result;
-use crossterm::event::{Event, KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
-use futures::{task::Poll, FutureExt};
-use log::log;
+use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{
   layout::{Constraint, Direction, Layout, Position},
   prelude::Rect,
@@ -14,27 +10,13 @@ use ratatui::{
   widgets::{Block, Borders, Clear, Padding, Paragraph, Tabs, Wrap},
   Frame,
 };
-use serde::{Deserialize, Serialize};
-use sqlparser::{
-  ast::Statement,
-  dialect::Dialect,
-  keywords::{DELETE, NAME},
-};
-use sqlx::{
-  postgres::{PgConnectOptions, Postgres},
-  Connection, Database, Either, Executor, Pool, Transaction,
-};
+use sqlparser::ast::Statement;
 use strum::IntoEnumIterator;
-use tokio::{
-  sync::{
-    mpsc::{self},
-    Mutex,
-  },
-  task::JoinHandle,
-};
+use tokio::sync::mpsc::{self};
 
 use crate::{
-  action::{Action, ExportFormat},
+  action::{Action, ExportFormat, MenuPreview},
+  cli::{Cli, Driver},
   components::{
     data::{Data, DataComponent},
     editor::Editor,
@@ -44,7 +26,7 @@ use crate::{
     Component, ComponentImpls,
   },
   config::Config,
-  database::{self, get_dialect, statement_type_string, DatabaseQueries, DbError, DbPool, ExecutionType, Rows},
+  database::{self, Database, DbTaskResult, ExecutionType, Rows},
   focus::Focus,
   popups::{
     confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, exporting::Exporting,
@@ -54,70 +36,43 @@ use crate::{
   ui::center,
 };
 
-#[allow(clippy::large_enum_variant)]
-pub enum DbTask<'a, DB: sqlx::Database> {
-  Query(tokio::task::JoinHandle<QueryResultsWithMetadata>),
-  TxStart(tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a, DB>)>),
-  TxPending(Transaction<'a, DB>, QueryResultsWithMetadata),
-  TxCommit(tokio::task::JoinHandle<QueryResultsWithMetadata>),
-}
-
 pub struct HistoryEntry {
   pub query_lines: Vec<String>,
   pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
-pub struct AppState<'a, DB: Database> {
-  pub connection_opts: <DB::Connection as Connection>::Options,
-  pub dialect: Arc<dyn Dialect + Send + Sync>,
+pub struct AppState {
   pub focus: Focus,
-  pub query_task: Option<DbTask<'a, DB>>,
   pub history: Vec<HistoryEntry>,
   pub favorites: FavoriteEntries,
   pub last_query_start: Option<chrono::DateTime<chrono::Utc>>,
   pub last_query_end: Option<chrono::DateTime<chrono::Utc>>,
+  pub query_task_running: bool,
 }
 
-pub struct Components<'a, DB> {
-  pub menu: Box<dyn MenuComponent<'a, DB>>,
-  pub editor: Box<dyn Component<DB>>,
-  pub history: Box<dyn Component<DB>>,
-  pub data: Box<dyn DataComponent<'a, DB>>,
-  pub favorites: Box<dyn Component<DB>>,
+pub struct Components<'a> {
+  pub menu: Box<dyn MenuComponent<'a>>,
+  pub editor: Box<dyn Component>,
+  pub history: Box<dyn Component>,
+  pub data: Box<dyn DataComponent<'a>>,
+  pub favorites: Box<dyn Component>,
 }
 
-#[derive(Debug)]
-pub struct QueryResultsWithMetadata {
-  pub results: Result<Rows, DbError>,
-  pub statement_type: Statement,
-}
-
-pub struct App<'a, DB: sqlx::Database> {
+pub struct App {
   pub mouse_mode_override: Option<bool>,
   pub config: Config,
-  pub components: Components<'static, DB>,
+  pub components: Components<'static>,
   pub should_quit: bool,
   pub last_tick_key_events: Vec<KeyEvent>,
   pub last_frame_mouse_event: Option<MouseEvent>,
-  pub pool: Option<database::DbPool<DB>>,
-  pub state: AppState<'a, DB>,
+  pub state: AppState,
   last_focused_tab: Focus,
   last_focused_component: Focus,
-  popup: Option<Box<dyn PopUp<DB>>>,
+  popup: Option<Box<dyn PopUp>>,
 }
 
-impl<DB> App<'_, DB>
-where
-  DB: Database + database::ValueParser + database::DatabaseQueries,
-  DB::QueryResult: database::HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-{
-  pub fn new(
-    connection_opts: <DB::Connection as Connection>::Options,
-    mouse_mode_override: Option<bool>,
-    config: Config,
-  ) -> Result<Self> {
+impl App {
+  pub fn new(mouse_mode_override: Option<bool>, config: Config) -> Result<Self> {
     let focus = Focus::Menu;
     let menu = Menu::new();
     let editor = Editor::new();
@@ -139,16 +94,13 @@ where
       config,
       last_tick_key_events: Vec::new(),
       last_frame_mouse_event: None,
-      pool: None,
       state: AppState {
-        connection_opts,
-        dialect: get_dialect(DB::NAME),
         focus,
-        query_task: None,
         history: vec![],
         last_query_start: None,
         last_query_end: None,
         favorites: favorite_entries,
+        query_task_running: false,
       },
       last_focused_tab: Focus::Editor,
       last_focused_component: focus,
@@ -178,7 +130,7 @@ where
     }
   }
 
-  fn set_popup(&mut self, popup: Box<dyn PopUp<DB>>) {
+  fn set_popup(&mut self, popup: Box<dyn PopUp>) {
     self.popup = Some(popup);
     self.set_focus(Focus::PopUp);
   }
@@ -203,12 +155,15 @@ where
     }
   }
 
-  pub async fn run(&mut self) -> Result<()> {
+  pub async fn run(&mut self, driver: Driver, args: Cli) -> Result<()> {
+    let mut database: Box<dyn Database> = match driver {
+      Driver::Postgres => Box::new(database::PostgresDriver::new()),
+      Driver::MySql => Box::new(database::MySqlDriver::new()),
+      Driver::Sqlite => Box::new(database::SqliteDriver::new()),
+    };
+    database.init(args).await?;
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
-    let connection_opts = self.state.connection_opts.clone();
-    let pool = database::init_pool::<DB>(connection_opts).await?;
-    log::info!("{pool:?}");
-    self.pool = Some(pool);
+    log::info!("{driver:?}");
 
     let mut tui = tui::Tui::new()?.mouse(self.mouse_mode_override.or(self.config.settings.mouse_mode));
     tui.enter()?;
@@ -239,36 +194,26 @@ where
     action_tx.send(Action::LoadMenu)?;
 
     loop {
-      if let Some(popup) = &mut self.popup {
+      if self.popup.is_some() {
         self.set_focus(Focus::PopUp);
       }
-      match &mut self.state.query_task {
-        Some(DbTask::Query(task)) => {
-          if task.is_finished() {
-            let results = task.await?;
-            self.state.query_task = None;
-            self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
-            self.state.last_query_end = Some(chrono::Utc::now());
-          }
+      match database.get_query_results().await? {
+        DbTaskResult::Finished(results) => {
+          self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
+          self.state.last_query_end = Some(chrono::Utc::now());
+          self.state.query_task_running = false;
         },
-        Some(DbTask::TxStart(task)) => {
-          if task.is_finished() {
-            let (results, tx) = task.await?;
-            match results.results {
-              Ok(_) => {
-                self.state.query_task = Some(DbTask::TxPending(tx, results));
-                self.set_popup(Box::new(ConfirmTx::<DB>::new()));
-              },
-              Err(_) => {
-                self.state.query_task = None;
-                self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
-              },
-            }
-            self.state.last_query_end = Some(chrono::Utc::now());
-          }
+        DbTaskResult::ConfirmTx(rows_affected, statement) => {
+          self.state.last_query_end = Some(chrono::Utc::now());
+          self.set_popup(Box::new(ConfirmTx::new(rows_affected, statement.clone())));
+          self.state.query_task_running = true;
         },
-        Some(DbTask::TxCommit(task)) => {},
-        _ => {},
+        DbTaskResult::Pending => {
+          self.state.query_task_running = true;
+        },
+        DbTaskResult::NoTask => {
+          self.state.query_task_running = false;
+        },
       }
       if let Some(e) = tui.next().await {
         let mut event_consumed = false;
@@ -287,7 +232,7 @@ where
               } else if let Some(popup) = &mut self.popup {
                 // popup captures all inputs. if it returns a payload, that means
                 // it is finished and should be closed
-                let payload = popup.handle_key_events(key, &mut self.state).await?;
+                let payload = popup.handle_key_events(key, &mut self.state)?;
                 match payload {
                   Some(PopUpPayload::SetDataTable(result, statement)) => {
                     self.components.data.set_data_state(result, statement);
@@ -310,6 +255,23 @@ where
                   },
                   Some(PopUpPayload::NamedFavorite(name, query_lines)) => {
                     self.state.favorites.add_entry(name, query_lines);
+                    self.set_focus(Focus::Editor);
+                  },
+                  Some(PopUpPayload::CommitTx) => {
+                    let response = database.commit_tx().await?;
+                    self.state.last_query_end = Some(chrono::Utc::now());
+                    if let Some(results) = response {
+                      self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
+                      self.set_focus(Focus::Editor);
+                    }
+                  },
+                  Some(PopUpPayload::RollbackTx) => {
+                    database.rollback_tx().await?;
+                    self.state.last_query_end = Some(chrono::Utc::now());
+                    self.components.data.set_data_state(
+                      Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
+                      Some(Statement::Rollback { chain: false, savepoint: None }),
+                    );
                     self.set_focus(Focus::Editor);
                   },
                   None => {},
@@ -340,23 +302,19 @@ where
               ComponentImpls::Editor => {
                 self.components.editor.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
               },
-              ComponentImpls::History => {
-                self.components.history.handle_events(
-                  Some(e.clone()),
-                  self.last_tick_key_events.clone(),
-                  &self.state,
-                )?
-              },
+              ComponentImpls::History => self.components.history.handle_events(
+                Some(e.clone()),
+                self.last_tick_key_events.clone(),
+                &self.state,
+              )?,
               ComponentImpls::Data => {
                 self.components.data.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
               },
-              ComponentImpls::Favorites => {
-                self.components.favorites.handle_events(
-                  Some(e.clone()),
-                  self.last_tick_key_events.clone(),
-                  &self.state,
-                )?
-              },
+              ComponentImpls::Favorites => self.components.favorites.handle_events(
+                Some(e.clone()),
+                self.last_tick_key_events.clone(),
+                &self.state,
+              )?,
             };
             if let Some(action) = action {
               action_tx.send(action)?;
@@ -392,32 +350,25 @@ where
           Action::FocusData => self.set_focus(Focus::Data),
           Action::FocusHistory => self.set_focus(Focus::History),
           Action::FocusFavorites => self.set_focus(Focus::Favorites),
-          Action::CycleFocusForwards => {
-            match self.state.focus {
-              Focus::Menu => self.set_focus(Focus::Editor),
-              Focus::Editor => self.set_focus(Focus::Data),
-              Focus::Data => self.set_focus(Focus::History),
-              Focus::History => self.set_focus(Focus::Favorites),
-              Focus::Favorites => self.set_focus(Focus::Menu),
-              Focus::PopUp => {},
-            }
+          Action::CycleFocusForwards => match self.state.focus {
+            Focus::Menu => self.set_focus(Focus::Editor),
+            Focus::Editor => self.set_focus(Focus::Data),
+            Focus::Data => self.set_focus(Focus::History),
+            Focus::History => self.set_focus(Focus::Favorites),
+            Focus::Favorites => self.set_focus(Focus::Menu),
+            Focus::PopUp => {},
           },
-          Action::CycleFocusBackwards => {
-            match self.state.focus {
-              Focus::History => self.set_focus(Focus::Data),
-              Focus::Data => self.set_focus(Focus::Editor),
-              Focus::Editor => self.set_focus(Focus::Menu),
-              Focus::Menu => self.set_focus(Focus::Favorites),
-              Focus::Favorites => self.set_focus(Focus::History),
-              Focus::PopUp => {},
-            }
+          Action::CycleFocusBackwards => match self.state.focus {
+            Focus::History => self.set_focus(Focus::Data),
+            Focus::Data => self.set_focus(Focus::Editor),
+            Focus::Editor => self.set_focus(Focus::Menu),
+            Focus::Menu => self.set_focus(Focus::Favorites),
+            Focus::Favorites => self.set_focus(Focus::History),
+            Focus::PopUp => {},
           },
           Action::LoadMenu => {
-            log::info!("LoadMenu");
-            if let Some(pool) = &self.pool {
-              let results = database::query(DB::preview_tables_query(), self.state.dialect.as_ref(), pool).await;
-              self.components.menu.set_table_list(Some(results));
-            }
+            let rows = database.load_menu().await;
+            self.components.menu.set_table_list(Some(rows));
           },
           Action::Query(query_lines, confirmed) => 'query_action: {
             let query_string = query_lines.clone().join(" \n");
@@ -425,92 +376,52 @@ where
               break 'query_action;
             }
             self.add_to_history(query_lines.clone());
-            let first_query = database::get_first_query(query_string.clone(), self.state.dialect.as_ref());
-            let execution_type = first_query.map(|(_, statement_type)| {
-              (database::get_execution_type(statement_type.clone(), *confirmed), statement_type)
-            });
-            let action_tx = action_tx.clone();
-            if let Some(pool) = &self.pool {
-              let pool = pool.clone();
-              let dialect = self.state.dialect.clone();
-              match execution_type {
-                Ok((ExecutionType::Transaction, statement_type)) => {
-                  self.components.data.set_loading();
-                  let tx = pool.begin().await?;
-                  self.state.query_task = Some(DbTask::TxStart(tokio::spawn(async move {
-                    let (results, tx) = database::query_with_tx::<DB>(tx, dialect.as_ref(), query_string.clone()).await;
-                    match results {
-                      Ok(Either::Left(rows_affected)) => {
-                        log::info!("{:?} rows affected", rows_affected);
-                        (
-                          QueryResultsWithMetadata {
-                            results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
-                            statement_type,
-                          },
-                          tx,
-                        )
-                      },
-                      Ok(Either::Right(rows)) => {
-                        log::info!("{:?} rows affected", rows.rows_affected);
-                        (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
-                      },
-                      Err(e) => {
-                        log::error!("{e:?}");
-                        (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
-                      },
-                    }
-                  })));
-                  self.state.last_query_start = Some(chrono::Utc::now());
-                  self.state.last_query_end = None;
-                },
-                Ok((ExecutionType::Confirm, statement_type)) => {
-                  self.set_popup(Box::new(ConfirmQuery::<DB>::new(query_string.clone(), statement_type)));
-                },
-                Ok((ExecutionType::Normal, statement_type)) => {
-                  self.components.data.set_loading();
-                  let dialect = self.state.dialect.clone();
-                  self.state.query_task = Some(DbTask::Query(tokio::spawn(async move {
-                    let results = database::query(query_string.clone(), dialect.as_ref(), &pool).await;
-                    match &results {
-                      Ok(rows) => {
-                        log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
-                      },
-                      Err(e) => {
-                        log::error!("{e:?}");
-                      },
-                    };
+            let execution_info = database::get_execution_type(query_string.clone(), *confirmed, driver);
+            match execution_info {
+              Ok((ExecutionType::Transaction, _)) => {
+                self.components.data.set_loading();
+                database.start_tx(query_string).await?;
+                self.state.last_query_start = Some(chrono::Utc::now());
+                self.state.last_query_end = None;
+              },
+              Ok((ExecutionType::Confirm, statement_type)) => {
+                self.set_popup(Box::new(ConfirmQuery::new(query_string.clone(), statement_type)));
+              },
+              Ok((ExecutionType::Normal, _)) => {
+                self.components.data.set_loading();
+                database.start_query(query_string)?;
+                self.state.last_query_start = Some(chrono::Utc::now());
+                self.state.last_query_end = None;
+              },
+              Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
+            }
+          },
+          Action::AbortQuery => match database.abort_query() {
+            Ok(true) => {
+              self.components.data.set_cancelled();
+              self.state.last_query_end = Some(chrono::Utc::now());
+            },
+            Ok(false) => {},
+            Err(e) => {
+              self.components.data.set_data_state(Some(Err(e)), None);
+            },
+          },
+          Action::MenuPreview(preview_type, schema, table) => {
+            let preview_query = match preview_type {
+              MenuPreview::Rows => database.preview_rows_query(schema, table),
+              MenuPreview::Columns => database.preview_columns_query(schema, table),
+              MenuPreview::Constraints => database.preview_constraints_query(schema, table),
+              MenuPreview::Indexes => database.preview_indexes_query(schema, table),
+              MenuPreview::Policies => database.preview_policies_query(schema, table),
+            };
+            action_tx.send(Action::QueryToEditor(vec![preview_query.clone()]))?;
+            action_tx.send(Action::FocusEditor)?;
+            action_tx.send(Action::FocusMenu)?;
+            action_tx.send(Action::Query(vec![preview_query.clone()], false))?;
+          },
 
-                    QueryResultsWithMetadata { results, statement_type }
-                  })));
-                  self.state.last_query_start = Some(chrono::Utc::now());
-                  self.state.last_query_end = None;
-                },
-                Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
-              }
-            } else {
-              log::error!("No connection pool");
-              self.components.data.set_data_state(Some(Err(DbError::Left(sqlx::Error::PoolTimedOut))), None)
-            }
-          },
-          Action::AbortQuery => {
-            match &self.state.query_task {
-              Some(DbTask::Query(task)) => {
-                task.abort();
-                self.state.query_task = None;
-                self.components.data.set_cancelled();
-                self.state.last_query_end = Some(chrono::Utc::now());
-              },
-              Some(DbTask::TxStart(task)) => {
-                task.abort();
-                self.state.query_task = None;
-                self.components.data.set_cancelled();
-                self.state.last_query_end = Some(chrono::Utc::now());
-              },
-              _ => {},
-            }
-          },
           Action::RequestSaveFavorite(query_lines) => {
-            self.set_popup(Box::new(NameFavorite::<DB>::new(
+            self.set_popup(Box::new(NameFavorite::new(
               self.state.favorites.iter().map(|f| f.get_name().to_string()).collect(),
               query_lines.clone(),
             )));
@@ -537,7 +448,7 @@ where
             }
           },
           Action::RequestExportData(row_count) => {
-            self.set_popup(Box::new(ConfirmExport::<DB>::new(*row_count)));
+            self.set_popup(Box::new(ConfirmExport::new(*row_count)));
           },
           Action::ExportDataFinished => {
             self.set_focus(Focus::Data);
@@ -567,20 +478,7 @@ where
         })?;
       }
       if self.should_quit {
-        if let Some(query_task) = self.state.query_task.take() {
-          match query_task {
-            DbTask::Query(task) => {
-              task.abort();
-            },
-            DbTask::TxStart(task) => {
-              task.abort();
-            },
-            DbTask::TxCommit(task) => {
-              task.abort();
-            },
-            _ => {},
-          }
-        }
+        database.abort_query()?;
         tui.stop()?;
         break;
       }
@@ -611,10 +509,7 @@ where
       .split(right_layout[0]);
 
     if let Some(event) = &self.last_frame_mouse_event {
-      if !matches!(self.state.query_task, Some(DbTask::TxPending(_, _)))
-        && event.kind != MouseEventKind::Moved
-        && !matches!(event.kind, MouseEventKind::Down(_))
-      {
+      if self.popup.is_none() && event.kind != MouseEventKind::Moved && !matches!(event.kind, MouseEventKind::Down(_)) {
         let position = Position::new(event.column, event.row);
         let menu_target = root_layout[0];
         let tabs_target = tabs_layout[0];
@@ -690,18 +585,18 @@ where
     let block = Block::default().style(Style::default().fg(Color::Blue));
     let help_text = format!(
         "{}{}",
-        match self.state.query_task {
-            None => "",
+        match self.state.query_task_running {
+            false => "",
             _ if self.state.focus == Focus::Editor => "[<alt + q>] abort ",
             _ if self.state.focus != Focus::PopUp => "[q] abort ",
             _ => ""
         },
         match self.state.focus {
             Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
-            Focus::Editor if self.state.query_task.is_none() => "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
+            Focus::Editor if !self.state.query_task_running => "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
             Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
             Focus::Favorites => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
-            Focus::Data if self.state.query_task.is_none() => "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
+            Focus::Data if !self.state.query_task_running => "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
             Focus::PopUp => "[<esc>] cancel",
             _ => "",
         }
@@ -710,7 +605,7 @@ where
     frame.render_widget(paragraph, area);
   }
 
-  fn render_popup(&self, frame: &mut Frame, popup: &dyn PopUp<DB>) {
+  fn render_popup(&self, frame: &mut Frame, popup: &dyn PopUp) {
     let area = center(frame.area(), Constraint::Percentage(50), Constraint::Percentage(50));
     let block = Block::default()
       .borders(Borders::ALL)
