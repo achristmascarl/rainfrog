@@ -223,6 +223,7 @@ impl App {
           self.state.query_task_running = false;
         },
         DbTaskResult::ConfirmTx(rows_affected, statement) => {
+          self.state.last_query_end = Some(chrono::Utc::now());
           self.set_popup(Box::new(ConfirmTx::new(rows_affected, statement.clone())));
           self.state.query_task_running = true;
         },
@@ -277,6 +278,7 @@ impl App {
                   },
                   Some(PopUpPayload::CommitTx) => {
                     let response = database.commit_tx().await?;
+                    self.state.last_query_end = Some(chrono::Utc::now());
                     if let Some(results) = response {
                       self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
                       self.set_focus(Focus::Editor);
@@ -284,6 +286,7 @@ impl App {
                   },
                   Some(PopUpPayload::RollbackTx) => {
                     database.rollback_tx().await?;
+                    self.state.last_query_end = Some(chrono::Utc::now());
                     self.components.data.set_data_state(
                       Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
                       Some(Statement::Rollback { chain: false, savepoint: None }),
