@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEvent;
 use sqlparser::ast::Statement;
@@ -26,10 +25,9 @@ pub enum PopUpPayload {
   NamedFavorite(String, Vec<String>),
 }
 
-#[async_trait(?Send)]
 pub trait PopUp {
   #[allow(unused_variables)]
-  async fn handle_key_events(&mut self, key: KeyEvent, app_state: &mut AppState) -> Result<Option<PopUpPayload>>;
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &mut AppState) -> Result<Option<PopUpPayload>>;
 
   #[allow(unused_variables)]
   fn get_cta_text(&self, app_state: &AppState) -> String {

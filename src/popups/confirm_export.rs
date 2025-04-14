@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 
-use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
 use sqlparser::ast::Statement;
 use sqlx::Either;
@@ -23,9 +22,8 @@ impl ConfirmExport {
   }
 }
 
-#[async_trait(?Send)]
 impl PopUp for ConfirmExport {
-  async fn handle_key_events(
+  fn handle_key_events(
     &mut self,
     key: crossterm::event::KeyEvent,
     app_state: &mut crate::app::AppState,

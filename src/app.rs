@@ -45,7 +45,7 @@ use crate::{
     Component, ComponentImpls,
   },
   config::Config,
-  database::{self, get_dialect, statement_type_string, Database, DbTaskResult, ExecutionType, Rows},
+  database::{self, Database, DbTaskResult, ExecutionType, Rows},
   focus::Focus,
   popups::{
     confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, exporting::Exporting,
@@ -175,10 +175,12 @@ impl App {
   }
 
   pub async fn run(&mut self, driver: Driver, args: Cli) -> Result<()> {
-    let mut database = match driver {
-      Driver::Postgres => database::PostgresDriver::init(args).await.unwrap(),
+    let mut database: Box<dyn Database> = match driver {
+      Driver::Postgres => Box::new(database::PostgresDriver::new()),
+      Driver::MySql => Box::new(database::MySqlDriver::new()),
       _ => todo!(),
     };
+    database.init(args).await?;
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
     log::info!("{driver:?}");
 
@@ -248,7 +250,7 @@ impl App {
               } else if let Some(popup) = &mut self.popup {
                 // popup captures all inputs. if it returns a payload, that means
                 // it is finished and should be closed
-                let payload = popup.handle_key_events(key, &mut self.state).await?;
+                let payload = popup.handle_key_events(key, &mut self.state)?;
                 match payload {
                   Some(PopUpPayload::SetDataTable(result, statement)) => {
                     self.components.data.set_data_state(result, statement);

@@ -40,23 +40,26 @@ enum PostgresTask<'a> {
   TxCommit(QueryTask),
 }
 
+#[derive(Default)]
 pub struct PostgresDriver<'a> {
-  pool: Arc<sqlx::Pool<Postgres>>,
+  pool: Option<Arc<sqlx::Pool<Postgres>>>,
   task: Option<PostgresTask<'a>>,
 }
 
+#[async_trait(?Send)]
 impl Database for PostgresDriver<'_> {
-  async fn init(args: crate::cli::Cli) -> Result<Self> {
+  async fn init(&mut self, args: crate::cli::Cli) -> Result<()> {
     let opts = super::postgresql::PostgresDriver::<'_>::build_connection_opts(args)?;
     let pool = Arc::new(PgPoolOptions::new().max_connections(3).connect_with(opts).await?);
-    Ok(Self { pool, task: None })
+    self.pool = Some(pool);
+    Ok(())
   }
 
   // since it's possible for raw_sql to execute multiple queries in a single string,
   // we only execute the first one and then drop the rest.
   fn start_query(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Postgres)?;
-    let pool = self.pool.clone();
+    let pool = self.pool.clone().unwrap();
     self.task = Some(PostgresTask::Query(tokio::spawn(async move {
       let results = query_with_pool(pool, first_query.clone()).await;
       match results {
@@ -130,7 +133,7 @@ impl Database for PostgresDriver<'_> {
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Postgres)?;
-    let tx = self.pool.begin().await?;
+    let tx = self.pool.as_mut().unwrap().begin().await?;
     self.task = Some(PostgresTask::TxStart(tokio::spawn(async move {
       let (results, tx) = query_with_tx(tx, &first_query).await;
       match results {
@@ -177,7 +180,7 @@ impl Database for PostgresDriver<'_> {
 
   async fn load_menu(&self) -> Result<Rows> {
     query_with_pool(
-      self.pool.clone(),
+      self.pool.clone().unwrap(),
       "select table_schema, table_name
       from information_schema.tables
       where table_schema != 'pg_catalog'
@@ -217,6 +220,10 @@ impl Database for PostgresDriver<'_> {
 }
 
 impl PostgresDriver<'_> {
+  pub fn new() -> Self {
+    Self { pool: None, task: None }
+  }
+
   fn build_connection_opts(
     args: crate::cli::Cli,
   ) -> color_eyre::eyre::Result<<<sqlx::Postgres as sqlx::Database>::Connection as sqlx::Connection>::Options> {

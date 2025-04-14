@@ -1,5 +1,6 @@
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
+use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
 use futures::stream::{BoxStream, StreamExt};
 use sqlparser::{
@@ -13,10 +14,11 @@ use tokio::task::JoinHandle;
 
 use crate::cli::{Cli, Driver};
 
-// mod mysql;
+mod mysql;
 mod postgresql;
 // mod sqlite;
 
+pub use mysql::MySqlDriver;
 pub use postgresql::PostgresDriver;
 
 #[derive(Debug, Clone)]
@@ -74,10 +76,13 @@ pub enum DbTaskResult {
   NoTask,
 }
 
-pub trait Database: Sized {
+#[async_trait(?Send)]
+pub trait Database {
   /// Initialize the database connection. Should handle create
   /// a pool or connection that's reused for other operations.
-  async fn init(args: Cli) -> Result<Self>;
+  /// Must be called to actually connect to the database (just
+  /// calling `new()` does not connect).
+  async fn init(&mut self, args: Cli) -> Result<()>;
 
   /// Spawns a tokio task that runs the query. The task should
   /// expect to be polled via the `get_query_results()` method.
@@ -125,7 +130,7 @@ pub trait Database: Sized {
 }
 
 fn get_first_query(query: String, driver: Driver) -> Result<(String, Statement), ParseError> {
-  let ast = Parser::parse_sql(&(get_dialect(driver)), &query);
+  let ast = Parser::parse_sql(&*get_dialect(driver), &query);
   match ast {
     Ok(ast) if ast.len() > 1 => {
       Err(ParseError::MoreThanOneStatement("Only one statement allowed per query".to_owned()))
@@ -211,12 +216,12 @@ pub fn get_keywords() -> Vec<String> {
   keywords::ALL_KEYWORDS.iter().map(|k| k.to_string()).collect()
 }
 
-pub fn get_dialect(driver: Driver) -> impl Dialect {
+pub fn get_dialect(driver: Driver) -> Box<dyn Dialect + Send + Sync> {
   match driver {
-    Driver::Postgres => PostgreSqlDialect {},
-    _ => panic!("Driver not supported"),
-    // "MySQL" => Arc::new(MySqlDialect {}),
+    Driver::Postgres => Box::new(PostgreSqlDialect {}),
+    Driver::MySql => Box::new(MySqlDialect {}),
     // "SQLite" => Arc::new(SQLiteDialect {}),
+    _ => panic!("Driver not supported"),
   }
 }
 

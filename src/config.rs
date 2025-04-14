@@ -79,7 +79,7 @@ impl StructuredConnection {
         self.port,
         self.database
       )),
-      Driver::Mysql => {
+      Driver::MySql => {
         Ok(format!("mysql://{}:{}@{}:{}/{}", self.username, password.as_ref(), self.host, self.port, self.database))
       },
       Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
