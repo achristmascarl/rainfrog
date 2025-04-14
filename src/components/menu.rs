@@ -1,27 +1,17 @@
-use std::{
-  borrow::BorrowMut,
-  collections::HashMap,
-  sync::{Arc, Mutex},
-  time::Duration,
-};
-
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, MouseEventKind};
 use indexmap::IndexMap;
 use ratatui::{prelude::*, widgets::*};
-use serde::{Deserialize, Serialize};
-use sqlx::{Database, Executor, Pool};
 use symbols::scrollbar;
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::{Component, Frame};
 use crate::{
   action::{Action, MenuPreview},
-  app::{App, AppState},
-  config::{Config, KeyBindings},
+  app::AppState,
+  config::Config,
   database::Rows,
   focus::Focus,
-  tui::Event,
 };
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]

@@ -1,15 +1,11 @@
-use std::{collections::HashMap, ops::Deref, sync::Arc};
-
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
-use futures::stream::{BoxStream, StreamExt};
 use sqlparser::{
   ast::Statement,
-  dialect::{Dialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
+  dialect::{Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
   keywords,
   parser::{Parser, ParserError},
 };
-use sqlx::Either;
 use tokio::task::JoinHandle;
 
 use crate::cli::{Cli, Driver};
@@ -68,7 +64,7 @@ impl std::fmt::Display for ParseError {
 }
 impl std::error::Error for ParseError {}
 
-pub type QueryTask = tokio::task::JoinHandle<QueryResultsWithMetadata>;
+pub type QueryTask = JoinHandle<QueryResultsWithMetadata>;
 
 pub enum DbTaskResult {
   Finished(QueryResultsWithMetadata),

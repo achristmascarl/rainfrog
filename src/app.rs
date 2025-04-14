@@ -1,11 +1,7 @@
-use std::{borrow::Borrow, fmt::format, sync::Arc};
-
 #[cfg(not(feature = "termux"))]
 use arboard::Clipboard;
 use color_eyre::eyre::Result;
-use crossterm::event::{Event, KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
-use futures::{task::Poll, FutureExt};
-use log::log;
+use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{
   layout::{Constraint, Direction, Layout, Position},
   prelude::Rect,
@@ -14,24 +10,9 @@ use ratatui::{
   widgets::{Block, Borders, Clear, Padding, Paragraph, Tabs, Wrap},
   Frame,
 };
-use serde::{Deserialize, Serialize};
-use sqlparser::{
-  ast::Statement,
-  dialect::Dialect,
-  keywords::{DELETE, NAME},
-};
-use sqlx::{
-  postgres::{PgConnectOptions, Postgres},
-  Connection, Either, Executor, Pool, Transaction,
-};
+use sqlparser::ast::Statement;
 use strum::IntoEnumIterator;
-use tokio::{
-  sync::{
-    mpsc::{self},
-    Mutex,
-  },
-  task::JoinHandle,
-};
+use tokio::sync::mpsc::{self};
 
 use crate::{
   action::{Action, ExportFormat, MenuPreview},
@@ -213,7 +194,7 @@ impl App {
     action_tx.send(Action::LoadMenu)?;
 
     loop {
-      if let Some(popup) = &mut self.popup {
+      if self.popup.is_some() {
         self.set_focus(Focus::PopUp);
       }
       match database.get_query_results().await? {

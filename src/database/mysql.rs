@@ -1,8 +1,6 @@
 use std::{
   fmt::Write,
   io::{self, Write as _},
-  ops::DerefMut,
-  pin::Pin,
   str::FromStr,
   string::String,
   sync::Arc,
@@ -10,34 +8,22 @@ use std::{
 
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
-use futures::{
-  stream::{BoxStream, StreamExt},
-  Stream,
-};
-use sqlparser::{
-  ast::Statement,
-  dialect::{Dialect, MySqlDialect},
-  parser::{Parser, ParserError},
-};
+use futures::stream::StreamExt;
+use sqlparser::ast::Statement;
 use sqlx::{
-  mysql::{MySql, MySqlConnectOptions, MySqlPoolOptions, MySqlQueryResult, MySqlRow},
-  types::Uuid,
+  mysql::{MySql, MySqlConnectOptions, MySqlPoolOptions},
   Column, Either, Row, ValueRef,
 };
 use tokio::task::JoinHandle;
 
-use super::{
-  get_default_execution_type, vec_to_string, Database, DbTaskResult, Driver, Header, Headers, ParseError,
-  QueryResultsWithMetadata, QueryTask, Rows, Value,
-};
+use super::{Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value};
 
 type MySqlTransaction<'a> = sqlx::Transaction<'a, MySql>;
-type TransactionTask<'a> = tokio::task::JoinHandle<(QueryResultsWithMetadata, MySqlTransaction<'a>)>;
+type TransactionTask<'a> = JoinHandle<(QueryResultsWithMetadata, MySqlTransaction<'a>)>;
 enum MySqlTask<'a> {
   Query(QueryTask),
   TxStart(TransactionTask<'a>),
   TxPending((MySqlTransaction<'a>, QueryResultsWithMetadata)),
-  TxCommit(QueryTask),
 }
 
 #[derive(Default)]
@@ -80,7 +66,6 @@ impl Database for MySqlDriver<'_> {
       match task {
         MySqlTask::Query(handle) => handle.abort(),
         MySqlTask::TxStart(handle) => handle.abort(),
-        MySqlTask::TxCommit(handle) => handle.abort(),
         _ => {},
       };
       Ok(true)
@@ -95,14 +80,6 @@ impl Database for MySqlDriver<'_> {
       Some(MySqlTask::Query(handle)) => {
         if !handle.is_finished() {
           (DbTaskResult::Pending, Some(MySqlTask::Query(handle)))
-        } else {
-          let result = handle.await?;
-          (DbTaskResult::Finished(result), None)
-        }
-      },
-      Some(MySqlTask::TxCommit(handle)) => {
-        if !handle.is_finished() {
-          (DbTaskResult::Pending, Some(MySqlTask::TxCommit(handle)))
         } else {
           let result = handle.await?;
           (DbTaskResult::Finished(result), None)
@@ -137,13 +114,13 @@ impl Database for MySqlDriver<'_> {
       match results {
         Ok(Either::Left(rows_affected)) => {
           log::info!("{:?} rows affected", rows_affected);
-          return (
+          (
             QueryResultsWithMetadata {
               results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
               statement_type,
             },
             tx,
-          );
+          )
         },
         Ok(Either::Right(rows)) => {
           log::info!("{:?} rows affected", rows.rows_affected);
@@ -505,7 +482,11 @@ fn parse_value(row: &<MySql as sqlx::Database>::Row, col: &<MySql as sqlx::Datab
 mod tests {
   use std::sync::Arc;
 
-  use sqlparser::{ast::Statement, dialect::MySqlDialect, parser::Parser};
+  use sqlparser::{
+    ast::Statement,
+    dialect::MySqlDialect,
+    parser::{Parser, ParserError},
+  };
 
   use super::*;
   use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};

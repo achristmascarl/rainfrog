@@ -1,9 +1,5 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
 #![allow(unused_variables)]
 #![allow(async_fn_in_trait)]
-// for some reason, clippy thinks the tokio::main fn has a needless return...
-#![allow(clippy::needless_return)]
 
 pub mod action;
 pub mod app;
@@ -22,20 +18,18 @@ pub mod vim;
 use std::{
   env,
   io::{self, Write},
-  str::FromStr,
 };
 
 use clap::Parser;
 use cli::{extract_driver_from_url, prompt_for_database_selection, Cli, Driver};
-use color_eyre::eyre::{self, Result};
+use color_eyre::eyre::Result;
 use config::{Config, ConnectionString};
 use dotenvy::dotenv;
 use keyring::get_password;
-use sqlx::{postgres::PgConnectOptions, Connection, Database, Executor, MySql, Pool, Postgres, Sqlite};
 
 use crate::{
   app::App,
-  utils::{initialize_logging, initialize_panic_handler, version},
+  utils::{initialize_logging, initialize_panic_handler},
 };
 
 async fn run_app(mut args: Cli, config: Config, driver: Driver) -> Result<()> {

@@ -1,15 +1,8 @@
-use std::marker::PhantomData;
-
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
 use sqlparser::ast::Statement;
-use sqlx::Either;
-use tokio::sync::mpsc::UnboundedSender;
 
 use super::{PopUp, PopUpPayload};
-use crate::{
-  action::Action,
-  database::{statement_type_string, Rows},
-};
+use crate::database::statement_type_string;
 
 #[derive(Debug)]
 pub struct ConfirmQuery {

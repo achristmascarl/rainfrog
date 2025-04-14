@@ -1,4 +1,4 @@
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 
 use color_eyre::eyre;
 use keyring::Entry;

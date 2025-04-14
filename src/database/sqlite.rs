@@ -1,8 +1,6 @@
 use std::{
   fmt::Write,
   io::{self, Write as _},
-  ops::DerefMut,
-  pin::Pin,
   str::FromStr,
   string::String,
   sync::Arc,
@@ -10,26 +8,15 @@ use std::{
 
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
-use futures::{
-  stream::{BoxStream, StreamExt},
-  Stream,
-};
-use sqlparser::{
-  ast::Statement,
-  dialect::{Dialect, SQLiteDialect},
-  parser::{Parser, ParserError},
-};
+use futures::stream::StreamExt;
+use sqlparser::ast::Statement;
 use sqlx::{
-  sqlite::{Sqlite, SqliteConnectOptions, SqlitePoolOptions, SqliteQueryResult, SqliteRow},
-  types::{uuid, Uuid},
+  sqlite::{Sqlite, SqliteConnectOptions, SqlitePoolOptions},
+  types::uuid,
   Column, Either, Row, ValueRef,
 };
-use tokio::task::JoinHandle;
 
-use super::{
-  get_default_execution_type, vec_to_string, Database, DbTaskResult, Driver, Header, Headers, ParseError,
-  QueryResultsWithMetadata, QueryTask, Rows, Value,
-};
+use super::{Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value};
 
 type SqliteTransaction<'a> = sqlx::Transaction<'a, Sqlite>;
 type TransactionTask<'a> = tokio::task::JoinHandle<(QueryResultsWithMetadata, SqliteTransaction<'a>)>;
@@ -37,7 +24,6 @@ enum SqliteTask<'a> {
   Query(QueryTask),
   TxStart(TransactionTask<'a>),
   TxPending((SqliteTransaction<'a>, QueryResultsWithMetadata)),
-  TxCommit(QueryTask),
 }
 
 #[derive(Default)]
@@ -80,7 +66,6 @@ impl Database for SqliteDriver<'_> {
       match task {
         SqliteTask::Query(handle) => handle.abort(),
         SqliteTask::TxStart(handle) => handle.abort(),
-        SqliteTask::TxCommit(handle) => handle.abort(),
         _ => {},
       };
       Ok(true)
@@ -95,14 +80,6 @@ impl Database for SqliteDriver<'_> {
       Some(SqliteTask::Query(handle)) => {
         if !handle.is_finished() {
           (DbTaskResult::Pending, Some(SqliteTask::Query(handle)))
-        } else {
-          let result = handle.await?;
-          (DbTaskResult::Finished(result), None)
-        }
-      },
-      Some(SqliteTask::TxCommit(handle)) => {
-        if !handle.is_finished() {
-          (DbTaskResult::Pending, Some(SqliteTask::TxCommit(handle)))
         } else {
           let result = handle.await?;
           (DbTaskResult::Finished(result), None)
@@ -137,13 +114,13 @@ impl Database for SqliteDriver<'_> {
       match results {
         Ok(Either::Left(rows_affected)) => {
           log::info!("{:?} rows affected", rows_affected);
-          return (
+          (
             QueryResultsWithMetadata {
               results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
               statement_type,
             },
             tx,
-          );
+          )
         },
         Ok(Either::Right(rows)) => {
           log::info!("{:?} rows affected", rows.rows_affected);
@@ -420,9 +397,11 @@ fn parse_value(row: &<Sqlite as sqlx::Database>::Row, col: &<Sqlite as sqlx::Dat
 }
 
 mod tests {
-  use std::sync::Arc;
-
-  use sqlparser::{ast::Statement, dialect::SQLiteDialect, parser::Parser};
+  use sqlparser::{
+    ast::Statement,
+    dialect::SQLiteDialect,
+    parser::{Parser, ParserError},
+  };
 
   use super::*;
   use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};

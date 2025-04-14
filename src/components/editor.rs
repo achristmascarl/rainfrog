@@ -1,25 +1,18 @@
-use std::{
-  collections::HashMap,
-  sync::{Arc, Mutex},
-  time::Duration,
-};
-
 #[cfg(not(feature = "termux"))]
 use arboard::Clipboard;
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
-use ratatui::{prelude::*, widgets::*};
+use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
+use ratatui::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::{Database, Executor, Pool};
 use tokio::sync::mpsc::UnboundedSender;
-use tui_textarea::{Input, Key, Scrolling, TextArea};
+use tui_textarea::{Input, Key, TextArea};
 
 use super::{Component, Frame};
 use crate::{
-  action::{Action, MenuPreview},
-  app::{App, AppState},
-  config::{Config, KeyBindings},
-  database::{self, get_keywords},
+  action::Action,
+  app::AppState,
+  config::Config,
+  database::get_keywords,
   focus::Focus,
   tui::Event,
   vim::{Mode, Transition, Vim},
@@ -45,7 +38,6 @@ fn keyword_regex() -> String {
 pub struct Editor<'a> {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
-  selection: Option<Selection>,
   textarea: TextArea<'a>,
   vim_state: Vim,
   cursor_style: Style,
@@ -59,7 +51,6 @@ impl Editor<'_> {
     Editor {
       command_tx: None,
       config: Config::default(),
-      selection: None,
       textarea,
       vim_state: Vim::new(Mode::Normal),
       cursor_style: Mode::Normal.cursor_style(),

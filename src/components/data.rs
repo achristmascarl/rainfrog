@@ -1,30 +1,22 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
-
 use color_eyre::eyre::{self, Result};
-use crossterm::{
-  event::{KeyCode, KeyEvent, MouseEventKind},
-  terminal::ScrollDown,
-};
+use crossterm::event::{KeyEvent, MouseEventKind};
 use csv::Writer;
 use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
-use serde::{Deserialize, Serialize};
 use sqlparser::ast::Statement;
-use sqlx::{Database, Executor, Pool};
-use tokio::sync::{mpsc::UnboundedSender, Mutex};
+use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{Input, Key};
 
 use super::{scroll_table::SelectionMode, Frame};
 use crate::{
   action::Action,
-  app::{App, AppState},
+  app::AppState,
   components::{
     scroll_table::{ScrollDirection, ScrollTable},
     Component,
   },
-  config::{Config, KeyBindings},
+  config::Config,
   database::{header_to_vec, statement_type_string, Rows},
   focus::Focus,
-  tui::Event,
   utils::get_export_dir,
 };
 

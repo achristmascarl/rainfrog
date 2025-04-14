@@ -1,15 +1,9 @@
-use std::{borrow::BorrowMut, cell::RefCell};
-
 use color_eyre::eyre::Result;
 use ratatui::{
   buffer::Cell,
   prelude::*,
-  widgets::{
-    Block, ScrollDirection as RatatuiScrollDir, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidgetRef,
-    Table, TableState, WidgetRef,
-  },
+  widgets::{Block, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState, WidgetRef},
 };
-use sqlx::{Database, Executor, Pool};
 use symbols::scrollbar;
 
 use super::Component;

@@ -1,19 +1,10 @@
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
-use serde::{Deserialize, Serialize};
-use sqlx::{Database, Executor, Pool};
 use tokio::sync::mpsc::UnboundedSender;
-use tui_textarea::{Input, Key, Scrolling, TextArea};
 
 use super::{Component, Frame};
-use crate::{
-  action::Action,
-  app::{App, AppState},
-  config::{Config, KeyBindings},
-  focus::Focus,
-  tui::Event,
-};
+use crate::{action::Action, app::AppState, config::Config, focus::Focus};
 
 #[derive(Default)]
 pub struct History {

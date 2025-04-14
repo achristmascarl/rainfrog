@@ -1,8 +1,6 @@
 use std::{
   fmt::Write,
   io::{self, Write as _},
-  ops::DerefMut,
-  pin::Pin,
   str::FromStr,
   string::String,
   sync::Arc,
@@ -10,34 +8,25 @@ use std::{
 
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
-use futures::{
-  stream::{BoxStream, StreamExt},
-  Stream,
-};
-use sqlparser::{
-  ast::Statement,
-  dialect::{Dialect, PostgreSqlDialect},
-  parser::{Parser, ParserError},
-};
+use futures::stream::StreamExt;
+use sqlparser::ast::Statement;
 use sqlx::{
-  postgres::{PgConnectOptions, PgPoolOptions, PgQueryResult, PgRow, Postgres},
+  postgres::{PgConnectOptions, PgPoolOptions, Postgres},
   types::Uuid,
   Column, Either, Row, ValueRef,
 };
 use tokio::task::JoinHandle;
 
 use super::{
-  get_default_execution_type, vec_to_string, Database, DbTaskResult, Driver, Header, Headers, ParseError,
-  QueryResultsWithMetadata, QueryTask, Rows, Value,
+  vec_to_string, Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
 };
 
 type PostgresTransaction<'a> = sqlx::Transaction<'a, Postgres>;
-type TransactionTask<'a> = tokio::task::JoinHandle<(QueryResultsWithMetadata, PostgresTransaction<'a>)>;
+type TransactionTask<'a> = JoinHandle<(QueryResultsWithMetadata, PostgresTransaction<'a>)>;
 enum PostgresTask<'a> {
   Query(QueryTask),
   TxStart(TransactionTask<'a>),
   TxPending((PostgresTransaction<'a>, QueryResultsWithMetadata)),
-  TxCommit(QueryTask),
 }
 
 #[derive(Default)]
@@ -80,7 +69,6 @@ impl Database for PostgresDriver<'_> {
       match task {
         PostgresTask::Query(handle) => handle.abort(),
         PostgresTask::TxStart(handle) => handle.abort(),
-        PostgresTask::TxCommit(handle) => handle.abort(),
         _ => {},
       };
       Ok(true)
@@ -95,14 +83,6 @@ impl Database for PostgresDriver<'_> {
       Some(PostgresTask::Query(handle)) => {
         if !handle.is_finished() {
           (DbTaskResult::Pending, Some(PostgresTask::Query(handle)))
-        } else {
-          let result = handle.await?;
-          (DbTaskResult::Finished(result), None)
-        }
-      },
-      Some(PostgresTask::TxCommit(handle)) => {
-        if !handle.is_finished() {
-          (DbTaskResult::Pending, Some(PostgresTask::TxCommit(handle)))
         } else {
           let result = handle.await?;
           (DbTaskResult::Finished(result), None)
@@ -541,11 +521,11 @@ fn parse_value(row: &<Postgres as sqlx::Database>::Row, col: &<Postgres as sqlx:
     },
   }
 }
-
 mod tests {
-  use std::sync::Arc;
-
-  use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
+  use sqlparser::{
+    dialect::PostgreSqlDialect,
+    parser::{Parser, ParserError},
+  };
 
   use super::*;
   use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};

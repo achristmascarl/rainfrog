@@ -1,11 +1,10 @@
 use std::{
   io::{self, Write},
-  path::PathBuf,
   str::FromStr,
 };
 
 use clap::Parser;
-use color_eyre::eyre::{self, OptionExt, Result};
+use color_eyre::eyre::{self, Result};
 use serde::Deserialize;
 
 use crate::{
