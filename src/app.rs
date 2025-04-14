@@ -178,7 +178,7 @@ impl App {
     let mut database: Box<dyn Database> = match driver {
       Driver::Postgres => Box::new(database::PostgresDriver::new()),
       Driver::MySql => Box::new(database::MySqlDriver::new()),
-      _ => todo!(),
+      Driver::Sqlite => Box::new(database::SqliteDriver::new()),
     };
     database.init(args).await?;
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();

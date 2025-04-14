@@ -16,10 +16,11 @@ use crate::cli::{Cli, Driver};
 
 mod mysql;
 mod postgresql;
-// mod sqlite;
+mod sqlite;
 
 pub use mysql::MySqlDriver;
 pub use postgresql::PostgresDriver;
+pub use sqlite::SqliteDriver;
 
 #[derive(Debug, Clone)]
 pub struct Header {
@@ -220,8 +221,7 @@ pub fn get_dialect(driver: Driver) -> Box<dyn Dialect + Send + Sync> {
   match driver {
     Driver::Postgres => Box::new(PostgreSqlDialect {}),
     Driver::MySql => Box::new(MySqlDialect {}),
-    // "SQLite" => Arc::new(SQLiteDialect {}),
-    _ => panic!("Driver not supported"),
+    Driver::Sqlite => Box::new(SQLiteDialect {}),
   }
 }
 

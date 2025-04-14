@@ -226,7 +226,7 @@ impl PostgresDriver<'_> {
 
   fn build_connection_opts(
     args: crate::cli::Cli,
-  ) -> color_eyre::eyre::Result<<<sqlx::Postgres as sqlx::Database>::Connection as sqlx::Connection>::Options> {
+  ) -> Result<<<sqlx::Postgres as sqlx::Database>::Connection as sqlx::Connection>::Options> {
     match args.connection_url {
       Some(url) => Ok(PgConnectOptions::from_str(&url)?),
       None => {
