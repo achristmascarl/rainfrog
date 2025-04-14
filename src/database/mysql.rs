@@ -179,11 +179,9 @@ impl Database for MySqlDriver<'_> {
   async fn load_menu(&self) -> Result<Rows> {
     query_with_pool(
       self.pool.clone().unwrap(),
-      "select table_schema, table_name
+      "select table_schema as table_schema, table_name as table_name
       from information_schema.tables
-      where table_schema != 'pg_catalog'
-      and table_schema != 'information_schema'
-      group by table_schema, table_name
+      where table_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
       order by table_schema, table_name asc"
         .to_owned(),
     )
@@ -191,29 +189,44 @@ impl Database for MySqlDriver<'_> {
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
-    format!("select * from \"{}\".\"{}\" limit 100", schema, table)
+    format!("select * from `{}`.`{}` limit 100", schema, table)
   }
 
   fn preview_columns_query(&self, schema: &str, table: &str) -> String {
     format!(
-      "select column_name, * from information_schema.columns where table_schema = '{}' and table_name = '{}'",
+      "select column_name, data_type, is_nullable, column_default, extra, column_comment
+        from information_schema.columns
+        where table_schema = '{}' and table_name = '{}'
+        order by ordinal_position",
       schema, table
     )
   }
 
   fn preview_constraints_query(&self, schema: &str, table: &str) -> String {
     format!(
-      "select constraint_name, * from information_schema.table_constraints where table_schema = '{}' and table_name = '{}'",
+      "select constraint_name, constraint_type, enforced,
+        group_concat(column_name order by ordinal_position) as column_names
+        from information_schema.table_constraints
+        join information_schema.key_column_usage using (constraint_schema, constraint_name, table_schema, table_name)
+        where table_schema = '{}' and table_name = '{}'
+        group by constraint_name, constraint_type, enforced
+        order by constraint_type, constraint_name",
       schema, table
     )
   }
 
   fn preview_indexes_query(&self, schema: &str, table: &str) -> String {
-    format!("select indexname, indexdef, * from pg_indexes where schemaname = '{}' and tablename = '{}'", schema, table)
+    format!(
+      "select index_name, column_name, non_unique, seq_in_index, index_type
+        from information_schema.statistics
+        where table_schema = '{}' and table_name = '{}'
+        order by index_name, seq_in_index",
+      schema, table
+    )
   }
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
-    format!("select * from pg_policies where schemaname = '{}' and tablename = '{}'", schema, table)
+    "select 'MySQL does not support row-level security policies' as message".to_owned()
   }
 }
 
