@@ -1,25 +1,18 @@
-use std::{
-  collections::HashMap,
-  sync::{Arc, Mutex},
-  time::Duration,
-};
-
 #[cfg(not(feature = "termux"))]
 use arboard::Clipboard;
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
-use ratatui::{prelude::*, widgets::*};
+use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
+use ratatui::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::{Database, Executor, Pool};
 use tokio::sync::mpsc::UnboundedSender;
-use tui_textarea::{Input, Key, Scrolling, TextArea};
+use tui_textarea::{Input, Key, TextArea};
 
 use super::{Component, Frame};
 use crate::{
-  action::{Action, MenuPreview},
-  app::{App, AppState, DbTask},
-  config::{Config, KeyBindings},
-  database::{self, get_keywords, DatabaseQueries, HasRowsAffected, ValueParser},
+  action::Action,
+  app::AppState,
+  config::Config,
+  database::get_keywords,
   focus::Focus,
   tui::Event,
   vim::{Mode, Transition, Vim},
@@ -45,7 +38,6 @@ fn keyword_regex() -> String {
 pub struct Editor<'a> {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
-  selection: Option<Selection>,
   textarea: TextArea<'a>,
   vim_state: Vim,
   cursor_style: Style,
@@ -59,7 +51,6 @@ impl Editor<'_> {
     Editor {
       command_tx: None,
       config: Config::default(),
-      selection: None,
       textarea,
       vim_state: Vim::new(Mode::Normal),
       cursor_style: Mode::Normal.cursor_style(),
@@ -67,14 +58,10 @@ impl Editor<'_> {
     }
   }
 
-  pub fn transition_vim_state<DB: Database + DatabaseQueries>(
-    &mut self,
-    input: Input,
-    app_state: &AppState<'_, DB>,
-  ) -> Result<()> {
+  pub fn transition_vim_state(&mut self, input: Input, app_state: &AppState) -> Result<()> {
     match input {
       Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
-        if app_state.query_task.is_none() {
+        if !app_state.query_task_running {
           if let Some(sender) = &self.command_tx {
             sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
             self.vim_state = Vim::new(Mode::Normal);
@@ -125,7 +112,7 @@ impl Editor<'_> {
   }
 }
 
-impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
+impl Component for Editor<'_> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.vim_state.register_action_handler(self.command_tx.clone())?;
     self.command_tx = Some(tx);
@@ -137,7 +124,7 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
     Ok(())
   }
 
-  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
+  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
     if app_state.focus != Focus::Editor {
       return Ok(None);
     }
@@ -163,7 +150,7 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
     &mut self,
     event: Option<Event>,
     last_tick_key_events: Vec<KeyEvent>,
-    app_state: &AppState<'_, DB>,
+    app_state: &AppState,
   ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Editor {
       return Ok(None);
@@ -179,36 +166,14 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
     Ok(None)
   }
 
-  fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
+  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
     match action {
-      Action::MenuPreview(preview_type, schema, table) => {
-        if app_state.query_task.is_some() {
-          return Ok(None);
-        }
-        let query = match preview_type {
-          MenuPreview::Rows => DB::preview_rows_query(&schema, &table),
-          MenuPreview::Columns => DB::preview_columns_query(&schema, &table),
-          MenuPreview::Constraints => DB::preview_constraints_query(&schema, &table),
-          MenuPreview::Indexes => DB::preview_indexes_query(&schema, &table),
-          MenuPreview::Policies => DB::preview_policies_query(&schema, &table),
-        };
-        self.textarea = TextArea::from(vec![query.clone()]);
-        self.textarea.set_search_pattern(keyword_regex()).unwrap();
-        // make sure the editor tab is visible, then refocus the menu
-        self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
-        self.command_tx.as_ref().unwrap().send(Action::FocusMenu)?;
-        self.command_tx.as_ref().unwrap().send(Action::Query(vec![query.clone()], false))?;
-      },
       Action::SubmitEditorQuery => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
         }
       },
-      Action::HistoryToEditor(lines) => {
-        self.textarea = TextArea::from(lines.clone());
-        self.textarea.set_search_pattern(keyword_regex()).unwrap();
-      },
-      Action::FavoriteToEditor(lines) => {
+      Action::QueryToEditor(lines) => {
         self.textarea = TextArea::from(lines.clone());
         self.textarea.set_search_pattern(keyword_regex()).unwrap();
       },
@@ -220,7 +185,7 @@ impl<DB: Database + DatabaseQueries> Component<DB> for Editor<'_> {
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Editor;
 
     if let Some(query_start) = app_state.last_query_start {

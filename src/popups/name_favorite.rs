@@ -1,38 +1,25 @@
-use std::marker::PhantomData;
-
-use async_trait::async_trait;
-use crossterm::event::{KeyCode, KeyEvent};
-use sqlparser::ast::Statement;
-use sqlx::Either;
-use tokio::sync::mpsc::UnboundedSender;
+use crossterm::event::KeyCode;
 
 use super::{PopUp, PopUpPayload};
-use crate::{
-  action::Action,
-  app::DbTask,
-  database::{statement_type_string, Rows},
-};
 
 #[derive(Debug)]
-pub struct NameFavorite<DB: sqlx::Database> {
+pub struct NameFavorite {
   name: String,
   existing_names: Vec<String>,
   query_lines: Vec<String>,
-  phantom: PhantomData<DB>,
 }
 
-impl<DB: sqlx::Database> NameFavorite<DB> {
+impl NameFavorite {
   pub fn new(existing_names: Vec<String>, query_lines: Vec<String>) -> Self {
-    Self { name: "".to_string(), existing_names, query_lines, phantom: PhantomData }
+    Self { name: "".to_string(), existing_names, query_lines }
   }
 }
 
-#[async_trait(?Send)]
-impl<DB: sqlx::Database> PopUp<DB> for NameFavorite<DB> {
-  async fn handle_key_events(
+impl PopUp for NameFavorite {
+  fn handle_key_events(
     &mut self,
     key: crossterm::event::KeyEvent,
-    app_state: &mut crate::app::AppState<'_, DB>,
+    app_state: &mut crate::app::AppState,
   ) -> color_eyre::eyre::Result<Option<PopUpPayload>> {
     match key.code {
       KeyCode::Char(c) => {
@@ -61,11 +48,11 @@ impl<DB: sqlx::Database> PopUp<DB> for NameFavorite<DB> {
     }
   }
 
-  fn get_cta_text(&self, app_state: &crate::app::AppState<'_, DB>) -> String {
+  fn get_cta_text(&self, app_state: &crate::app::AppState) -> String {
     "Input a name for the favorite and then press [Enter]; press [Esc] to cancel. No spaces or special characters allowed.".to_string()
   }
 
-  fn get_actions_text(&self, app_state: &crate::app::AppState<'_, DB>) -> String {
+  fn get_actions_text(&self, app_state: &crate::app::AppState) -> String {
     format!(
       "{}.sql{}",
       self.name,

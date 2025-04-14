@@ -1,11 +1,10 @@
 use std::{
   io::{self, Write},
-  path::PathBuf,
   str::FromStr,
 };
 
 use clap::Parser;
-use color_eyre::eyre::{self, OptionExt, Result};
+use color_eyre::eyre::{self, Result};
 use serde::Deserialize;
 
 use crate::{
@@ -56,7 +55,7 @@ pub enum Driver {
   #[serde(alias = "postgres", alias = "POSTGRES")]
   Postgres,
   #[serde(alias = "mysql", alias = "MYSQL")]
-  Mysql,
+  MySql,
   #[serde(alias = "sqlite", alias = "SQLITE")]
   Sqlite,
 }
@@ -67,7 +66,7 @@ impl FromStr for Driver {
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s.to_lowercase().as_str() {
       "postgres" | "postgresql" => Ok(Driver::Postgres),
-      "mysql" => Ok(Driver::Mysql),
+      "mysql" => Ok(Driver::MySql),
       "sqlite" => Ok(Driver::Sqlite),
       _ => Err(eyre::Report::msg("Invalid driver")),
     }

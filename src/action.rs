@@ -1,15 +1,5 @@
-use std::{fmt, string::ToString};
-
-use serde::{
-  de::{self, Deserializer, Visitor},
-  Deserialize, Serialize,
-};
+use serde::{Deserialize, Serialize};
 use strum::Display;
-
-use crate::{
-  database::{DbError, Rows},
-  focus::Focus,
-};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
 pub enum MenuPreview {
@@ -38,7 +28,7 @@ pub enum Action {
   SubmitEditorQuery,
   Query(Vec<String>, bool),                 // (query_lines, execution_confirmed)
   MenuPreview(MenuPreview, String, String), // (preview, schema, table)
-  HistoryToEditor(Vec<String>),
+  QueryToEditor(Vec<String>),
   ClearHistory,
   AbortQuery,
   FocusMenu,
@@ -55,6 +45,5 @@ pub enum Action {
   ExportDataFinished,
   RequestSaveFavorite(Vec<String>),
   SaveFavorite(String, Vec<String>),
-  FavoriteToEditor(Vec<String>),
   DeleteFavorite(String),
 }

@@ -1,27 +1,17 @@
-use std::{
-  borrow::BorrowMut,
-  collections::HashMap,
-  sync::{Arc, Mutex},
-  time::Duration,
-};
-
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, MouseEventKind};
 use indexmap::IndexMap;
 use ratatui::{prelude::*, widgets::*};
-use serde::{Deserialize, Serialize};
-use sqlx::{Database, Executor, Pool};
 use symbols::scrollbar;
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::{Component, Frame};
 use crate::{
   action::{Action, MenuPreview},
-  app::{App, AppState},
-  config::{Config, KeyBindings},
-  database::{get_headers, row_to_json, row_to_vec, DbError, Rows},
+  app::AppState,
+  config::Config,
+  database::Rows,
   focus::Focus,
-  tui::Event,
 };
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
@@ -32,14 +22,12 @@ pub enum MenuFocus {
 }
 
 pub trait SettableTableList<'a> {
-  fn set_table_list(&mut self, data: Option<Result<Rows, DbError>>);
+  fn set_table_list(&mut self, data: Option<Result<Rows>>);
 }
 
-pub trait MenuComponent<'a, DB: Database>: Component<DB> + SettableTableList<'a> {}
+pub trait MenuComponent<'a>: Component + SettableTableList<'a> {}
 
-impl<'a, T, DB: Database> MenuComponent<'a, DB> for T where T: Component<DB> + SettableTableList<'a>
-{
-}
+impl<'a, T> MenuComponent<'a> for T where T: Component + SettableTableList<'a> {}
 
 #[derive(Debug, Clone, Default)]
 pub struct Menu {
@@ -160,7 +148,7 @@ impl Menu {
 }
 
 impl SettableTableList<'_> for Menu {
-  fn set_table_list(&mut self, data: Option<Result<Rows, DbError>>) {
+  fn set_table_list(&mut self, data: Option<Result<Rows>>) {
     log::info!("setting menu table list");
     self.table_map = IndexMap::new();
     match data {
@@ -189,7 +177,7 @@ impl SettableTableList<'_> for Menu {
   }
 }
 
-impl<DB: Database> Component<DB> for Menu {
+impl Component for Menu {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -203,7 +191,7 @@ impl<DB: Database> Component<DB> for Menu {
   fn handle_mouse_events(
     &mut self,
     mouse: crossterm::event::MouseEvent,
-    app_state: &AppState<'_, DB>,
+    app_state: &AppState,
   ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Menu {
       return Ok(None);
@@ -216,7 +204,7 @@ impl<DB: Database> Component<DB> for Menu {
     Ok(None)
   }
 
-  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
     if app_state.focus != Focus::Menu {
       return Ok(None);
     }
@@ -322,17 +310,15 @@ impl<DB: Database> Component<DB> for Menu {
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Menu;
     let parent_block = Block::default();
     let stable_keys = self.table_map.keys().enumerate();
     let mut constraints: Vec<Constraint> = stable_keys
       .clone()
-      .map(|(i, k)| {
-        match i {
-          x if x == self.schema_index => Constraint::Min(5),
-          _ => Constraint::Length(1),
-        }
+      .map(|(i, k)| match i {
+        x if x == self.schema_index => Constraint::Min(5),
+        _ => Constraint::Length(1),
       })
       .collect();
     if let Some(search) = self.search.as_ref() {
@@ -393,15 +379,11 @@ impl<DB: Database> Component<DB> for Menu {
               if is_selected && focused && !self.search_focused {
                 ListItem::new(Text::from(vec![
                   Line::from(t),
-                  Line::from(if app_state.query_task.is_some() { "├[...] rows" } else { "├[<enter>] rows" }),
-                  Line::from(if app_state.query_task.is_some() { "├[...] columns" } else { "├[1] columns" }),
-                  Line::from(if app_state.query_task.is_some() {
-                    "├[...] constraints"
-                  } else {
-                    "├[2] constraints"
-                  }),
-                  Line::from(if app_state.query_task.is_some() { "├[...] indexes" } else { "├[3] indexes" }),
-                  Line::from(if app_state.query_task.is_some() {
+                  Line::from(if app_state.query_task_running { "├[...] rows" } else { "├[<enter>] rows" }),
+                  Line::from(if app_state.query_task_running { "├[...] columns" } else { "├[1] columns" }),
+                  Line::from(if app_state.query_task_running { "├[...] constraints" } else { "├[2] constraints" }),
+                  Line::from(if app_state.query_task_running { "├[...] indexes" } else { "├[3] indexes" }),
+                  Line::from(if app_state.query_task_running {
                     "└[...] rls policies"
                   } else {
                     "└[4] rls policies"
@@ -451,15 +433,13 @@ impl<DB: Database> Component<DB> for Menu {
             layout[layout_index],
           );
         },
-        _ => {
-          f.render_widget(
-            Text::styled(
-              "├ ".to_owned() + k.to_owned().as_str(),
-              if focused { Style::default() } else { Style::new().dim() },
-            ),
-            layout[layout_index],
-          )
-        },
+        _ => f.render_widget(
+          Text::styled(
+            "├ ".to_owned() + k.to_owned().as_str(),
+            if focused { Style::default() } else { Style::new().dim() },
+          ),
+          layout[layout_index],
+        ),
       };
     });
 

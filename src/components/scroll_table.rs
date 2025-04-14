@@ -1,15 +1,9 @@
-use std::{borrow::BorrowMut, cell::RefCell};
-
 use color_eyre::eyre::Result;
 use ratatui::{
   buffer::Cell,
   prelude::*,
-  widgets::{
-    Block, ScrollDirection as RatatuiScrollDir, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidgetRef,
-    Table, TableState, WidgetRef,
-  },
+  widgets::{Block, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState, WidgetRef},
 };
-use sqlx::{Database, Executor, Pool};
 use symbols::scrollbar;
 
 use super::Component;
@@ -191,8 +185,8 @@ impl<'a> ScrollTable<'a> {
   }
 }
 
-impl<DB: Database> Component<DB> for ScrollTable<'_> {
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
+impl Component for ScrollTable<'_> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     self.parent_area = area;
     let render_area = self.block.inner_if_some(area);
     self.pg_height = std::cmp::min(self.max_height, render_area.height).saturating_sub(3);

@@ -1,30 +1,22 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
-
-use color_eyre::eyre::Result;
-use crossterm::{
-  event::{KeyCode, KeyEvent, MouseEventKind},
-  terminal::ScrollDown,
-};
+use color_eyre::eyre::{self, Result};
+use crossterm::event::{KeyEvent, MouseEventKind};
 use csv::Writer;
 use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
-use serde::{Deserialize, Serialize};
 use sqlparser::ast::Statement;
-use sqlx::{Database, Executor, Pool};
-use tokio::sync::{mpsc::UnboundedSender, Mutex};
+use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{Input, Key};
 
 use super::{scroll_table::SelectionMode, Frame};
 use crate::{
   action::Action,
-  app::{App, AppState},
+  app::AppState,
   components::{
     scroll_table::{ScrollDirection, ScrollTable},
     Component,
   },
-  config::{Config, KeyBindings},
-  database::{get_headers, header_to_vec, row_to_json, row_to_vec, statement_type_string, DbError, Rows},
+  config::Config,
+  database::{header_to_vec, statement_type_string, Rows},
   focus::Focus,
-  tui::Event,
   utils::get_export_dir,
 };
 
@@ -37,7 +29,7 @@ pub enum DataState<'a> {
   NoResults,
   HasResults(Rows),
   Explain(Text<'a>),
-  Error(DbError),
+  Error(eyre::Report),
   Cancelled,
   RowsAffected(u64),
   StatementCompleted(Statement),
@@ -50,15 +42,13 @@ pub struct ExplainOffsets {
 }
 
 pub trait SettableDataTable<'a> {
-  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>, statement_type: Option<Statement>);
+  fn set_data_state(&mut self, data: Option<Result<Rows>>, statement_type: Option<Statement>);
   fn set_loading(&mut self);
   fn set_cancelled(&mut self);
 }
 
-pub trait DataComponent<'a, DB: sqlx::Database>: Component<DB> + SettableDataTable<'a> {}
-impl<'a, T, DB: sqlx::Database> DataComponent<'a, DB> for T where T: Component<DB> + SettableDataTable<'a>
-{
-}
+pub trait DataComponent<'a>: Component + SettableDataTable<'a> {}
+impl<'a, T> DataComponent<'a> for T where T: Component + SettableDataTable<'a> {}
 
 #[derive(Default)]
 pub struct Data<'a> {
@@ -177,7 +167,7 @@ impl Data<'_> {
 }
 
 impl<'a> SettableDataTable<'a> for Data<'a> {
-  fn set_data_state(&mut self, data: Option<Result<Rows, DbError>>, statement_type: Option<Statement>) {
+  fn set_data_state(&mut self, data: Option<Result<Rows>>, statement_type: Option<Statement>) {
     self.explain_width = 0;
     self.explain_height = 0;
     self.explain_max_x_offset = 0;
@@ -235,7 +225,7 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
   }
 }
 
-impl<DB: Database> Component<DB> for Data<'_> {
+impl Component for Data<'_> {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -249,7 +239,7 @@ impl<DB: Database> Component<DB> for Data<'_> {
   fn handle_mouse_events(
     &mut self,
     mouse: crossterm::event::MouseEvent,
-    app_state: &AppState<'_, DB>,
+    app_state: &AppState,
   ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Data {
       return Ok(None);
@@ -272,7 +262,7 @@ impl<DB: Database> Component<DB> for Data<'_> {
     Ok(None)
   }
 
-  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
+  fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
     if app_state.focus != Focus::Data {
       return Ok(None);
     }
@@ -384,7 +374,7 @@ impl<DB: Database> Component<DB> for Data<'_> {
     Ok(None)
   }
 
-  fn update(&mut self, action: Action, app_state: &AppState<'_, DB>) -> Result<Option<Action>> {
+  fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
     if let Action::Query(query, confirmed) = action {
       self.scrollable.reset_scroll();
     } else if let Action::ExportData(format) = action {
@@ -403,7 +393,7 @@ impl<DB: Database> Component<DB> for Data<'_> {
     Ok(None)
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState<'_, DB>) -> Result<()> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Data;
 
     let mut block = Block::default().borders(Borders::ALL).border_style(if focused {

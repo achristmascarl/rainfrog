@@ -1,8 +1,5 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
 #![allow(unused_variables)]
-// for some reason, clippy thinks the tokio::main fn has a needless return...
-#![allow(clippy::needless_return)]
+#![allow(async_fn_in_trait)]
 
 pub mod action;
 pub mod app;
@@ -21,34 +18,24 @@ pub mod vim;
 use std::{
   env,
   io::{self, Write},
-  str::FromStr,
 };
 
 use clap::Parser;
 use cli::{extract_driver_from_url, prompt_for_database_selection, Cli, Driver};
-use color_eyre::eyre::{self, Result};
+use color_eyre::eyre::Result;
 use config::{Config, ConnectionString};
-use database::{BuildConnectionOptions, DatabaseQueries, HasRowsAffected, ValueParser};
 use dotenvy::dotenv;
 use keyring::get_password;
-use sqlx::{postgres::PgConnectOptions, Connection, Database, Executor, MySql, Pool, Postgres, Sqlite};
 
 use crate::{
   app::App,
-  utils::{initialize_logging, initialize_panic_handler, version},
+  utils::{initialize_logging, initialize_panic_handler},
 };
 
-async fn run_app<DB>(mut args: Cli, config: Config) -> Result<()>
-where
-  DB: Database + BuildConnectionOptions + ValueParser + DatabaseQueries,
-  DB::QueryResult: HasRowsAffected,
-  for<'c> <DB as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, DB>,
-  for<'c> &'c mut DB::Connection: Executor<'c, Database = DB>,
-{
+async fn run_app(mut args: Cli, config: Config, driver: Driver) -> Result<()> {
   let mouse_mode = args.mouse_mode.take();
-  let connection_opts = DB::build_connection_opts(args)?;
-  let mut app = App::<'_, DB>::new(connection_opts, mouse_mode, config)?;
-  app.run().await?;
+  let mut app = App::new(mouse_mode, config)?;
+  app.run(driver, args).await?;
   Ok(())
 }
 
@@ -81,22 +68,20 @@ fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
         Ok((prompt_for_driver()?, None))
       }
     },
-    (None, false) => {
-      Ok(match prompt_for_database_selection(config)? {
-        Some((conn, name)) => {
-          let url = match conn.connection {
-            ConnectionString::Raw { connection_string } => Ok(connection_string),
-            ConnectionString::Structured { details } => {
-              let password = get_password(&name, &details.username)?;
-              details.connection_string(conn.driver, password)
-            },
-          }?;
+    (None, false) => Ok(match prompt_for_database_selection(config)? {
+      Some((conn, name)) => {
+        let url = match conn.connection {
+          ConnectionString::Raw { connection_string } => Ok(connection_string),
+          ConnectionString::Structured { details } => {
+            let password = get_password(&name, &details.username)?;
+            details.connection_string(conn.driver, password)
+          },
+        }?;
 
-          (conn.driver, Some(url))
-        },
-        None => (prompt_for_driver()?, None),
-      })
-    },
+        (conn.driver, Some(url))
+      },
+      None => (prompt_for_driver()?, None),
+    }),
   }?;
 
   args.connection_url = url;
@@ -111,16 +96,10 @@ async fn tokio_main() -> Result<()> {
 
   let mut args = Cli::parse();
   dotenv().ok();
-
   let config = Config::new()?;
-
   let driver = resolve_driver(&mut args, &config)?;
 
-  match driver {
-    Driver::Postgres => run_app::<Postgres>(args, config).await,
-    Driver::Mysql => run_app::<MySql>(args, config).await,
-    Driver::Sqlite => run_app::<Sqlite>(args, config).await,
-  }
+  run_app(args, config, driver).await
 }
 
 #[tokio::main]

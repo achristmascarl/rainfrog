@@ -1,37 +1,26 @@
-use std::marker::PhantomData;
-
-use async_trait::async_trait;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
 use sqlparser::ast::Statement;
-use sqlx::Either;
-use tokio::sync::mpsc::UnboundedSender;
 
 use super::{PopUp, PopUpPayload};
-use crate::{
-  action::Action,
-  app::DbTask,
-  database::{statement_type_string, Rows},
-};
+use crate::database::statement_type_string;
 
 #[derive(Debug)]
-pub struct ConfirmQuery<DB: sqlx::Database> {
+pub struct ConfirmQuery {
   pending_query: String,
   statement_type: Statement,
-  phantom: PhantomData<DB>,
 }
 
-impl<DB: sqlx::Database> ConfirmQuery<DB> {
+impl ConfirmQuery {
   pub fn new(pending_query: String, statement_type: Statement) -> Self {
-    Self { pending_query, statement_type, phantom: PhantomData }
+    Self { pending_query, statement_type }
   }
 }
 
-#[async_trait(?Send)]
-impl<DB: sqlx::Database> PopUp<DB> for ConfirmQuery<DB> {
-  async fn handle_key_events(
+impl PopUp for ConfirmQuery {
+  fn handle_key_events(
     &mut self,
     key: crossterm::event::KeyEvent,
-    app_state: &mut crate::app::AppState<'_, DB>,
+    app_state: &mut crate::app::AppState,
   ) -> color_eyre::eyre::Result<Option<PopUpPayload>> {
     match key.code {
       KeyCode::Char('Y') => Ok(Some(PopUpPayload::ConfirmQuery(self.pending_query.to_owned()))),
@@ -40,7 +29,7 @@ impl<DB: sqlx::Database> PopUp<DB> for ConfirmQuery<DB> {
     }
   }
 
-  fn get_cta_text(&self, app_state: &crate::app::AppState<'_, DB>) -> String {
+  fn get_cta_text(&self, app_state: &crate::app::AppState) -> String {
     match self.statement_type.clone() {
       Statement::Explain { statement, .. } => {
         format!(
@@ -57,7 +46,7 @@ impl<DB: sqlx::Database> PopUp<DB> for ConfirmQuery<DB> {
     }
   }
 
-  fn get_actions_text(&self, app_state: &crate::app::AppState<'_, DB>) -> String {
+  fn get_actions_text(&self, app_state: &crate::app::AppState) -> String {
     "[Y]es to confirm | [N]o to cancel".to_string()
   }
 }
