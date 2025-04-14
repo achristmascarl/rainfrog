@@ -396,12 +396,9 @@ fn parse_value(row: &<Sqlite as sqlx::Database>::Row, col: &<Sqlite as sqlx::Dat
   }
 }
 
+#[cfg(test)]
 mod tests {
-  use sqlparser::{
-    ast::Statement,
-    dialect::SQLiteDialect,
-    parser::{Parser, ParserError},
-  };
+  use sqlparser::{ast::Statement, dialect::SQLiteDialect, parser::ParserError};
 
   use super::*;
   use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};

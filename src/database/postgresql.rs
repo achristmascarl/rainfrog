@@ -119,13 +119,13 @@ impl Database for PostgresDriver<'_> {
       match results {
         Ok(Either::Left(rows_affected)) => {
           log::info!("{:?} rows affected", rows_affected);
-          return (
+          (
             QueryResultsWithMetadata {
               results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
               statement_type,
             },
             tx,
-          );
+          )
         },
         Ok(Either::Right(rows)) => {
           log::info!("{:?} rows affected", rows.rows_affected);
@@ -521,11 +521,10 @@ fn parse_value(row: &<Postgres as sqlx::Database>::Row, col: &<Postgres as sqlx:
     },
   }
 }
+
+#[cfg(test)]
 mod tests {
-  use sqlparser::{
-    dialect::PostgreSqlDialect,
-    parser::{Parser, ParserError},
-  };
+  use sqlparser::{dialect::PostgreSqlDialect, parser::ParserError};
 
   use super::*;
   use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};

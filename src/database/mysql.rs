@@ -479,14 +479,9 @@ fn parse_value(row: &<MySql as sqlx::Database>::Row, col: &<MySql as sqlx::Datab
   }
 }
 
+#[cfg(test)]
 mod tests {
-  use std::sync::Arc;
-
-  use sqlparser::{
-    ast::Statement,
-    dialect::MySqlDialect,
-    parser::{Parser, ParserError},
-  };
+  use sqlparser::{ast::Statement, dialect::MySqlDialect, parser::ParserError};
 
   use super::*;
   use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};
