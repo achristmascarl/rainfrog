@@ -58,6 +58,8 @@ pub enum Driver {
   MySql,
   #[serde(alias = "sqlite", alias = "SQLITE")]
   Sqlite,
+  #[serde(alias = "duckdb", alias = "DUCKDB")]
+  DuckDb,
 }
 
 impl FromStr for Driver {

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
 use sqlparser::{
   ast::Statement,
-  dialect::{Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
+  dialect::{Dialect, DuckDbDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
   keywords,
   parser::{Parser, ParserError},
 };
@@ -10,10 +10,12 @@ use tokio::task::JoinHandle;
 
 use crate::cli::{Cli, Driver};
 
+mod duckdb;
 mod mysql;
 mod postgresql;
 mod sqlite;
 
+pub use duckdb::DuckDbDriver;
 pub use mysql::MySqlDriver;
 pub use postgresql::PostgresDriver;
 pub use sqlite::SqliteDriver;
@@ -218,6 +220,7 @@ pub fn get_dialect(driver: Driver) -> Box<dyn Dialect + Send + Sync> {
     Driver::Postgres => Box::new(PostgreSqlDialect {}),
     Driver::MySql => Box::new(MySqlDialect {}),
     Driver::Sqlite => Box::new(SQLiteDialect {}),
+    Driver::DuckDb => Box::new(DuckDbDialect {}),
   }
 }
 
