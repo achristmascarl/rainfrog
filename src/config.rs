@@ -9,6 +9,7 @@ use serde::{de::Deserializer, Deserialize};
 
 use crate::{action::Action, cli::Driver, focus::Focus, keyring::Password};
 
+// percent encoding for passwords in connection strings
 const FRAGMENT: &AsciiSet = &CONTROLS
   .add(b' ')
   .add(b'"')
