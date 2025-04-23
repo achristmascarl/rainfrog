@@ -2209,6 +2209,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
+ "percent-encoding",
  "pretty_assertions",
  "ratatui",
  "rpassword",

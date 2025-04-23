@@ -3,10 +3,42 @@ use std::{collections::HashMap, path::PathBuf};
 use color_eyre::eyre::{self, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use derive_deref::{Deref, DerefMut};
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use ratatui::style::{Color, Modifier, Style};
 use serde::{de::Deserializer, Deserialize};
 
 use crate::{action::Action, cli::Driver, focus::Focus, keyring::Password};
+
+const FRAGMENT: &AsciiSet = &CONTROLS
+  .add(b' ')
+  .add(b'"')
+  .add(b'<')
+  .add(b'>')
+  .add(b'`')
+  .add(b'#')
+  .add(b'{')
+  .add(b'}')
+  .add(b'|')
+  .add(b'^')
+  .add(b'\\')
+  .add(b'[')
+  .add(b']')
+  .add(b'$')
+  .add(b'&')
+  .add(b'(')
+  .add(b')')
+  .add(b':')
+  .add(b';')
+  .add(b'=')
+  .add(b'?')
+  .add(b'@')
+  .add(b'!')
+  .add(b'~')
+  .add(b'\'')
+  .add(b'*')
+  .add(b'+')
+  .add(b',')
+  .add(b'/');
 
 const CONFIG: &str = include_str!("../.config/rainfrog_config.toml");
 
@@ -65,17 +97,13 @@ pub struct Config {
 
 impl StructuredConnection {
   pub fn connection_string(&self, driver: Driver, password: Password) -> Result<String> {
+    let encoded_password = utf8_percent_encode(password.as_ref(), FRAGMENT);
     match driver {
-      Driver::Postgres => Ok(format!(
-        "postgresql://{}:{}@{}:{}/{}",
-        self.username,
-        password.as_ref(),
-        self.host,
-        self.port,
-        self.database
-      )),
+      Driver::Postgres => {
+        Ok(format!("postgresql://{}:{}@{}:{}/{}", self.username, encoded_password, self.host, self.port, self.database))
+      },
       Driver::MySql => {
-        Ok(format!("mysql://{}:{}@{}:{}/{}", self.username, password.as_ref(), self.host, self.port, self.database))
+        Ok(format!("mysql://{}:{}@{}:{}/{}", self.username, encoded_password, self.host, self.port, self.database))
       },
       Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
     }
