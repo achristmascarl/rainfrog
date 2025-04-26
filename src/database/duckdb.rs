@@ -1,12 +1,11 @@
 use std::{
   io::{self, Write as _},
   string::String,
-  sync::Arc,
 };
 
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
-use duckdb::{params, Config, Connection, Transaction};
+use duckdb::{Config, Connection, Transaction};
 
 use crate::cli::{Cli, Driver};
 
@@ -21,7 +20,7 @@ enum DuckDbTask<'a> {
 
 #[derive(Default)]
 pub struct DuckDbDriver<'a> {
-  connection: Option<Arc<Connection>>,
+  connection: Option<Connection>,
   task: Option<DuckDbTask<'a>>,
 }
 
@@ -29,7 +28,7 @@ pub struct DuckDbDriver<'a> {
 impl Database for DuckDbDriver<'_> {
   async fn init(&mut self, args: Cli) -> Result<()> {
     let (path, config) = super::DuckDbDriver::build_connection_opts(args)?;
-    let conn = Arc::new(Connection::open_with_flags(path, config)?);
+    let conn = Connection::open_with_flags(path, config)?;
     self.connection = Some(conn);
     Ok(())
   }
@@ -37,44 +36,13 @@ impl Database for DuckDbDriver<'_> {
   // since it's possible for raw_sql to execute multiple queries in a single string,
   // we only execute the first one and then drop the rest.
   fn start_query(&mut self, query: String) -> Result<()> {
-    let (first_query, statement_type) = super::get_first_query(query, Driver::DuckDb)?;
-    let connection = self.connection.clone().unwrap().try_clone()?;
+    let (first_query, statement_type) = super::get_first_query(query.clone(), Driver::DuckDb)?;
+    let connection = self.connection.as_ref().unwrap().try_clone()?;
     self.task = Some(DuckDbTask::Query(tokio::spawn(async move {
-      let mut statement = connection.prepare(&first_query).unwrap();
-      let mut headers: Headers = Vec::new();
-      let mut results: Vec<Vec<String>> = Vec::new();
-      let rows = statement.query([]);
-      match rows {
-        Ok(mut rows) => {
-          while let Ok(Some(row)) = rows.next() {
-            if headers.is_empty() {
-              headers = row
-                .as_ref()
-                .column_names()
-                .iter()
-                .enumerate()
-                .map(|(i, col)| {
-                  let type_name = row.as_ref().column_type(i);
-                  Header { type_name: type_name.to_string(), name: col.to_string() }
-                })
-                .collect();
-            }
-            let mut r: Vec<String> = Vec::new();
-            for i in 0..headers.len() {
-              let value = row.get::<_, Option<String>>(i);
-              if let Ok(Some(value)) = value {
-                r.push(value);
-              } else {
-                r.push(String::new());
-              }
-            }
-            results.push(r);
-          }
-          QueryResultsWithMetadata { results: Ok(Rows { headers, rows: results, rows_affected: None }), statement_type }
-        },
-        Err(e) => {
-          return QueryResultsWithMetadata { results: Err(eyre::Report::new(e)), statement_type };
-        },
+      let results = run_query(connection, query).await;
+      match results {
+        Ok(rows) => QueryResultsWithMetadata { results: Ok(rows), statement_type },
+        Err(e) => QueryResultsWithMetadata { results: Err(e), statement_type },
       }
     })));
     Ok(())
@@ -138,43 +106,17 @@ impl Database for DuckDbDriver<'_> {
   }
 
   async fn load_menu(&self) -> Result<Rows> {
-    let connection = self.connection.clone().unwrap().try_clone()?;
-    let mut statement = connection.prepare(
+    let connection = self.connection.as_ref().unwrap().try_clone()?;
+    run_query(
+      connection,
       "select table_schema, table_name
       from information_schema.tables
       where table_schema != 'information_schema'
       group by table_schema, table_name
-      order by table_schema, table_name asc",
-    )?;
-    let mut rows = statement.query([])?;
-
-    let mut headers: Headers = Vec::new();
-    let mut results: Vec<Vec<String>> = Vec::new();
-    while let Ok(Some(row)) = rows.next() {
-      if headers.is_empty() {
-        headers = row
-          .as_ref()
-          .column_names()
-          .iter()
-          .enumerate()
-          .map(|(i, col)| {
-            let type_name = row.as_ref().column_type(i);
-            Header { type_name: type_name.to_string(), name: col.to_string() }
-          })
-          .collect();
-      }
-      let mut r: Vec<String> = Vec::new();
-      for i in 0..headers.len() {
-        let value = row.get::<_, Option<String>>(i);
-        if let Ok(Some(value)) = value {
-          r.push(value);
-        } else {
-          r.push(String::new());
-        }
-      }
-      results.push(r);
-    }
-    Ok(Rows { headers, rows: results, rows_affected: None })
+      order by table_schema, table_name asc"
+        .to_string(),
+    )
+    .await
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
@@ -196,6 +138,41 @@ impl Database for DuckDbDriver<'_> {
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
     todo!()
   }
+}
+
+// since Connection isn't Send/Sync, we need to clone it for each query:
+// https://github.com/duckdb/duckdb-rs/issues/378
+async fn run_query(connection: Connection, query: String) -> Result<Rows> {
+  let mut statement = connection.prepare(query.as_str())?;
+  let mut rows = statement.query([])?;
+
+  let mut headers: Headers = Vec::new();
+  let mut results: Vec<Vec<String>> = Vec::new();
+  while let Ok(Some(row)) = rows.next() {
+    if headers.is_empty() {
+      headers = row
+        .as_ref()
+        .column_names()
+        .iter()
+        .enumerate()
+        .map(|(i, col)| {
+          let type_name = row.as_ref().column_type(i);
+          Header { type_name: type_name.to_string(), name: col.to_string() }
+        })
+        .collect();
+    }
+    let mut r: Vec<String> = Vec::new();
+    for i in 0..headers.len() {
+      let value = row.get::<_, Option<String>>(i);
+      if let Ok(Some(value)) = value {
+        r.push(value);
+      } else {
+        r.push(String::new());
+      }
+    }
+    results.push(r);
+  }
+  Ok(Rows { headers, rows: results, rows_affected: None })
 }
 
 impl DuckDbDriver<'_> {
