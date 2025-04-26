@@ -141,7 +141,12 @@ fn get_first_query(query: String, driver: Driver) -> Result<(String, Statement),
   }
 }
 
-pub fn get_execution_type(query: String, confirmed: bool, driver: Driver) -> Result<(ExecutionType, Statement)> {
+pub fn get_execution_type(
+  query: String,
+  confirmed: bool,
+  driver: Driver,
+  bypass_parser: bool,
+) -> Result<(ExecutionType, Statement)> {
   let first_query = get_first_query(query, driver);
 
   match first_query {

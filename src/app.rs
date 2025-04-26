@@ -239,7 +239,7 @@ impl App {
                     self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmQuery(query)) => {
-                    action_tx.send(Action::Query(vec![query], true))?;
+                    action_tx.send(Action::Query(vec![query], true, false))?;
                     self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmExport(confirmed)) => {
@@ -370,13 +370,13 @@ impl App {
             let rows = database.load_menu().await;
             self.components.menu.set_table_list(Some(rows));
           },
-          Action::Query(query_lines, confirmed) => 'query_action: {
+          Action::Query(query_lines, confirmed, bypass_parser) => 'query_action: {
             let query_string = query_lines.clone().join(" \n");
             if query_string.is_empty() {
               break 'query_action;
             }
             self.add_to_history(query_lines.clone());
-            let execution_info = database::get_execution_type(query_string.clone(), *confirmed, driver);
+            let execution_info = database::get_execution_type(query_string.clone(), *confirmed, driver, *bypass_parser);
             match execution_info {
               Ok((ExecutionType::Transaction, _)) => {
                 self.components.data.set_loading();
@@ -417,7 +417,7 @@ impl App {
             action_tx.send(Action::QueryToEditor(vec![preview_query.clone()]))?;
             action_tx.send(Action::FocusEditor)?;
             action_tx.send(Action::FocusMenu)?;
-            action_tx.send(Action::Query(vec![preview_query.clone()], false))?;
+            action_tx.send(Action::Query(vec![preview_query.clone()], false, false))?;
           },
 
           Action::RequestSaveFavorite(query_lines) => {
