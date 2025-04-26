@@ -70,6 +70,7 @@ impl FromStr for Driver {
       "postgres" | "postgresql" => Ok(Driver::Postgres),
       "mysql" => Ok(Driver::MySql),
       "sqlite" => Ok(Driver::Sqlite),
+      "duckdb" => Ok(Driver::DuckDb),
       _ => Err(eyre::Report::msg("Invalid driver")),
     }
   }

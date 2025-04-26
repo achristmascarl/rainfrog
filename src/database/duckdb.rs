@@ -41,21 +41,24 @@ impl Database for DuckDbDriver<'_> {
     let connection = self.connection.clone().unwrap().try_clone()?;
     self.task = Some(DuckDbTask::Query(tokio::spawn(async move {
       let mut statement = connection.prepare(&first_query).unwrap();
-      let headers: Headers = statement
-        .column_names()
-        .iter()
-        .enumerate()
-        .map(|(i, col)| {
-          let type_name = statement.column_type(i);
-          Header { type_name: type_name.to_string(), name: col.to_string() }
-        })
-        .collect();
-
+      let mut headers: Headers = Vec::new();
       let mut results: Vec<Vec<String>> = Vec::new();
       let rows = statement.query([]);
       match rows {
         Ok(mut rows) => {
           while let Ok(Some(row)) = rows.next() {
+            if headers.is_empty() {
+              headers = row
+                .as_ref()
+                .column_names()
+                .iter()
+                .enumerate()
+                .map(|(i, col)| {
+                  let type_name = row.as_ref().column_type(i);
+                  Header { type_name: type_name.to_string(), name: col.to_string() }
+                })
+                .collect();
+            }
             let mut r: Vec<String> = Vec::new();
             for i in 0..headers.len() {
               let value = row.get::<_, Option<String>>(i);
@@ -135,7 +138,43 @@ impl Database for DuckDbDriver<'_> {
   }
 
   async fn load_menu(&self) -> Result<Rows> {
-    todo!()
+    let connection = self.connection.clone().unwrap().try_clone()?;
+    let mut statement = connection.prepare(
+      "select table_schema, table_name
+      from information_schema.tables
+      where table_schema != 'information_schema'
+      group by table_schema, table_name
+      order by table_schema, table_name asc",
+    )?;
+    let mut rows = statement.query([])?;
+
+    let mut headers: Headers = Vec::new();
+    let mut results: Vec<Vec<String>> = Vec::new();
+    while let Ok(Some(row)) = rows.next() {
+      if headers.is_empty() {
+        headers = row
+          .as_ref()
+          .column_names()
+          .iter()
+          .enumerate()
+          .map(|(i, col)| {
+            let type_name = row.as_ref().column_type(i);
+            Header { type_name: type_name.to_string(), name: col.to_string() }
+          })
+          .collect();
+      }
+      let mut r: Vec<String> = Vec::new();
+      for i in 0..headers.len() {
+        let value = row.get::<_, Option<String>>(i);
+        if let Ok(Some(value)) = value {
+          r.push(value);
+        } else {
+          r.push(String::new());
+        }
+      }
+      results.push(r);
+    }
+    Ok(Rows { headers, rows: results, rows_affected: None })
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
