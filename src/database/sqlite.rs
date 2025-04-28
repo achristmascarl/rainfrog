@@ -408,7 +408,7 @@ fn parse_value(row: &<Sqlite as sqlx::Database>::Row, col: &<Sqlite as sqlx::Dat
 
 #[cfg(test)]
 mod tests {
-  use sqlparser::{ast::Statement, dialect::SQLiteDialect, parser::ParserError};
+  use sqlparser::{ast::Statement, parser::ParserError};
 
   use super::*;
   use crate::database::{get_first_query, ExecutionType, ParseError};
@@ -469,8 +469,6 @@ mod tests {
         Ok(("EXPLAIN SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Explain { .. })))),
       ),
     ];
-
-    let dialect = Box::new(SQLiteDialect {});
 
     for (input, expected_output) in test_cases {
       let result = get_first_query(input.to_string(), Driver::Sqlite);

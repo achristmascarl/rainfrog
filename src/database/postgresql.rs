@@ -533,7 +533,7 @@ fn parse_value(row: &<Postgres as sqlx::Database>::Row, col: &<Postgres as sqlx:
 
 #[cfg(test)]
 mod tests {
-  use sqlparser::{dialect::PostgreSqlDialect, parser::ParserError};
+  use sqlparser::parser::ParserError;
 
   use super::*;
   use crate::database::{get_first_query, ExecutionType, ParseError};
@@ -598,8 +598,6 @@ mod tests {
         Ok(("EXPLAIN SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Explain { .. })))),
       ),
     ];
-
-    let dialect = Box::new(PostgreSqlDialect {});
 
     for (input, expected_output) in test_cases {
       let result = get_first_query(input.to_string(), Driver::Postgres);
