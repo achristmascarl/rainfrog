@@ -1,32 +1,29 @@
 use std::{
   io::{self, Write as _},
-  ops::Deref,
   string::String,
 };
 
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
-use duckdb::{Config, Connection, Statement, Transaction};
+use duckdb::{Config, Connection};
+use sqlparser::ast::Statement;
 
 use crate::cli::{Cli, Driver};
 
-use super::{Database, DbTaskResult, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows};
+use super::{Database, DbTaskResult, ExecutionType, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows};
 
-type TransactionTask<'a> = tokio::task::JoinHandle<(QueryResultsWithMetadata, Option<Transaction<'a>>)>;
-enum DuckDbTask<'a> {
+enum DuckDbTask {
   Query(QueryTask),
-  TxStart(TransactionTask<'a>),
-  TxPending((Transaction<'a>, QueryResultsWithMetadata)),
 }
 
 #[derive(Default)]
-pub struct DuckDbDriver<'a> {
+pub struct DuckDbDriver {
   connection: Option<Connection>,
-  task: Option<DuckDbTask<'a>>,
+  task: Option<DuckDbTask>,
 }
 
 #[async_trait(?Send)]
-impl Database for DuckDbDriver<'_> {
+impl Database for DuckDbDriver {
   async fn init(&mut self, args: Cli) -> Result<()> {
     let (path, config) = super::DuckDbDriver::build_connection_opts(args)?;
     let conn = Connection::open_with_flags(path, config)?;
@@ -38,6 +35,8 @@ impl Database for DuckDbDriver<'_> {
   // we only execute the first one and then drop the rest.
   fn start_query(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query.clone(), Driver::DuckDb)?;
+    // since Connection isn't Send/Sync, we need to clone it for each query:
+    // https://github.com/duckdb/duckdb-rs/issues/378
     let connection = self.connection.as_ref().unwrap().try_clone()?;
     self.task = Some(DuckDbTask::Query(tokio::spawn(async move {
       let results = run_query(connection, first_query).await;
@@ -53,8 +52,6 @@ impl Database for DuckDbDriver<'_> {
     if let Some(task) = self.task.take() {
       match task {
         DuckDbTask::Query(handle) => handle.abort(),
-        DuckDbTask::TxStart(handle) => handle.abort(),
-        _ => {},
       };
       Ok(true)
     } else {
@@ -73,49 +70,21 @@ impl Database for DuckDbDriver<'_> {
           (DbTaskResult::Finished(result), None)
         }
       },
-      Some(DuckDbTask::TxStart(handle)) => {
-        if !handle.is_finished() {
-          (DbTaskResult::Pending, Some(DuckDbTask::TxStart(handle)))
-        } else {
-          let (result, tx) = handle.await?;
-          let rows_affected = match &result.results {
-            Ok(rows) => rows.rows_affected,
-            _ => None,
-          };
-          match tx {
-            Some(tx) => (
-              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-              Some(DuckDbTask::TxPending((tx, result))),
-            ),
-            None => (DbTaskResult::Finished(result), None),
-          }
-        }
-      },
-      Some(DuckDbTask::TxPending((tx, results))) => (DbTaskResult::Pending, Some(DuckDbTask::TxPending((tx, results)))),
     };
     self.task = next_task;
     Ok(task_result)
   }
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
-    let (first_query, statement_type) = super::get_first_query(query.clone(), Driver::DuckDb)?;
-    let connection = self.connection.as_ref().unwrap().try_clone()?;
-    self.task = Some(DuckDbTask::TxStart(tokio::spawn(async move {
-      let results = run_query_with_tx(&mut connection, first_query).await;
-      match results {
-        Ok((rows, tx)) => (QueryResultsWithMetadata { results: Ok(rows), statement_type }, Some(tx)),
-        Err(e) => (QueryResultsWithMetadata { results: Err(e), statement_type }, None),
-      }
-    })));
-    Ok(())
+    Err(eyre::Report::msg("Transactions are not currently supported when using the DuckDB driver"))
   }
 
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
-    todo!()
+    Err(eyre::Report::msg("Transactions are not currently supported when using the DuckDB driver"))
   }
 
   async fn rollback_tx(&mut self) -> Result<()> {
-    todo!()
+    Err(eyre::Report::msg("Transactions are not currently supported when using the DuckDB driver"))
   }
 
   async fn load_menu(&self) -> Result<Rows> {
@@ -151,22 +120,21 @@ impl Database for DuckDbDriver<'_> {
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
     todo!()
   }
+
+  fn get_execution_type(&self, query: String, confirmed: bool) -> Result<(ExecutionType, Statement)> {
+    let (_, statement) = super::get_first_query(query, Driver::DuckDb)?;
+    match super::get_default_execution_type(statement.clone(), confirmed) {
+      ExecutionType::Normal => Ok((ExecutionType::Normal, statement)),
+      ExecutionType::Confirm => Ok((ExecutionType::Confirm, statement)),
+      ExecutionType::Transaction => Ok((ExecutionType::Confirm, statement)), // don't allow auto-transactions
+    }
+  }
 }
 
-// since Connection isn't Send/Sync, we need to clone it for each query:
-// https://github.com/duckdb/duckdb-rs/issues/378
 async fn run_query(connection: Connection, query: String) -> Result<Rows> {
   let mut statement = connection.prepare(query.as_str())?;
   let rows = statement.query([])?;
   fetch_rows(rows)
-}
-
-async fn run_query_with_tx(connection: &mut Connection, query: String) -> Result<(Rows, Transaction<'_>)> {
-  let tx = connection.transaction()?;
-  let mut statement = tx.prepare(query.as_str())?;
-  let rows = statement.query([])?;
-  let fetched_rows = fetch_rows(rows)?;
-  Ok((fetched_rows, tx))
 }
 
 fn fetch_rows(mut rows: duckdb::Rows<'_>) -> Result<Rows> {
@@ -199,7 +167,7 @@ fn fetch_rows(mut rows: duckdb::Rows<'_>) -> Result<Rows> {
   Ok(Rows { headers, rows: results, rows_affected: None })
 }
 
-impl DuckDbDriver<'_> {
+impl DuckDbDriver {
   pub fn new() -> Self {
     DuckDbDriver { connection: None, task: None }
   }

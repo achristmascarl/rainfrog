@@ -16,7 +16,9 @@ use sqlx::{
 };
 use tokio::task::JoinHandle;
 
-use super::{Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value};
+use super::{
+  Database, DbTaskResult, Driver, ExecutionType, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+};
 
 type MySqlTransaction<'a> = sqlx::Transaction<'a, MySql>;
 type TransactionTask<'a> = JoinHandle<(QueryResultsWithMetadata, MySqlTransaction<'a>)>;
@@ -204,6 +206,14 @@ impl Database for MySqlDriver<'_> {
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
     "select 'MySQL does not support row-level security policies' as message".to_owned()
+  }
+
+  fn get_execution_type(&self, query: String, confirmed: bool) -> Result<(ExecutionType, Statement)> {
+    let first_query = super::get_first_query(query, Driver::MySql);
+    match first_query {
+      Ok((_, statement)) => Ok((super::get_default_execution_type(statement.clone(), confirmed), statement)),
+      Err(e) => Err(eyre::Report::new(e)),
+    }
   }
 }
 
@@ -484,7 +494,7 @@ mod tests {
   use sqlparser::{ast::Statement, dialect::MySqlDialect, parser::ParserError};
 
   use super::*;
-  use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};
+  use crate::database::{get_first_query, ExecutionType, ParseError};
 
   #[test]
   fn test_get_first_query() {
@@ -580,9 +590,11 @@ mod tests {
       ("EXPLAIN ANALYZE SELECT * FROM users WHERE id = 1", ExecutionType::Normal),
     ];
 
+    let driver = MySqlDriver::new();
+
     for (query, expected) in test_cases {
       assert_eq!(
-        get_execution_type(query.to_string(), false, Driver::MySql).unwrap().0,
+        driver.get_execution_type(query.to_string(), false).unwrap().0,
         expected,
         "Failed for query: {}",
         query

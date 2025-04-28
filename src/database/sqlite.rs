@@ -16,7 +16,9 @@ use sqlx::{
   Column, Either, Row, ValueRef,
 };
 
-use super::{Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value};
+use super::{
+  Database, DbTaskResult, Driver, ExecutionType, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+};
 
 type SqliteTransaction<'a> = sqlx::Transaction<'a, Sqlite>;
 type TransactionTask<'a> = tokio::task::JoinHandle<(QueryResultsWithMetadata, SqliteTransaction<'a>)>;
@@ -184,6 +186,14 @@ impl Database for SqliteDriver<'_> {
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
     "select 'SQLite does not support row-level security policies' as message".to_owned()
+  }
+
+  fn get_execution_type(&self, query: String, confirmed: bool) -> Result<(ExecutionType, Statement)> {
+    let first_query = super::get_first_query(query, Driver::Sqlite);
+    match first_query {
+      Ok((_, statement)) => Ok((super::get_default_execution_type(statement.clone(), confirmed), statement)),
+      Err(e) => Err(eyre::Report::new(e)),
+    }
   }
 }
 
@@ -401,7 +411,7 @@ mod tests {
   use sqlparser::{ast::Statement, dialect::SQLiteDialect, parser::ParserError};
 
   use super::*;
-  use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};
+  use crate::database::{get_first_query, ExecutionType, ParseError};
 
   #[test]
   fn test_get_first_query() {
@@ -497,9 +507,11 @@ mod tests {
       ("EXPLAIN Query PLAN DELETE FROM users WHERE id = 1", ExecutionType::Normal),
     ];
 
+    let driver = SqliteDriver::new();
+
     for (query, expected) in test_cases {
       assert_eq!(
-        get_execution_type(query.to_string(), false, Driver::Sqlite).unwrap().0,
+        driver.get_execution_type(query.to_string(), false).unwrap().0,
         expected,
         "Failed for query: {}",
         query

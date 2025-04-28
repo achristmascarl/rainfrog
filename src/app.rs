@@ -377,7 +377,7 @@ impl App {
               break 'query_action;
             }
             self.add_to_history(query_lines.clone());
-            let execution_info = database::get_execution_type(query_string.clone(), *confirmed, driver);
+            let execution_info = database.get_execution_type(query_string.clone(), *confirmed);
             match execution_info {
               Ok((ExecutionType::Transaction, _)) => {
                 self.components.data.set_loading();

@@ -18,7 +18,8 @@ use sqlx::{
 use tokio::task::JoinHandle;
 
 use super::{
-  vec_to_string, Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+  vec_to_string, Database, DbTaskResult, Driver, ExecutionType, Header, Headers, QueryResultsWithMetadata, QueryTask,
+  Rows, Value,
 };
 
 type PostgresTransaction<'a> = sqlx::Transaction<'a, Postgres>;
@@ -194,6 +195,14 @@ impl Database for PostgresDriver<'_> {
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
     format!("select * from pg_policies where schemaname = '{}' and tablename = '{}'", schema, table)
+  }
+
+  fn get_execution_type(&self, query: String, confirmed: bool) -> Result<(ExecutionType, Statement)> {
+    let first_query = super::get_first_query(query, Driver::Postgres);
+    match first_query {
+      Ok((_, statement)) => Ok((super::get_default_execution_type(statement.clone(), confirmed), statement)),
+      Err(e) => Err(eyre::Report::new(e)),
+    }
   }
 }
 
@@ -525,7 +534,7 @@ mod tests {
   use sqlparser::{dialect::PostgreSqlDialect, parser::ParserError};
 
   use super::*;
-  use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};
+  use crate::database::{get_first_query, ExecutionType, ParseError};
 
   #[test]
   fn test_get_first_query() {
@@ -625,9 +634,11 @@ mod tests {
       ("EXPLAIN ANALYZE SELECT * FROM users WHERE id = 1", ExecutionType::Normal),
     ];
 
+    let driver = PostgresDriver::new();
+
     for (query, expected) in test_cases {
       assert_eq!(
-        get_execution_type(query.to_string(), false, Driver::Postgres).unwrap().0,
+        driver.get_execution_type(query.to_string(), false).unwrap().0,
         expected,
         "Failed for query: {}",
         query
