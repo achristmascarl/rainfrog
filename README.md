@@ -28,6 +28,7 @@ rainfrog has mainly been tested with postgres, and postgres will be the primary
 database targeted. there are a few other databases that can be used as well. 
 if a database is marked as experimental, that means support was very recently
 added / it is not well tested, so be careful when using them:
+- postgres
 - mysql
 - sqlite
 - duckdb (⚠️ EXPERIMENTAL)

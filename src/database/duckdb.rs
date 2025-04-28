@@ -266,7 +266,7 @@ mod tests {
     ];
 
     for (input, expected_output) in test_cases {
-      let result = get_first_query(input.to_string(), Driver::Sqlite);
+      let result = get_first_query(input.to_string(), Driver::DuckDb);
       match (result, expected_output) {
         (Ok((query, statement_type)), Ok((expected_query, match_statement))) => {
           assert_eq!(query, expected_query);
@@ -287,7 +287,7 @@ mod tests {
   }
 
   #[test]
-  fn test_execution_type_sqlite() {
+  fn test_execution_type_duckdb() {
     let test_cases = vec![
       ("DELETE FROM users WHERE id = 1", ExecutionType::Confirm),
       ("DROP TABLE users", ExecutionType::Confirm),
