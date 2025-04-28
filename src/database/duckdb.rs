@@ -1,17 +1,18 @@
 use std::{
   io::{self, Write as _},
+  ops::Deref,
   string::String,
 };
 
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
-use duckdb::{Config, Connection, Transaction};
+use duckdb::{Config, Connection, Statement, Transaction};
 
 use crate::cli::{Cli, Driver};
 
 use super::{Database, DbTaskResult, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows};
 
-type TransactionTask<'a> = tokio::task::JoinHandle<(QueryResultsWithMetadata, Transaction<'a>)>;
+type TransactionTask<'a> = tokio::task::JoinHandle<(QueryResultsWithMetadata, Option<Transaction<'a>>)>;
 enum DuckDbTask<'a> {
   Query(QueryTask),
   TxStart(TransactionTask<'a>),
@@ -39,7 +40,7 @@ impl Database for DuckDbDriver<'_> {
     let (first_query, statement_type) = super::get_first_query(query.clone(), Driver::DuckDb)?;
     let connection = self.connection.as_ref().unwrap().try_clone()?;
     self.task = Some(DuckDbTask::Query(tokio::spawn(async move {
-      let results = run_query(connection, query).await;
+      let results = run_query(connection, first_query).await;
       match results {
         Ok(rows) => QueryResultsWithMetadata { results: Ok(rows), statement_type },
         Err(e) => QueryResultsWithMetadata { results: Err(e), statement_type },
@@ -81,10 +82,13 @@ impl Database for DuckDbDriver<'_> {
             Ok(rows) => rows.rows_affected,
             _ => None,
           };
-          (
-            DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-            Some(DuckDbTask::TxPending((tx, result))),
-          )
+          match tx {
+            Some(tx) => (
+              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+              Some(DuckDbTask::TxPending((tx, result))),
+            ),
+            None => (DbTaskResult::Finished(result), None),
+          }
         }
       },
       Some(DuckDbTask::TxPending((tx, results))) => (DbTaskResult::Pending, Some(DuckDbTask::TxPending((tx, results)))),
@@ -94,7 +98,16 @@ impl Database for DuckDbDriver<'_> {
   }
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
-    todo!()
+    let (first_query, statement_type) = super::get_first_query(query.clone(), Driver::DuckDb)?;
+    let connection = self.connection.as_ref().unwrap().try_clone()?;
+    self.task = Some(DuckDbTask::TxStart(tokio::spawn(async move {
+      let results = run_query_with_tx(&mut connection, first_query).await;
+      match results {
+        Ok((rows, tx)) => (QueryResultsWithMetadata { results: Ok(rows), statement_type }, Some(tx)),
+        Err(e) => (QueryResultsWithMetadata { results: Err(e), statement_type }, None),
+      }
+    })));
+    Ok(())
   }
 
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
@@ -144,8 +157,19 @@ impl Database for DuckDbDriver<'_> {
 // https://github.com/duckdb/duckdb-rs/issues/378
 async fn run_query(connection: Connection, query: String) -> Result<Rows> {
   let mut statement = connection.prepare(query.as_str())?;
-  let mut rows = statement.query([])?;
+  let rows = statement.query([])?;
+  fetch_rows(rows)
+}
 
+async fn run_query_with_tx(connection: &mut Connection, query: String) -> Result<(Rows, Transaction<'_>)> {
+  let tx = connection.transaction()?;
+  let mut statement = tx.prepare(query.as_str())?;
+  let rows = statement.query([])?;
+  let fetched_rows = fetch_rows(rows)?;
+  Ok((fetched_rows, tx))
+}
+
+fn fetch_rows(mut rows: duckdb::Rows<'_>) -> Result<Rows> {
   let mut headers: Headers = Vec::new();
   let mut results: Vec<Vec<String>> = Vec::new();
   while let Ok(Some(row)) = rows.next() {
