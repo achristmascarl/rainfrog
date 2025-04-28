@@ -102,23 +102,29 @@ impl Database for DuckDbDriver {
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
-    todo!()
+    format!("select * from \"{}\".\"{}\" limit 100", schema, table)
   }
 
   fn preview_columns_query(&self, schema: &str, table: &str) -> String {
-    todo!()
+    format!(
+      "select column_name, * from information_schema.columns where table_schema = '{}' and table_name = '{}'",
+      schema, table
+    )
   }
 
   fn preview_constraints_query(&self, schema: &str, table: &str) -> String {
-    todo!()
+    format!(
+      "select constraint_name, * from information_schema.table_constraints where table_schema = '{}' and table_name = '{}'",
+      schema, table
+    )
   }
 
   fn preview_indexes_query(&self, schema: &str, table: &str) -> String {
-    todo!()
+    format!("select indexname, indexdef, * from pg_indexes where schemaname = '{}' and tablename = '{}'", schema, table)
   }
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
-    todo!()
+    "select 'DuckDB does not support row-level security policies' as message".to_owned()
   }
 
   fn get_execution_type(&self, query: String, confirmed: bool) -> Result<(ExecutionType, Statement)> {
