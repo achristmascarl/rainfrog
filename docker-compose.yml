@@ -20,3 +20,14 @@ services:
       - "${MYSQL_PORT}:3306"
     volumes:
       - ./dev/mysql_init.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  rainfrog-oracle:
+    container_name: rainfrog-oracle
+    image: gvenzl/oracle-xe:21.3.0
+    environment:
+      ORACLE_PASSWORD: password
+      APP_USER: rainfrog
+      APP_USER_PASSWORD: password
+      ORACLE_DATABASE: rainfrog
+    ports:
+      - "${ORACLE_PORT}:1521"

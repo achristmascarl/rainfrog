@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
+use oracle::OracleDialect;
 use sqlparser::{
   ast::Statement,
   dialect::{Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
@@ -11,10 +12,12 @@ use tokio::task::JoinHandle;
 use crate::cli::{Cli, Driver};
 
 mod mysql;
+mod oracle;
 mod postgresql;
 mod sqlite;
 
 pub use mysql::MySqlDriver;
+pub use oracle::OracleDriver;
 pub use postgresql::PostgresDriver;
 pub use sqlite::SqliteDriver;
 
@@ -218,6 +221,7 @@ pub fn get_dialect(driver: Driver) -> Box<dyn Dialect + Send + Sync> {
     Driver::Postgres => Box::new(PostgreSqlDialect {}),
     Driver::MySql => Box::new(MySqlDialect {}),
     Driver::Sqlite => Box::new(SQLiteDialect {}),
+    Driver::Oracle => Box::new(OracleDialect {}),
   }
 }
 
