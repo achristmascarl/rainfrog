@@ -25,9 +25,12 @@ pgadmin/dbeaver.
 ### supported databases
 
 rainfrog has mainly been tested with postgres, and postgres will be the primary
-database targeted. **mysql and sqlite are also supported, but they have not been 
-tested as extensively as postgres**; use with caution, and check out the
-[known issues](#known-issues-and-limitations) section for things to look out for!
+database targeted. there are a few other databases that can be used as well. 
+if a database is marked as experimental, that means support was very recently
+added / it is not well tested, so be careful when using them:
+- mysql
+- sqlite
+- duckdb (⚠️ EXPERIMENTAL)
 
 the postgres driver can also be used to connect to other databases that support 
 the postgres wire protocol, such as AWS Redshift. however, this functionality is not 
