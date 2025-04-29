@@ -31,3 +31,5 @@ services:
       ORACLE_DATABASE: rainfrog
     ports:
       - "${ORACLE_PORT}:1521"
+    volumes:
+      - ./dev/oracle_init.sql:/container-entrypoint-initdb.d/init.sql
