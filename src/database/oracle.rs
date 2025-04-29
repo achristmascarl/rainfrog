@@ -53,7 +53,6 @@ impl Database for OracleDriver {
 
     self.task = Some(OracleTask::Query(tokio::spawn(async move {
       let results = query_with_connection(&conn.unwrap(), &first_query);
-      log::info!("results: {:?}", results);
       QueryResultsWithMetadata { results, statement_type }
     })));
 
@@ -110,28 +109,19 @@ impl Database for OracleDriver {
   }
 
   fn preview_columns_query(&self, schema: &str, table: &str) -> String {
-    format!(
-      "select column_name, data_type, data_length from user_tab_columns where table_name = '{}' and owner = '{}'",
-      table, schema
-    )
+    format!("select * from user_tab_columns where table_name = '{}' and user = '{}'", table, schema)
   }
 
   fn preview_constraints_query(&self, schema: &str, table: &str) -> String {
-    format!( "select constraint_name, constraint_type, search_condition from user_constraints where table_name = '{}' and owner = '{}'", table, schema)
+    format!("select * from user_constraints where table_name = '{}' and user = '{}'", table, schema)
   }
 
   fn preview_indexes_query(&self, schema: &str, table: &str) -> String {
-    format!(
-      "select index_name, uniqueness, column_name from user_ind_columns where table_name = '{}' and owner = '{}'",
-      table, schema
-    )
+    format!("select * from user_ind_columns where table_name = '{}' and user = '{}'", table, schema)
   }
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
-    format!(
-      "select policy_name, object_name, policy_type from user_policies where object_name = '{}' and owner = '{}'",
-      table, schema
-    )
+    format!("select * from user_policies where object_name = '{}' and user = '{}'", table, schema)
   }
 }
 
