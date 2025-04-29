@@ -99,34 +99,37 @@ impl Database for OracleDriver {
   }
 
   async fn load_menu(&self) -> Result<Rows> {
-    query_with_connection(self.conn.as_ref().unwrap(), "SELECT table_name, table_name FROM user_tables")
+    query_with_connection(
+      self.conn.as_ref().unwrap(),
+      "select user, table_name from user_tables where tablespace_name is not null order by user, table_name",
+    )
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
-    format!("SELECT * FROM \"{}\".\"{}\" ROWNUM <= 100", schema, table)
+    format!("select * from \"{}\".\"{}\" where rownum <= 100", schema, table)
   }
 
   fn preview_columns_query(&self, schema: &str, table: &str) -> String {
     format!(
-      "SELECT column_name, data_type, data_length FROM user_tab_columns WHERE table_name = '{}' AND owner = '{}'",
+      "select column_name, data_type, data_length from user_tab_columns where table_name = '{}' and owner = '{}'",
       table, schema
     )
   }
 
   fn preview_constraints_query(&self, schema: &str, table: &str) -> String {
-    format!( "SELECT constraint_name, constraint_type, search_condition FROM user_constraints WHERE table_name = '{}' AND owner = '{}'", table, schema)
+    format!( "select constraint_name, constraint_type, search_condition from user_constraints where table_name = '{}' and owner = '{}'", table, schema)
   }
 
   fn preview_indexes_query(&self, schema: &str, table: &str) -> String {
     format!(
-      "SELECT index_name, uniqueness, column_name FROM user_ind_columns WHERE table_name = '{}' AND owner = '{}'",
+      "select index_name, uniqueness, column_name from user_ind_columns where table_name = '{}' and owner = '{}'",
       table, schema
     )
   }
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
     format!(
-      "SELECT policy_name, object_name, policy_type FROM user_policies WHERE object_name = '{}' AND owner = '{}'",
+      "select policy_name, object_name, policy_type from user_policies where object_name = '{}' and owner = '{}'",
       table, schema
     )
   }
