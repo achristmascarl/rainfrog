@@ -1,9 +1,8 @@
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
-use oracle::OracleDialect;
 use sqlparser::{
   ast::Statement,
-  dialect::{Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
+  dialect::{Dialect, GenericDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
   keywords,
   parser::{Parser, ParserError},
 };
@@ -221,7 +220,7 @@ pub fn get_dialect(driver: Driver) -> Box<dyn Dialect + Send + Sync> {
     Driver::Postgres => Box::new(PostgreSqlDialect {}),
     Driver::MySql => Box::new(MySqlDialect {}),
     Driver::Sqlite => Box::new(SQLiteDialect {}),
-    Driver::Oracle => Box::new(OracleDialect {}),
+    Driver::Oracle => Box::new(GenericDialect {}),
   }
 }
 

@@ -3,25 +3,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use color_eyre::eyre::Result;
 use oracle::Connection;
-use sqlparser::dialect::Dialect;
+use sqlparser::ast::Statement;
 
 use crate::cli::Driver;
 
 use super::{Database, DbTaskResult, Header, QueryResultsWithMetadata, QueryTask, Rows};
 
-#[derive(Debug)]
-pub struct OracleDialect {}
-impl Dialect for OracleDialect {
-  fn is_identifier_start(&self, c: char) -> bool {
-    c.is_alphabetic() || c == '_'
-  }
-  fn is_identifier_part(&self, ch: char) -> bool {
-    ch.is_alphanumeric() || ch == '_' || ch == '$' || ch == '#'
-  }
-}
-
 enum OracleTask {
   Query(QueryTask),
+  TxStart(QueryTask), // FIXME: This should be a different type
 }
 
 #[derive(Default)]
@@ -49,12 +39,28 @@ impl Database for OracleDriver {
 
   fn start_query(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Oracle)?;
-    let conn = self.conn.clone();
+    let conn = self.conn.clone().unwrap();
 
-    self.task = Some(OracleTask::Query(tokio::spawn(async move {
-      let results = query_with_connection(&conn.unwrap(), &first_query);
-      QueryResultsWithMetadata { results, statement_type }
-    })));
+    let task = match statement_type {
+      Statement::Query(_) => OracleTask::Query(tokio::spawn(async move {
+        let results = query_with_connection(&conn, &first_query);
+        QueryResultsWithMetadata { results, statement_type }
+      })),
+      _ => OracleTask::TxStart(tokio::spawn(async move {
+        let results = execute_with_connection(&conn, &first_query);
+        match results {
+          Ok(ref rows) => {
+            log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
+          },
+          Err(ref e) => {
+            log::error!("{e:?}");
+          },
+        };
+        QueryResultsWithMetadata { results, statement_type }
+      })),
+    };
+
+    self.task = Some(task);
 
     Ok(())
   }
@@ -63,6 +69,7 @@ impl Database for OracleDriver {
     if let Some(task) = self.task.take() {
       match task {
         OracleTask::Query(handle) => handle.abort(),
+        OracleTask::TxStart(handle) => handle.abort(),
       };
       Ok(true)
     } else {
@@ -80,6 +87,13 @@ impl Database for OracleDriver {
           (DbTaskResult::Finished(handle.await?), None)
         }
       },
+      Some(OracleTask::TxStart(handle)) => {
+        if !handle.is_finished() {
+          (DbTaskResult::Pending, Some(OracleTask::TxStart(handle)))
+        } else {
+          (DbTaskResult::Finished(handle.await?), None)
+        }
+      },
     };
     self.task = next_task;
     Ok(task_result)
@@ -90,6 +104,7 @@ impl Database for OracleDriver {
   }
 
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
+    log::info!("Committing transaction");
     todo!();
   }
 
@@ -127,7 +142,6 @@ impl Database for OracleDriver {
 
 fn query_with_connection(conn: &Connection, query: &str) -> Result<Rows> {
   let mut headers = vec![];
-  let rows_affected = None;
   let rows = conn
     .query(&query, &[])
     .map_err(|e| color_eyre::eyre::eyre!("Error executing query: {}", e))?
@@ -144,7 +158,15 @@ fn query_with_connection(conn: &Connection, query: &str) -> Result<Rows> {
       row.sql_values().iter().map(|v| v.to_string()).collect()
     })
     .collect::<Vec<_>>();
-  Ok(Rows { headers, rows, rows_affected })
+
+  Ok(Rows { headers, rows, rows_affected: None })
+}
+
+fn execute_with_connection(conn: &Connection, statement: &str) -> Result<Rows> {
+  let result = conn.execute(statement, &[]).map_err(|e| color_eyre::eyre::eyre!("Error executing statement: {}", e))?;
+  conn.commit()?;
+
+  Ok(Rows { headers: Vec::new(), rows: Vec::new(), rows_affected: result.row_count().ok() })
 }
 
 impl OracleDriver {
