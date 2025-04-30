@@ -20,6 +20,12 @@ pub struct OracleDriver {
   task: Option<OracleTask>,
 }
 
+impl OracleDriver {
+  pub fn new() -> Self {
+    OracleDriver { conn: None, task: None }
+  }
+}
+
 #[async_trait(?Send)]
 impl Database for OracleDriver {
   async fn init(&mut self, args: crate::cli::Cli) -> Result<()> {
@@ -141,21 +147,17 @@ impl Database for OracleDriver {
 }
 
 fn query_with_connection(conn: &Connection, query: &str) -> Result<Rows> {
-  let mut headers = vec![];
+  let mut headers = Vec::new();
   let rows = conn
     .query(&query, &[])
     .map_err(|e| color_eyre::eyre::eyre!("Error executing query: {}", e))?
     .filter_map(|row| row.ok())
     .map(|row| {
       if headers.is_empty() {
-        headers = row
-          .column_info()
-          .iter()
-          .map(|col| Header { name: col.name().to_string(), type_name: col.oracle_type().to_string() })
-          .collect();
+        headers = get_headers(&row);
       }
 
-      row.sql_values().iter().map(|v| v.to_string()).collect()
+      row_to_vec(&row)
     })
     .collect::<Vec<_>>();
 
@@ -169,8 +171,14 @@ fn execute_with_connection(conn: &Connection, statement: &str) -> Result<Rows> {
   Ok(Rows { headers: Vec::new(), rows: Vec::new(), rows_affected: result.row_count().ok() })
 }
 
-impl OracleDriver {
-  pub fn new() -> Self {
-    OracleDriver { conn: None, task: None }
-  }
+fn get_headers(row: &oracle::Row) -> Vec<Header> {
+  row
+    .column_info()
+    .iter()
+    .map(|col| Header { name: col.name().to_string(), type_name: col.oracle_type().to_string() })
+    .collect()
+}
+
+fn row_to_vec(row: &oracle::Row) -> Vec<String> {
+  row.sql_values().iter().map(|v| v.to_string()).collect()
 }
