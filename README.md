@@ -1,6 +1,6 @@
 # 🐸 rainfrog
 
-a database management tui for postgres
+a database management tui
 
 ![rainfrog demo](vhs/demo.gif)
 
