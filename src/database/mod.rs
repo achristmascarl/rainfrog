@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use color_eyre::eyre::{self, Result};
+use color_eyre::eyre::Result;
 use sqlparser::{
   ast::Statement,
-  dialect::{Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
+  dialect::{Dialect, DuckDbDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
   keywords,
   parser::{Parser, ParserError},
 };
@@ -10,10 +10,12 @@ use tokio::task::JoinHandle;
 
 use crate::cli::{Cli, Driver};
 
+mod duckdb;
 mod mysql;
 mod postgresql;
 mod sqlite;
 
+pub use duckdb::DuckDbDriver;
 pub use mysql::MySqlDriver;
 pub use postgresql::PostgresDriver;
 pub use sqlite::SqliteDriver;
@@ -124,6 +126,11 @@ pub trait Database {
 
   /// Returns a query that can be used to preview the policies in a table.
   fn preview_policies_query(&self, schema: &str, table: &str) -> String;
+
+  /// Returns the type of execution for the given query. Can be used to prevent
+  /// calling using unsupported execution types with a driver by never returning
+  /// that execution type.
+  fn get_execution_type(&self, query: String, confirmed: bool) -> Result<(ExecutionType, Statement)>;
 }
 
 fn get_first_query(query: String, driver: Driver) -> Result<(String, Statement), ParseError> {
@@ -138,15 +145,6 @@ fn get_first_query(query: String, driver: Driver) -> Result<(String, Statement),
       Ok((statement.to_string(), statement))
     },
     Err(e) => Err(ParseError::SqlParserError(e)),
-  }
-}
-
-pub fn get_execution_type(query: String, confirmed: bool, driver: Driver) -> Result<(ExecutionType, Statement)> {
-  let first_query = get_first_query(query, driver);
-
-  match first_query {
-    Ok((_, statement)) => Ok((get_default_execution_type(statement.clone(), confirmed), statement.clone())),
-    Err(e) => Err(eyre::Report::new(e)),
   }
 }
 
@@ -218,6 +216,7 @@ pub fn get_dialect(driver: Driver) -> Box<dyn Dialect + Send + Sync> {
     Driver::Postgres => Box::new(PostgreSqlDialect {}),
     Driver::MySql => Box::new(MySqlDialect {}),
     Driver::Sqlite => Box::new(SQLiteDialect {}),
+    Driver::DuckDb => Box::new(DuckDbDialect {}),
   }
 }
 
