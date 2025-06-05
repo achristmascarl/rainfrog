@@ -36,15 +36,15 @@ clap = { version = "4.4.5", features = [
   "unstable-styles",
 ] }
 color-eyre = "0.6.2"
-config = "0.14.0"
-crossterm = { version = "0.28.0", features = [
+config = "0.14.1"
+crossterm = { version = "0.28.1", features = [
   "libc",
   "serde",
   "event-stream",
   "bracketed-paste",
 ] }
 derive_deref = "1.1.1"
-directories = "5.0.1"
+directories = "6.0.0"
 futures = "0.3.28"
 human-panic = "2.0.2"
 lazy_static = "1.4.0"
@@ -58,8 +58,7 @@ ratatui = { version = "0.29.0", features = [
 ] }
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.107"
-signal-hook = "0.3.17"
-sqlx = { version = "0.8.1", features = [
+sqlx = { version = "0.8.6", features = [
   "runtime-tokio",
   "tls-rustls",
   "postgres",
@@ -71,7 +70,7 @@ sqlx = { version = "0.8.1", features = [
   "sqlite",
 ] }
 strip-ansi-escapes = "0.2.0"
-strum = { version = "0.26.1", features = ["derive"] }
+strum = { version = "0.27.1", features = ["derive"] }
 tokio = { version = "1.43.1", features = ["full"] }
 tokio-util = "0.7.9"
 toml = "0.8.19"
@@ -79,10 +78,9 @@ tracing = "0.1.37"
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter", "serde"] }
 chrono = { version = "0.4", default-features = false }
-chrono-tz = { version = "0.10.0", default-features = false }
 indexmap = "2.2.6"
 tui-textarea = { version = "0.7.0", features = ["search"] }
-sqlparser = "0.54.0"
+sqlparser = "0.56.0"
 arboard = { version = "3.4.1", optional = true, features = [
   "wayland-data-control",
 ] }
