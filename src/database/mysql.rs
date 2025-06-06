@@ -23,7 +23,7 @@ type TransactionTask<'a> = JoinHandle<(QueryResultsWithMetadata, MySqlTransactio
 enum MySqlTask<'a> {
   Query(QueryTask),
   TxStart(TransactionTask<'a>),
-  TxPending((MySqlTransaction<'a>, QueryResultsWithMetadata)),
+  TxPending(Box<(MySqlTransaction<'a>, QueryResultsWithMetadata)>),
 }
 
 #[derive(Default)]
@@ -96,11 +96,11 @@ impl Database for MySqlDriver<'_> {
           };
           (
             DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-            Some(MySqlTask::TxPending((tx, result))),
+            Some(MySqlTask::TxPending(Box::new((tx, result)))),
           )
         }
       },
-      Some(MySqlTask::TxPending((tx, results))) => (DbTaskResult::Pending, Some(MySqlTask::TxPending((tx, results)))),
+      Some(MySqlTask::TxPending(b)) => (DbTaskResult::Pending, Some(MySqlTask::TxPending(b))),
     };
     self.task = next_task;
     Ok(task_result)
@@ -138,17 +138,17 @@ impl Database for MySqlDriver<'_> {
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if !matches!(self.task, Some(MySqlTask::TxPending(_))) {
       Ok(None)
-    } else if let Some(MySqlTask::TxPending((tx, results))) = self.task.take() {
-      tx.commit().await?;
-      Ok(Some(results))
+    } else if let Some(MySqlTask::TxPending(b)) = self.task.take() {
+      b.0.commit().await?;
+      Ok(Some(b.1))
     } else {
       Ok(None)
     }
   }
 
   async fn rollback_tx(&mut self) -> Result<()> {
-    if let Some(MySqlTask::TxPending((tx, _))) = self.task.take() {
-      tx.rollback().await?;
+    if let Some(MySqlTask::TxPending(b)) = self.task.take() {
+      b.0.rollback().await?;
     }
     Ok(())
   }

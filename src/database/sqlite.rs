@@ -23,7 +23,7 @@ type TransactionTask<'a> = tokio::task::JoinHandle<(QueryResultsWithMetadata, Sq
 enum SqliteTask<'a> {
   Query(QueryTask),
   TxStart(TransactionTask<'a>),
-  TxPending((SqliteTransaction<'a>, QueryResultsWithMetadata)),
+  TxPending(Box<(SqliteTransaction<'a>, QueryResultsWithMetadata)>),
 }
 
 #[derive(Default)]
@@ -96,11 +96,11 @@ impl Database for SqliteDriver<'_> {
           };
           (
             DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-            Some(SqliteTask::TxPending((tx, result))),
+            Some(SqliteTask::TxPending(Box::new((tx, result)))),
           )
         }
       },
-      Some(SqliteTask::TxPending((tx, results))) => (DbTaskResult::Pending, Some(SqliteTask::TxPending((tx, results)))),
+      Some(SqliteTask::TxPending(b)) => (DbTaskResult::Pending, Some(SqliteTask::TxPending(b))),
     };
     self.task = next_task;
     Ok(task_result)
@@ -138,17 +138,17 @@ impl Database for SqliteDriver<'_> {
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if !matches!(self.task, Some(SqliteTask::TxPending(_))) {
       Ok(None)
-    } else if let Some(SqliteTask::TxPending((tx, results))) = self.task.take() {
-      tx.commit().await?;
-      Ok(Some(results))
+    } else if let Some(SqliteTask::TxPending(b)) = self.task.take() {
+      b.0.commit().await?;
+      Ok(Some(b.1))
     } else {
       Ok(None)
     }
   }
 
   async fn rollback_tx(&mut self) -> Result<()> {
-    if let Some(SqliteTask::TxPending((tx, _))) = self.task.take() {
-      tx.rollback().await?;
+    if let Some(SqliteTask::TxPending(b)) = self.task.take() {
+      b.0.rollback().await?;
     }
     Ok(())
   }

@@ -26,7 +26,7 @@ type TransactionTask<'a> = JoinHandle<(QueryResultsWithMetadata, PostgresTransac
 enum PostgresTask<'a> {
   Query(QueryTask),
   TxStart(TransactionTask<'a>),
-  TxPending((PostgresTransaction<'a>, QueryResultsWithMetadata)),
+  TxPending(Box<(PostgresTransaction<'a>, QueryResultsWithMetadata)>),
 }
 
 #[derive(Default)]
@@ -99,13 +99,11 @@ impl Database for PostgresDriver<'_> {
           };
           (
             DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-            Some(PostgresTask::TxPending((tx, result))),
+            Some(PostgresTask::TxPending(Box::new((tx, result)))),
           )
         }
       },
-      Some(PostgresTask::TxPending((tx, results))) => {
-        (DbTaskResult::Pending, Some(PostgresTask::TxPending((tx, results))))
-      },
+      Some(PostgresTask::TxPending(b)) => (DbTaskResult::Pending, Some(PostgresTask::TxPending(b))),
     };
     self.task = next_task;
     Ok(task_result)
@@ -143,17 +141,17 @@ impl Database for PostgresDriver<'_> {
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if !matches!(self.task, Some(PostgresTask::TxPending(_))) {
       Ok(None)
-    } else if let Some(PostgresTask::TxPending((tx, results))) = self.task.take() {
-      tx.commit().await?;
-      Ok(Some(results))
+    } else if let Some(PostgresTask::TxPending(b)) = self.task.take() {
+      b.0.commit().await?;
+      Ok(Some(b.1))
     } else {
       Ok(None)
     }
   }
 
   async fn rollback_tx(&mut self) -> Result<()> {
-    if let Some(PostgresTask::TxPending((tx, _))) = self.task.take() {
-      tx.rollback().await?;
+    if let Some(PostgresTask::TxPending(b)) = self.task.take() {
+      b.0.rollback().await?;
     }
     Ok(())
   }
