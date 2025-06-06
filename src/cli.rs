@@ -58,6 +58,8 @@ pub enum Driver {
   MySql,
   #[serde(alias = "sqlite", alias = "SQLITE")]
   Sqlite,
+  #[serde(alias = "duckdb", alias = "DUCKDB")]
+  DuckDb,
 }
 
 impl FromStr for Driver {
@@ -68,6 +70,7 @@ impl FromStr for Driver {
       "postgres" | "postgresql" => Ok(Driver::Postgres),
       "mysql" => Ok(Driver::MySql),
       "sqlite" => Ok(Driver::Sqlite),
+      "duckdb" => Ok(Driver::DuckDb),
       _ => Err(eyre::Report::msg("Invalid driver")),
     }
   }
