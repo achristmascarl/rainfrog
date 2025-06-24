@@ -80,6 +80,8 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
   let url = url.trim();
   if let Some(pos) = url.find("://") {
     url[..pos].to_lowercase().parse()
+  } else if url.starts_with("jdbc:oracle:thin") {
+    Ok(Driver::Oracle)
   } else {
     Err(eyre::Report::msg("Invalid connection URL format"))
   }
