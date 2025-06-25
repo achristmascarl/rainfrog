@@ -5,7 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use color_eyre::eyre::Result;
 use connect_options::OracleConnectOptions;
-use oracle::Connection;
+use oracle::pool::Pool;
 use sqlparser::ast::Statement;
 
 use crate::cli::Driver;
@@ -19,13 +19,13 @@ enum OracleTask {
 
 #[derive(Default)]
 pub struct OracleDriver {
-  conn: Option<Arc<Connection>>,
+  pool: Option<Arc<oracle::pool::Pool>>,
   task: Option<OracleTask>,
 }
 
 impl OracleDriver {
   pub fn new() -> Self {
-    OracleDriver { conn: None, task: None }
+    OracleDriver { pool: None, task: None }
   }
 }
 
@@ -36,23 +36,23 @@ impl Database for OracleDriver {
 
     let (user, password, connection_string) =
       connection_opts.get_connection_options().map_err(|e| color_eyre::eyre::eyre!(e))?;
-    let connection = oracle::Connection::connect(user, password, connection_string).unwrap();
-    self.conn = Some(Arc::new(connection));
+    let pool = Arc::new(oracle::pool::PoolBuilder::new(user, password, connection_string).max_connections(3).build()?);
+    self.pool = Some(pool);
 
     Ok(())
   }
 
   fn start_query(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Oracle)?;
-    let conn = self.conn.clone().unwrap();
+    let pool = self.pool.clone().unwrap();
 
     let task = match statement_type {
       Statement::Query(_) => OracleTask::Query(tokio::spawn(async move {
-        let results = query_with_connection(&conn, &first_query);
+        let results = query_with_pool(&pool, &first_query);
         QueryResultsWithMetadata { results, statement_type }
       })),
       _ => OracleTask::TxStart(tokio::spawn(async move {
-        let results = execute_with_connection(&conn, &first_query);
+        let results = execute_with_pool(&pool, &first_query);
         match results {
           Ok(ref rows) => {
             log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
@@ -118,8 +118,8 @@ impl Database for OracleDriver {
   }
 
   async fn load_menu(&self) -> Result<Rows> {
-    query_with_connection(
-      self.conn.as_ref().unwrap(),
+    query_with_pool(
+      self.pool.as_ref().unwrap(),
       "select user, table_name from user_tables where tablespace_name is not null order by user, table_name",
     )
   }
@@ -145,9 +145,10 @@ impl Database for OracleDriver {
   }
 }
 
-fn query_with_connection(conn: &Connection, query: &str) -> Result<Rows> {
+fn query_with_pool(pool: &Pool, query: &str) -> Result<Rows> {
   let mut headers = Vec::new();
-  let rows = conn
+  let rows = pool
+    .get()?
     .query(&query, &[])
     .map_err(|e| color_eyre::eyre::eyre!("Error executing query: {}", e))?
     .filter_map(|row| row.ok())
@@ -163,9 +164,10 @@ fn query_with_connection(conn: &Connection, query: &str) -> Result<Rows> {
   Ok(Rows { headers, rows, rows_affected: None })
 }
 
-fn execute_with_connection(conn: &Connection, statement: &str) -> Result<Rows> {
-  let result = conn.execute(statement, &[]).map_err(|e| color_eyre::eyre::eyre!("Error executing statement: {}", e))?;
-  conn.commit()?;
+fn execute_with_pool(pool: &Pool, statement: &str) -> Result<Rows> {
+  let pool = pool.get()?;
+  let result = pool.execute(statement, &[]).map_err(|e| color_eyre::eyre::eyre!("Error executing statement: {}", e))?;
+  pool.commit()?;
 
   Ok(Rows { headers: Vec::new(), rows: Vec::new(), rows_affected: result.row_count().ok() })
 }
