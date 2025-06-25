@@ -5,16 +5,19 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use color_eyre::eyre::Result;
 use connect_options::OracleConnectOptions;
-use oracle::pool::Pool;
+use oracle::{pool::Pool, Connection};
 use sqlparser::ast::Statement;
+use tokio::task::JoinHandle;
 
 use crate::cli::Driver;
 
 use super::{Database, DbTaskResult, Header, QueryResultsWithMetadata, QueryTask, Rows};
 
+type TransactionTask = JoinHandle<(QueryResultsWithMetadata, Connection)>;
 enum OracleTask {
   Query(QueryTask),
-  TxStart(QueryTask), // FIXME: This should be a different type
+  TxStart(TransactionTask),
+  TxPending(Box<(Connection, QueryResultsWithMetadata)>),
 }
 
 #[derive(Default)]
@@ -52,7 +55,8 @@ impl Database for OracleDriver {
         QueryResultsWithMetadata { results, statement_type }
       })),
       _ => OracleTask::TxStart(tokio::spawn(async move {
-        let results = execute_with_pool(&pool, &first_query);
+        let conn = pool.get().unwrap();
+        let results = execute_with_conn(&conn, &first_query);
         match results {
           Ok(ref rows) => {
             log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
@@ -61,7 +65,7 @@ impl Database for OracleDriver {
             log::error!("{e:?}");
           },
         };
-        QueryResultsWithMetadata { results, statement_type }
+        (QueryResultsWithMetadata { results, statement_type }, conn)
       })),
     };
 
@@ -75,6 +79,7 @@ impl Database for OracleDriver {
       match task {
         OracleTask::Query(handle) => handle.abort(),
         OracleTask::TxStart(handle) => handle.abort(),
+        _ => {},
       };
       Ok(true)
     } else {
@@ -96,9 +101,18 @@ impl Database for OracleDriver {
         if !handle.is_finished() {
           (DbTaskResult::Pending, Some(OracleTask::TxStart(handle)))
         } else {
-          (DbTaskResult::Finished(handle.await?), None)
+          let (result, tx) = handle.await?;
+          let rows_affected = match &result.results {
+            Ok(rows) => rows.rows_affected,
+            _ => None,
+          };
+          (
+            DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+            Some(OracleTask::TxPending(Box::new((tx, result)))),
+          )
         }
       },
+      Some(OracleTask::TxPending(handle)) => (DbTaskResult::Pending, Some(OracleTask::TxPending(handle))),
     };
     self.task = next_task;
     Ok(task_result)
@@ -109,12 +123,21 @@ impl Database for OracleDriver {
   }
 
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
-    log::info!("Committing transaction");
-    todo!();
+    if let Some(OracleTask::TxPending(b)) = self.task.take() {
+      b.0.commit()?;
+      Ok(Some(b.1))
+    } else {
+      Ok(None)
+    }
   }
 
   async fn rollback_tx(&mut self) -> Result<()> {
-    todo!();
+    if let Some(OracleTask::TxPending(b)) = self.task.take() {
+      b.0.rollback()?;
+      Ok(())
+    } else {
+      Ok(())
+    }
   }
 
   async fn load_menu(&self) -> Result<Rows> {
@@ -164,11 +187,8 @@ fn query_with_pool(pool: &Pool, query: &str) -> Result<Rows> {
   Ok(Rows { headers, rows, rows_affected: None })
 }
 
-fn execute_with_pool(pool: &Pool, statement: &str) -> Result<Rows> {
-  let pool = pool.get()?;
-  let result = pool.execute(statement, &[]).map_err(|e| color_eyre::eyre::eyre!("Error executing statement: {}", e))?;
-  pool.commit()?;
-
+fn execute_with_conn(conn: &Connection, statement: &str) -> Result<Rows> {
+  let result = conn.execute(statement, &[]).map_err(|e| color_eyre::eyre::eyre!("Error executing statement: {}", e))?;
   Ok(Rows { headers: Vec::new(), rows: Vec::new(), rows_affected: result.row_count().ok() })
 }
 
