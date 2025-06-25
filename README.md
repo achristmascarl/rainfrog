@@ -1,6 +1,6 @@
 # 🐸 rainfrog
 
-a database management tui for postgres
+a database management tui
 
 ![rainfrog demo](vhs/demo.gif)
 
@@ -551,6 +551,8 @@ features
 <!-- TOC --><a name="known-issues-and-limitations"></a>
 ## known issues and limitations
 
+- aborting a running query does not cancel the process running the query on database servers
+  like postgres or mysql. follow https://github.com/achristmascarl/rainfrog/issues/178 for updates
 - geometry types are not currently supported
 - for x11 and wayland, yanking does not copy to the system clipboard, only
   to the query editor's buffer. see <https://github.com/achristmascarl/rainfrog/issues/83>
