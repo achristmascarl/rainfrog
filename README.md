@@ -32,7 +32,7 @@ tested as extensively as postgres**; use with caution, and check out the
 the postgres driver can also be used to connect to other databases that support 
 the postgres wire protocol, such as AWS Redshift. however, this functionality is not 
 well tested. in theory, the mysql driver should be able to do the same for databases 
-that support the mysql protocol. check each database's documentation for compatability.
+that support the mysql protocol. check each database's documentation for compatibility.
 
 ## disclaimer
 
@@ -514,7 +514,7 @@ export RAINFROG_FAVORITES=~/.config/rainfrog/favorites
   
 - [x] scrollable table
 - [x] cancellable async querying (spawn tokio task)
-- [x] menu list with tables and schemas (collapsable)
+- [x] menu list with tables and schemas (collapsible)
 - [x] tui-textarea for query editor
 - [x] basic tui-textarea vim keybindings
 - [x] handle custom types / enums
