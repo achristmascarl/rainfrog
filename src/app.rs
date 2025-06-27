@@ -160,6 +160,7 @@ impl App {
       Driver::Postgres => Box::new(database::PostgresDriver::new()),
       Driver::MySql => Box::new(database::MySqlDriver::new()),
       Driver::Sqlite => Box::new(database::SqliteDriver::new()),
+      Driver::DuckDb => Box::new(database::DuckDbDriver::new()),
     };
     database.init(args).await?;
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
@@ -376,7 +377,7 @@ impl App {
               break 'query_action;
             }
             self.add_to_history(query_lines.clone());
-            let execution_info = database::get_execution_type(query_string.clone(), *confirmed, driver);
+            let execution_info = database.get_execution_type(query_string.clone(), *confirmed);
             match execution_info {
               Ok((ExecutionType::Transaction, _)) => {
                 self.components.data.set_loading();
