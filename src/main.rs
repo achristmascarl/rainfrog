@@ -114,7 +114,7 @@ async fn main() -> Result<()> {
 
 pub fn prompt_for_driver() -> Result<Driver> {
   let mut driver = String::new();
-  print!("Database driver (postgres, mysql, sqlite): ");
+  print!("Database driver (postgres, mysql, sqlite, oracle): ");
   io::stdout().flush()?;
   io::stdin().read_line(&mut driver)?;
   driver.trim().to_lowercase().parse()

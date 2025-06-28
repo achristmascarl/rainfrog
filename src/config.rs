@@ -107,6 +107,7 @@ impl StructuredConnection {
         Ok(format!("mysql://{}:{}@{}:{}/{}", self.username, encoded_password, self.host, self.port, self.database))
       },
       Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
+      Driver::Oracle => unimplemented!("Oracle connection string not implemented"),
     }
   }
 }
