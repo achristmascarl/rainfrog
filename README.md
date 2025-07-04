@@ -53,6 +53,7 @@ access on a production database.
    * [pixi](#pixi)
    * [install script](#install-script)
    * [release page binaries](#release-page-binaries)
+   * [icons](#icons)
 - [usage](#usage)
    * [with connection options](#with-connection-options)
    * [with connection url](#with-connection-url)
@@ -171,6 +172,10 @@ curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/instal
    you're not sure which binary to pick, you can find out by installing rust and
    running `rustc -vV` to see the "host" target)
 2. move the binary to a folder in your `PATH` environment variable
+
+<!-- TOC --><a name="icons"></a>
+### icons
+you will need to have a nerd font installed and used by your terminal for the icons to show up.
 
 <!-- TOC --><a name="usage"></a>
 ## usage
