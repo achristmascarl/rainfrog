@@ -65,16 +65,16 @@ impl Database for PostgresDriver<'_> {
   }
 
   fn abort_query(&mut self) -> Result<bool> {
-    if let Some(task) = self.task.take() {
+    match self.task.take() { Some(task) => {
       match task {
         PostgresTask::Query(handle) => handle.abort(),
         PostgresTask::TxStart(handle) => handle.abort(),
         _ => {},
       };
       Ok(true)
-    } else {
+    } _ => {
       Ok(false)
-    }
+    }}
   }
 
   async fn get_query_results(&mut self) -> Result<DbTaskResult> {
@@ -141,12 +141,12 @@ impl Database for PostgresDriver<'_> {
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if !matches!(self.task, Some(PostgresTask::TxPending(_))) {
       Ok(None)
-    } else if let Some(PostgresTask::TxPending(b)) = self.task.take() {
+    } else { match self.task.take() { Some(PostgresTask::TxPending(b)) => {
       b.0.commit().await?;
       Ok(Some(b.1))
-    } else {
+    } _ => {
       Ok(None)
-    }
+    }}}
   }
 
   async fn rollback_tx(&mut self) -> Result<()> {

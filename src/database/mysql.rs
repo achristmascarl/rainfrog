@@ -62,16 +62,16 @@ impl Database for MySqlDriver<'_> {
   }
 
   fn abort_query(&mut self) -> Result<bool> {
-    if let Some(task) = self.task.take() {
+    match self.task.take() { Some(task) => {
       match task {
         MySqlTask::Query(handle) => handle.abort(),
         MySqlTask::TxStart(handle) => handle.abort(),
         _ => {},
       };
       Ok(true)
-    } else {
+    } _ => {
       Ok(false)
-    }
+    }}
   }
 
   async fn get_query_results(&mut self) -> Result<DbTaskResult> {
@@ -138,12 +138,12 @@ impl Database for MySqlDriver<'_> {
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if !matches!(self.task, Some(MySqlTask::TxPending(_))) {
       Ok(None)
-    } else if let Some(MySqlTask::TxPending(b)) = self.task.take() {
+    } else { match self.task.take() { Some(MySqlTask::TxPending(b)) => {
       b.0.commit().await?;
       Ok(Some(b.1))
-    } else {
+    } _ => {
       Ok(None)
-    }
+    }}}
   }
 
   async fn rollback_tx(&mut self) -> Result<()> {

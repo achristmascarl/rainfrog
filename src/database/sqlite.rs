@@ -62,16 +62,16 @@ impl Database for SqliteDriver<'_> {
   }
 
   fn abort_query(&mut self) -> Result<bool> {
-    if let Some(task) = self.task.take() {
+    match self.task.take() { Some(task) => {
       match task {
         SqliteTask::Query(handle) => handle.abort(),
         SqliteTask::TxStart(handle) => handle.abort(),
         _ => {},
       };
       Ok(true)
-    } else {
+    } _ => {
       Ok(false)
-    }
+    }}
   }
 
   async fn get_query_results(&mut self) -> Result<DbTaskResult> {
@@ -138,12 +138,12 @@ impl Database for SqliteDriver<'_> {
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if !matches!(self.task, Some(SqliteTask::TxPending(_))) {
       Ok(None)
-    } else if let Some(SqliteTask::TxPending(b)) = self.task.take() {
+    } else { match self.task.take() { Some(SqliteTask::TxPending(b)) => {
       b.0.commit().await?;
       Ok(Some(b.1))
-    } else {
+    } _ => {
       Ok(None)
-    }
+    }}}
   }
 
   async fn rollback_tx(&mut self) -> Result<()> {
@@ -313,23 +313,23 @@ fn parse_value(row: &<Sqlite as sqlx::Database>::Row, col: &<Sqlite as sqlx::Dat
     )),
     "TEXT" => {
       // Try parsing as different types that might be stored as TEXT
-      if let Ok(dt) = row.try_get::<chrono::NaiveDateTime, _>(col.ordinal()) {
+      match row.try_get::<chrono::NaiveDateTime, _>(col.ordinal()) { Ok(dt) => {
         Some(Value { parse_error: false, string: dt.to_string(), is_null: false })
-      } else if let Ok(dt) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(col.ordinal()) {
+      } _ => { match row.try_get::<chrono::DateTime<chrono::Utc>, _>(col.ordinal()) { Ok(dt) => {
         Some(Value { parse_error: false, string: dt.to_string(), is_null: false })
-      } else if let Ok(date) = row.try_get::<chrono::NaiveDate, _>(col.ordinal()) {
+      } _ => { match row.try_get::<chrono::NaiveDate, _>(col.ordinal()) { Ok(date) => {
         Some(Value { parse_error: false, string: date.to_string(), is_null: false })
-      } else if let Ok(time) = row.try_get::<chrono::NaiveTime, _>(col.ordinal()) {
+      } _ => { match row.try_get::<chrono::NaiveTime, _>(col.ordinal()) { Ok(time) => {
         Some(Value { parse_error: false, string: time.to_string(), is_null: false })
-      } else if let Ok(uuid) = row.try_get::<uuid::Uuid, _>(col.ordinal()) {
+      } _ => { match row.try_get::<uuid::Uuid, _>(col.ordinal()) { Ok(uuid) => {
         Some(Value { parse_error: false, string: uuid.to_string(), is_null: false })
-      } else if let Ok(json) = row.try_get::<serde_json::Value, _>(col.ordinal()) {
+      } _ => { match row.try_get::<serde_json::Value, _>(col.ordinal()) { Ok(json) => {
         Some(Value { parse_error: false, string: json.to_string(), is_null: false })
-      } else if let Ok(string) = row.try_get::<String, _>(col.ordinal()) {
+      } _ => { match row.try_get::<String, _>(col.ordinal()) { Ok(string) => {
         Some(Value { parse_error: false, string, is_null: false })
-      } else {
+      } _ => {
         Some(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false })
-      }
+      }}}}}}}}}}}}}}
     },
     "BLOB" => Some(row.try_get::<Vec<u8>, usize>(col.ordinal()).map_or(
       Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
@@ -350,41 +350,41 @@ fn parse_value(row: &<Sqlite as sqlx::Database>::Row, col: &<Sqlite as sqlx::Dat
     )),
     "DATETIME" => {
       // Similar to TEXT, but we'll try timestamp first
-      if let Ok(dt) = row.try_get::<i64, _>(col.ordinal()) {
+      match row.try_get::<i64, _>(col.ordinal()) { Ok(dt) => {
         Some(chrono::DateTime::from_timestamp(dt, 0).map_or(
           Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
           |received| Value { parse_error: false, string: received.to_string(), is_null: false },
         ))
-      } else if let Ok(dt) = row.try_get::<chrono::NaiveDateTime, _>(col.ordinal()) {
+      } _ => { match row.try_get::<chrono::NaiveDateTime, _>(col.ordinal()) { Ok(dt) => {
         Some(Value { parse_error: true, string: dt.to_string(), is_null: false })
-      } else if let Ok(dt) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(col.ordinal()) {
+      } _ => { match row.try_get::<chrono::DateTime<chrono::Utc>, _>(col.ordinal()) { Ok(dt) => {
         Some(Value { parse_error: true, string: dt.to_string(), is_null: false })
-      } else {
+      } _ => {
         Some(row.try_get::<String, usize>(col.ordinal()).map_or(
           Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
           |received| Value { parse_error: false, string: received.to_string(), is_null: false },
         ))
-      }
+      }}}}}}
     },
     "DATE" => {
-      if let Ok(date) = row.try_get::<chrono::NaiveDate, _>(col.ordinal()) {
+      match row.try_get::<chrono::NaiveDate, _>(col.ordinal()) { Ok(date) => {
         Some(Value { parse_error: true, string: date.to_string(), is_null: false })
-      } else {
+      } _ => {
         Some(row.try_get::<String, usize>(col.ordinal()).map_or(
           Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
           |received| Value { parse_error: false, string: received.to_string(), is_null: false },
         ))
-      }
+      }}
     },
     "TIME" => {
-      if let Ok(time) = row.try_get::<chrono::NaiveTime, _>(col.ordinal()) {
+      match row.try_get::<chrono::NaiveTime, _>(col.ordinal()) { Ok(time) => {
         Some(Value { parse_error: true, string: time.to_string(), is_null: false })
-      } else {
+      } _ => {
         Some(row.try_get::<String, usize>(col.ordinal()).map_or(
           Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
           |received| Value { parse_error: false, string: received.to_string(), is_null: false },
         ))
-      }
+      }}
     },
     _ => {
       // For any other types, try to cast to string
