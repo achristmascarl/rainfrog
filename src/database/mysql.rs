@@ -11,8 +11,8 @@ use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
 use sqlparser::ast::Statement;
 use sqlx::{
-  mysql::{MySql, MySqlConnectOptions, MySqlPoolOptions},
   Column, Either, Row, ValueRef,
+  mysql::{MySql, MySqlConnectOptions, MySqlPoolOptions},
 };
 use tokio::task::JoinHandle;
 
@@ -62,16 +62,17 @@ impl Database for MySqlDriver<'_> {
   }
 
   fn abort_query(&mut self) -> Result<bool> {
-    match self.task.take() { Some(task) => {
-      match task {
-        MySqlTask::Query(handle) => handle.abort(),
-        MySqlTask::TxStart(handle) => handle.abort(),
-        _ => {},
-      };
-      Ok(true)
-    } _ => {
-      Ok(false)
-    }}
+    match self.task.take() {
+      Some(task) => {
+        match task {
+          MySqlTask::Query(handle) => handle.abort(),
+          MySqlTask::TxStart(handle) => handle.abort(),
+          _ => {},
+        };
+        Ok(true)
+      },
+      _ => Ok(false),
+    }
   }
 
   async fn get_query_results(&mut self) -> Result<DbTaskResult> {
@@ -138,12 +139,15 @@ impl Database for MySqlDriver<'_> {
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if !matches!(self.task, Some(MySqlTask::TxPending(_))) {
       Ok(None)
-    } else { match self.task.take() { Some(MySqlTask::TxPending(b)) => {
-      b.0.commit().await?;
-      Ok(Some(b.1))
-    } _ => {
-      Ok(None)
-    }}}
+    } else {
+      match self.task.take() {
+        Some(MySqlTask::TxPending(b)) => {
+          b.0.commit().await?;
+          Ok(Some(b.1))
+        },
+        _ => Ok(None),
+      }
+    }
   }
 
   async fn rollback_tx(&mut self) -> Result<()> {
@@ -484,7 +488,7 @@ mod tests {
   use sqlparser::{ast::Statement, dialect::MySqlDialect, parser::ParserError};
 
   use super::*;
-  use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};
+  use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
 
   #[test]
   fn test_get_first_query() {

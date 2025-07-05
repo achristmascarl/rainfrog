@@ -3,12 +3,12 @@ use arboard::Clipboard;
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{
+  Frame,
   layout::{Constraint, Direction, Layout, Position},
   prelude::Rect,
   style::{Color, Style, Stylize},
   text::Line,
   widgets::{Block, Borders, Clear, Padding, Paragraph, Tabs, Wrap},
-  Frame,
 };
 use sqlparser::ast::Statement;
 use strum::IntoEnumIterator;
@@ -18,19 +18,19 @@ use crate::{
   action::{Action, ExportFormat, MenuPreview},
   cli::{Cli, Driver},
   components::{
+    Component, ComponentImpls,
     data::{Data, DataComponent},
     editor::Editor,
     favorites::{FavoriteEntries, Favorites},
     history::History,
     menu::{Menu, MenuComponent},
-    Component, ComponentImpls,
   },
   config::Config,
   database::{self, Database, DbTaskResult, ExecutionType, Rows},
   focus::Focus,
   popups::{
-    confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, exporting::Exporting,
-    name_favorite::NameFavorite, PopUp, PopUpPayload,
+    PopUp, PopUpPayload, confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx,
+    exporting::Exporting, name_favorite::NameFavorite,
   },
   tui,
   ui::center,
@@ -584,22 +584,26 @@ impl App {
   fn render_hints(&self, frame: &mut Frame, area: Rect) {
     let block = Block::default().style(Style::default().fg(Color::Blue));
     let help_text = format!(
-        "{}{}",
-        match self.state.query_task_running {
-            false => "",
-            _ if self.state.focus == Focus::Editor => "[<alt + q>] abort ",
-            _ if self.state.focus != Focus::PopUp => "[q] abort ",
-            _ => ""
-        },
-        match self.state.focus {
-            Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
-            Focus::Editor if !self.state.query_task_running => "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
-            Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
-            Focus::Favorites => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
-            Focus::Data if !self.state.query_task_running => "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
-            Focus::PopUp => "[<esc>] cancel",
-            _ => "",
-        }
+      "{}{}",
+      match self.state.query_task_running {
+        false => "",
+        _ if self.state.focus == Focus::Editor => "[<alt + q>] abort ",
+        _ if self.state.focus != Focus::PopUp => "[q] abort ",
+        _ => "",
+      },
+      match self.state.focus {
+        Focus::Menu =>
+          "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
+        Focus::Editor if !self.state.query_task_running =>
+          "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
+        Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
+        Focus::Favorites =>
+          "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
+        Focus::Data if !self.state.query_task_running =>
+          "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
+        Focus::PopUp => "[<esc>] cancel",
+        _ => "",
+      }
     );
     let paragraph = Paragraph::new(Line::from(help_text).centered()).block(block).wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);

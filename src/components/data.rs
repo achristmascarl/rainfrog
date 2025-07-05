@@ -6,16 +6,16 @@ use sqlparser::ast::Statement;
 use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{Input, Key};
 
-use super::{scroll_table::SelectionMode, Frame};
+use super::{Frame, scroll_table::SelectionMode};
 use crate::{
   action::Action,
   app::AppState,
   components::{
-    scroll_table::{ScrollDirection, ScrollTable},
     Component,
+    scroll_table::{ScrollDirection, ScrollTable},
   },
   config::Config,
-  database::{header_to_vec, statement_type_string, Rows},
+  database::{Rows, header_to_vec, statement_type_string},
   focus::Focus,
   utils::get_export_dir,
 };

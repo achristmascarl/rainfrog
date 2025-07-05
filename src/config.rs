@@ -3,9 +3,9 @@ use std::{collections::HashMap, path::PathBuf};
 use color_eyre::eyre::{self, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use derive_deref::{Deref, DerefMut};
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use ratatui::style::{Color, Modifier, Style};
-use serde::{de::Deserializer, Deserialize};
+use serde::{Deserialize, de::Deserializer};
 
 use crate::{action::Action, cli::Driver, focus::Focus, keyring::Password};
 

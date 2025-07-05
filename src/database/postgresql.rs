@@ -11,14 +11,14 @@ use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
 use sqlparser::ast::Statement;
 use sqlx::{
+  Column, Either, Row, ValueRef,
   postgres::{PgConnectOptions, PgPoolOptions, Postgres},
   types::Uuid,
-  Column, Either, Row, ValueRef,
 };
 use tokio::task::JoinHandle;
 
 use super::{
-  vec_to_string, Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value, vec_to_string,
 };
 
 type PostgresTransaction<'a> = sqlx::Transaction<'a, Postgres>;
@@ -65,16 +65,17 @@ impl Database for PostgresDriver<'_> {
   }
 
   fn abort_query(&mut self) -> Result<bool> {
-    match self.task.take() { Some(task) => {
-      match task {
-        PostgresTask::Query(handle) => handle.abort(),
-        PostgresTask::TxStart(handle) => handle.abort(),
-        _ => {},
-      };
-      Ok(true)
-    } _ => {
-      Ok(false)
-    }}
+    match self.task.take() {
+      Some(task) => {
+        match task {
+          PostgresTask::Query(handle) => handle.abort(),
+          PostgresTask::TxStart(handle) => handle.abort(),
+          _ => {},
+        };
+        Ok(true)
+      },
+      _ => Ok(false),
+    }
   }
 
   async fn get_query_results(&mut self) -> Result<DbTaskResult> {
@@ -141,12 +142,15 @@ impl Database for PostgresDriver<'_> {
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if !matches!(self.task, Some(PostgresTask::TxPending(_))) {
       Ok(None)
-    } else { match self.task.take() { Some(PostgresTask::TxPending(b)) => {
-      b.0.commit().await?;
-      Ok(Some(b.1))
-    } _ => {
-      Ok(None)
-    }}}
+    } else {
+      match self.task.take() {
+        Some(PostgresTask::TxPending(b)) => {
+          b.0.commit().await?;
+          Ok(Some(b.1))
+        },
+        _ => Ok(None),
+      }
+    }
   }
 
   async fn rollback_tx(&mut self) -> Result<()> {
@@ -525,7 +529,7 @@ mod tests {
   use sqlparser::{dialect::PostgreSqlDialect, parser::ParserError};
 
   use super::*;
-  use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};
+  use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
 
   #[test]
   fn test_get_first_query() {
