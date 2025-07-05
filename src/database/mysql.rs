@@ -114,7 +114,7 @@ impl Database for MySqlDriver<'_> {
       let (results, tx) = query_with_tx(tx, &first_query).await;
       match results {
         Ok(Either::Left(rows_affected)) => {
-          log::info!("{:?} rows affected", rows_affected);
+          log::info!("{rows_affected:?} rows affected");
           (
             QueryResultsWithMetadata {
               results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
@@ -170,16 +170,15 @@ impl Database for MySqlDriver<'_> {
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
-    format!("select * from `{}`.`{}` limit 100", schema, table)
+    format!("select * from `{schema}`.`{table}` limit 100")
   }
 
   fn preview_columns_query(&self, schema: &str, table: &str) -> String {
     format!(
       "select column_name, data_type, is_nullable, column_default, extra, column_comment
         from information_schema.columns
-        where table_schema = '{}' and table_name = '{}'
-        order by ordinal_position",
-      schema, table
+        where table_schema = '{schema}' and table_name = '{table}'
+        order by ordinal_position"
     )
   }
 
@@ -189,10 +188,9 @@ impl Database for MySqlDriver<'_> {
         group_concat(column_name order by ordinal_position) as column_names
         from information_schema.table_constraints
         join information_schema.key_column_usage using (constraint_schema, constraint_name, table_schema, table_name)
-        where table_schema = '{}' and table_name = '{}'
+        where table_schema = '{schema}' and table_name = '{table}'
         group by constraint_name, constraint_type, enforced
-        order by constraint_type, constraint_name",
-      schema, table
+        order by constraint_type, constraint_name"
     )
   }
 
@@ -200,9 +198,8 @@ impl Database for MySqlDriver<'_> {
     format!(
       "select index_name, column_name, non_unique, seq_in_index, index_type
         from information_schema.statistics
-        where table_schema = '{}' and table_name = '{}'
-        order by index_name, seq_in_index",
-      schema, table
+        where table_schema = '{schema}' and table_name = '{table}'
+        order by index_name, seq_in_index"
     )
   }
 
@@ -565,7 +562,7 @@ mod tests {
         (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {
           assert_eq!(msg, expected_msg)
         },
-        _ => panic!("Unexpected result for input: {}", input),
+        _ => panic!("Unexpected result for input: {input}"),
       }
     }
   }
@@ -588,8 +585,7 @@ mod tests {
       assert_eq!(
         get_execution_type(query.to_string(), false, Driver::MySql).unwrap().0,
         expected,
-        "Failed for query: {}",
-        query
+        "Failed for query: {query}"
       );
     }
   }

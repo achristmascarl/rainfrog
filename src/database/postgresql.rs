@@ -117,7 +117,7 @@ impl Database for PostgresDriver<'_> {
       let (results, tx) = query_with_tx(tx, &first_query).await;
       match results {
         Ok(Either::Left(rows_affected)) => {
-          log::info!("{:?} rows affected", rows_affected);
+          log::info!("{rows_affected:?} rows affected");
           (
             QueryResultsWithMetadata {
               results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
@@ -175,29 +175,27 @@ impl Database for PostgresDriver<'_> {
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
-    format!("select * from \"{}\".\"{}\" limit 100", schema, table)
+    format!("select * from \"{schema}\".\"{table}\" limit 100")
   }
 
   fn preview_columns_query(&self, schema: &str, table: &str) -> String {
     format!(
-      "select column_name, * from information_schema.columns where table_schema = '{}' and table_name = '{}'",
-      schema, table
+      "select column_name, * from information_schema.columns where table_schema = '{schema}' and table_name = '{table}'"
     )
   }
 
   fn preview_constraints_query(&self, schema: &str, table: &str) -> String {
     format!(
-      "select constraint_name, * from information_schema.table_constraints where table_schema = '{}' and table_name = '{}'",
-      schema, table
+      "select constraint_name, * from information_schema.table_constraints where table_schema = '{schema}' and table_name = '{table}'"
     )
   }
 
   fn preview_indexes_query(&self, schema: &str, table: &str) -> String {
-    format!("select indexname, indexdef, * from pg_indexes where schemaname = '{}' and tablename = '{}'", schema, table)
+    format!("select indexname, indexdef, * from pg_indexes where schemaname = '{schema}' and tablename = '{table}'")
   }
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
-    format!("select * from pg_policies where schemaname = '{}' and tablename = '{}'", schema, table)
+    format!("select * from pg_policies where schemaname = '{schema}' and tablename = '{table}'")
   }
 }
 
@@ -610,7 +608,7 @@ mod tests {
         (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {
           assert_eq!(msg, expected_msg)
         },
-        _ => panic!("Unexpected result for input: {}", input),
+        _ => panic!("Unexpected result for input: {input}"),
       }
     }
   }
@@ -633,8 +631,7 @@ mod tests {
       assert_eq!(
         get_execution_type(query.to_string(), false, Driver::Postgres).unwrap().0,
         expected,
-        "Failed for query: {}",
-        query
+        "Failed for query: {query}"
       );
     }
   }

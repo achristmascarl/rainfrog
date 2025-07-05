@@ -78,40 +78,41 @@ pub fn initialize_panic_handler() -> Result<()> {
 }
 
 pub fn get_favorites_dir() -> PathBuf {
-  let directory = if let Some(s) = FAVORITES_FOLDER.clone() {
+  
+  if let Some(s) = FAVORITES_FOLDER.clone() {
     s
   } else if let Some(proj_dirs) = project_directory() {
     proj_dirs.data_local_dir().to_path_buf()
   } else {
     PathBuf::from(".").join(".favorites")
-  };
-  directory
+  }
 }
 
 pub fn get_data_dir() -> PathBuf {
-  let directory = if let Some(s) = DATA_FOLDER.clone() {
+  
+  if let Some(s) = DATA_FOLDER.clone() {
     s
   } else if let Some(proj_dirs) = project_directory() {
     proj_dirs.data_local_dir().to_path_buf()
   } else {
     PathBuf::from(".").join(".data")
-  };
-  directory
+  }
 }
 
 pub fn get_config_dir() -> PathBuf {
-  let directory = if let Some(s) = CONFIG_FOLDER.clone() {
+  
+  if let Some(s) = CONFIG_FOLDER.clone() {
     s
   } else if let Some(proj_dirs) = project_directory() {
     proj_dirs.config_local_dir().to_path_buf()
   } else {
     PathBuf::from(".").join(".config")
-  };
-  directory
+  }
 }
 
 pub fn get_export_dir() -> PathBuf {
-  let directory = if let Some(s) = EXPORT_FOLDER.clone() {
+  
+  if let Some(s) = EXPORT_FOLDER.clone() {
     s
   } else if let Some(user_dir) = user_directory() {
     if let Some(download_dir) = user_dir.download_dir() {
@@ -121,8 +122,7 @@ pub fn get_export_dir() -> PathBuf {
     }
   } else {
     PathBuf::from(".").join(".export")
-  };
-  directory
+  }
 }
 
 pub fn initialize_logging() -> Result<()> {

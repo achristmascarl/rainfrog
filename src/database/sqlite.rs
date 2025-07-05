@@ -114,7 +114,7 @@ impl Database for SqliteDriver<'_> {
       let (results, tx) = query_with_tx(tx, &first_query).await;
       match results {
         Ok(Either::Left(rows_affected)) => {
-          log::info!("{:?} rows affected", rows_affected);
+          log::info!("{rows_affected:?} rows affected");
           (
             QueryResultsWithMetadata {
               results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
@@ -171,19 +171,19 @@ impl Database for SqliteDriver<'_> {
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
-    format!("select * from \"{}\" limit 100", table)
+    format!("select * from \"{table}\" limit 100")
   }
 
   fn preview_columns_query(&self, schema: &str, table: &str) -> String {
-    format!("pragma table_info(\"{}\")", table)
+    format!("pragma table_info(\"{table}\")")
   }
 
   fn preview_constraints_query(&self, schema: &str, table: &str) -> String {
-    format!("pragma foreign_key_list(\"{}\")", table)
+    format!("pragma foreign_key_list(\"{table}\")")
   }
 
   fn preview_indexes_query(&self, schema: &str, table: &str) -> String {
-    format!("pragma index_list(\"{}\")", table)
+    format!("pragma index_list(\"{table}\")")
   }
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
@@ -482,7 +482,7 @@ mod tests {
         (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {
           assert_eq!(msg, expected_msg)
         },
-        _ => panic!("Unexpected result for input: {}", input),
+        _ => panic!("Unexpected result for input: {input}"),
       }
     }
   }
@@ -505,8 +505,7 @@ mod tests {
       assert_eq!(
         get_execution_type(query.to_string(), false, Driver::Sqlite).unwrap().0,
         expected,
-        "Failed for query: {}",
-        query
+        "Failed for query: {query}"
       );
     }
   }
