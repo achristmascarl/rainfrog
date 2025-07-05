@@ -34,7 +34,7 @@ impl FavoriteEntry {
   }
 
   pub fn path_impl(mut base: PathBuf, name: String) -> PathBuf {
-    base.push(format!("{}.sql", name));
+    base.push(format!("{name}.sql"));
     base
   }
 

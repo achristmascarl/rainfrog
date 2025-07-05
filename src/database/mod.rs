@@ -59,7 +59,7 @@ pub enum ParseError {
 }
 impl std::fmt::Display for ParseError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{:?}", self)
+    write!(f, "{self:?}")
   }
 }
 impl std::error::Error for ParseError {}
@@ -187,7 +187,7 @@ fn get_default_execution_type(statement: Statement, confirmed: bool) -> Executio
 }
 
 pub fn statement_type_string(statement: &Statement) -> String {
-  format!("{:?}", statement).split('(').collect::<Vec<&str>>()[0].split('{').collect::<Vec<&str>>()[0]
+  format!("{statement:?}").split('(').collect::<Vec<&str>>()[0].split('{').collect::<Vec<&str>>()[0]
     .split('[')
     .collect::<Vec<&str>>()[0]
     .trim()

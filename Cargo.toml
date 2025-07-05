@@ -1,8 +1,8 @@
 [package]
 name = "rainfrog"
 version = "0.3.2"
-edition = "2021"
-rust-version = "1.80"
+edition = "2024"
+rust-version = "1.88"
 description = "a database management tui"
 repository = "https://github.com/achristmascarl/rainfrog"
 authors = ["achristmascarl <carl@rainfrog.dev>"]

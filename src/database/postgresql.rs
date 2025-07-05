@@ -11,14 +11,14 @@ use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
 use sqlparser::ast::Statement;
 use sqlx::{
+  Column, Either, Row, ValueRef,
   postgres::{PgConnectOptions, PgPoolOptions, Postgres},
   types::Uuid,
-  Column, Either, Row, ValueRef,
 };
 use tokio::task::JoinHandle;
 
 use super::{
-  vec_to_string, Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value, vec_to_string,
 };
 
 type PostgresTransaction<'a> = sqlx::Transaction<'a, Postgres>;
@@ -65,15 +65,16 @@ impl Database for PostgresDriver<'_> {
   }
 
   fn abort_query(&mut self) -> Result<bool> {
-    if let Some(task) = self.task.take() {
-      match task {
-        PostgresTask::Query(handle) => handle.abort(),
-        PostgresTask::TxStart(handle) => handle.abort(),
-        _ => {},
-      };
-      Ok(true)
-    } else {
-      Ok(false)
+    match self.task.take() {
+      Some(task) => {
+        match task {
+          PostgresTask::Query(handle) => handle.abort(),
+          PostgresTask::TxStart(handle) => handle.abort(),
+          _ => {},
+        };
+        Ok(true)
+      },
+      _ => Ok(false),
     }
   }
 
@@ -116,7 +117,7 @@ impl Database for PostgresDriver<'_> {
       let (results, tx) = query_with_tx(tx, &first_query).await;
       match results {
         Ok(Either::Left(rows_affected)) => {
-          log::info!("{:?} rows affected", rows_affected);
+          log::info!("{rows_affected:?} rows affected");
           (
             QueryResultsWithMetadata {
               results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
@@ -141,11 +142,14 @@ impl Database for PostgresDriver<'_> {
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if !matches!(self.task, Some(PostgresTask::TxPending(_))) {
       Ok(None)
-    } else if let Some(PostgresTask::TxPending(b)) = self.task.take() {
-      b.0.commit().await?;
-      Ok(Some(b.1))
     } else {
-      Ok(None)
+      match self.task.take() {
+        Some(PostgresTask::TxPending(b)) => {
+          b.0.commit().await?;
+          Ok(Some(b.1))
+        },
+        _ => Ok(None),
+      }
     }
   }
 
@@ -171,29 +175,27 @@ impl Database for PostgresDriver<'_> {
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
-    format!("select * from \"{}\".\"{}\" limit 100", schema, table)
+    format!("select * from \"{schema}\".\"{table}\" limit 100")
   }
 
   fn preview_columns_query(&self, schema: &str, table: &str) -> String {
     format!(
-      "select column_name, * from information_schema.columns where table_schema = '{}' and table_name = '{}'",
-      schema, table
+      "select column_name, * from information_schema.columns where table_schema = '{schema}' and table_name = '{table}'"
     )
   }
 
   fn preview_constraints_query(&self, schema: &str, table: &str) -> String {
     format!(
-      "select constraint_name, * from information_schema.table_constraints where table_schema = '{}' and table_name = '{}'",
-      schema, table
+      "select constraint_name, * from information_schema.table_constraints where table_schema = '{schema}' and table_name = '{table}'"
     )
   }
 
   fn preview_indexes_query(&self, schema: &str, table: &str) -> String {
-    format!("select indexname, indexdef, * from pg_indexes where schemaname = '{}' and tablename = '{}'", schema, table)
+    format!("select indexname, indexdef, * from pg_indexes where schemaname = '{schema}' and tablename = '{table}'")
   }
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
-    format!("select * from pg_policies where schemaname = '{}' and tablename = '{}'", schema, table)
+    format!("select * from pg_policies where schemaname = '{schema}' and tablename = '{table}'")
   }
 }
 
@@ -525,7 +527,7 @@ mod tests {
   use sqlparser::{dialect::PostgreSqlDialect, parser::ParserError};
 
   use super::*;
-  use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};
+  use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
 
   #[test]
   fn test_get_first_query() {
@@ -606,7 +608,7 @@ mod tests {
         (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {
           assert_eq!(msg, expected_msg)
         },
-        _ => panic!("Unexpected result for input: {}", input),
+        _ => panic!("Unexpected result for input: {input}"),
       }
     }
   }
@@ -629,8 +631,7 @@ mod tests {
       assert_eq!(
         get_execution_type(query.to_string(), false, Driver::Postgres).unwrap().0,
         expected,
-        "Failed for query: {}",
-        query
+        "Failed for query: {query}"
       );
     }
   }

@@ -51,7 +51,7 @@ impl Mode {
       Self::Replace => "type character to replace underlined",
       Self::Operator(_) => "move cursor to apply operator",
     };
-    let title = format!(" {} MODE ({}) ", self, help);
+    let title = format!(" {self} MODE ({help}) ");
     Block::default().borders(Borders::ALL).title_bottom(Line::from(title).right_aligned())
   }
 
@@ -73,7 +73,7 @@ impl fmt::Display for Mode {
       Self::Insert => write!(f, "INSERT"),
       Self::Visual => write!(f, "VISUAL"),
       Self::Replace => write!(f, "REPLACE"),
-      Self::Operator(c) => write!(f, "OPERATOR({})", c),
+      Self::Operator(c) => write!(f, "OPERATOR({c})"),
     }
   }
 }

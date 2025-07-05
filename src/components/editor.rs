@@ -1,5 +1,3 @@
-#[cfg(not(feature = "termux"))]
-use arboard::Clipboard;
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::prelude::*;

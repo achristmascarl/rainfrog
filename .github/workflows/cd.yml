@@ -99,7 +99,7 @@ jobs:
           command: build
           target: ${{ matrix.target }}
           args: "--release --features ${{ matrix.features }}"
-          cross-version: 7b79041c9278769eca57fae10c74741f5aa5c14b
+          cross-version: 51f46f296253d8122c927c5bb933e3c4f27cc317
       - name: Cargo build
         if: ${{ matrix.use-cross != true }}
         uses: actions-rs/cargo@v1
