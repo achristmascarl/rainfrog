@@ -78,7 +78,6 @@ pub fn initialize_panic_handler() -> Result<()> {
 }
 
 pub fn get_favorites_dir() -> PathBuf {
-  
   if let Some(s) = FAVORITES_FOLDER.clone() {
     s
   } else if let Some(proj_dirs) = project_directory() {
@@ -89,7 +88,6 @@ pub fn get_favorites_dir() -> PathBuf {
 }
 
 pub fn get_data_dir() -> PathBuf {
-  
   if let Some(s) = DATA_FOLDER.clone() {
     s
   } else if let Some(proj_dirs) = project_directory() {
@@ -100,7 +98,6 @@ pub fn get_data_dir() -> PathBuf {
 }
 
 pub fn get_config_dir() -> PathBuf {
-  
   if let Some(s) = CONFIG_FOLDER.clone() {
     s
   } else if let Some(proj_dirs) = project_directory() {
@@ -111,7 +108,6 @@ pub fn get_config_dir() -> PathBuf {
 }
 
 pub fn get_export_dir() -> PathBuf {
-  
   if let Some(s) = EXPORT_FOLDER.clone() {
     s
   } else if let Some(user_dir) = user_directory() {
