@@ -3,7 +3,7 @@ use std::{
   io::{self, Write as _},
   str::FromStr,
   string::String,
-  sync::Arc,
+  sync::{Arc, Mutex},
 };
 
 use async_trait::async_trait;
@@ -11,8 +11,9 @@ use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
 use sqlparser::ast::Statement;
 use sqlx::{
-  Column, Either, Row, ValueRef,
-  postgres::{PgConnectOptions, PgPoolOptions, Postgres},
+  Acquire, Column, Either, Row, ValueRef,
+  pool::PoolConnection,
+  postgres::{PgConnectOptions, PgConnection, PgPoolOptions, Postgres},
   types::Uuid,
 };
 use tokio::task::JoinHandle;
@@ -33,6 +34,8 @@ enum PostgresTask<'a> {
 pub struct PostgresDriver<'a> {
   pool: Option<Arc<sqlx::Pool<Postgres>>>,
   task: Option<PostgresTask<'a>>,
+  querying_conn: Option<Arc<Mutex<PoolConnection<Postgres>>>>,
+  querying_pid: Option<String>,
 }
 
 #[async_trait(?Send)]
@@ -46,11 +49,15 @@ impl Database for PostgresDriver<'_> {
 
   // since it's possible for raw_sql to execute multiple queries in a single string,
   // we only execute the first one and then drop the rest.
-  fn start_query(&mut self, query: String) -> Result<()> {
+  async fn start_query(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Postgres)?;
     let pool = self.pool.clone().unwrap();
+    self.querying_conn = Some(Arc::new(Mutex::new(pool.acquire().await?)));
+    let conn = self.querying_conn.clone().unwrap().clone().try_lock().unwrap().as_mut();
+    let pid = sqlx::raw_sql("SELECT pg_backend_pid()").fetch_one(conn).await?.get::<String, _>(0);
     self.task = Some(PostgresTask::Query(tokio::spawn(async move {
-      let results = query_with_pool(pool, first_query.clone()).await;
+      let cloned_conn = self.querying_conn.clone().unwrap().clone().try_lock().unwrap().as_mut();
+      let results = query_with_conn(cloned_conn, first_query.clone()).await;
       match results {
         Ok(ref rows) => {
           log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
@@ -64,7 +71,7 @@ impl Database for PostgresDriver<'_> {
     Ok(())
   }
 
-  fn abort_query(&mut self) -> Result<bool> {
+  async fn abort_query(&mut self) -> Result<bool> {
     match self.task.take() {
       Some(task) => {
         match task {
@@ -201,7 +208,7 @@ impl Database for PostgresDriver<'_> {
 
 impl PostgresDriver<'_> {
   pub fn new() -> Self {
-    Self { pool: None, task: None }
+    Self { pool: None, task: None, active_pid: None }
   }
 
   fn build_connection_opts(
@@ -283,6 +290,10 @@ impl PostgresDriver<'_> {
 
 async fn query_with_pool(pool: Arc<sqlx::Pool<Postgres>>, query: String) -> Result<Rows> {
   query_with_stream(&*pool.clone(), &query).await
+}
+
+async fn query_with_conn(conn: &mut PgConnection, query: String) -> Result<Rows> {
+  query_with_stream(conn, &query).await
 }
 
 async fn query_with_stream<'a, E>(e: E, query: &'a str) -> Result<Rows>

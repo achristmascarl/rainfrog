@@ -83,10 +83,10 @@ pub trait Database {
 
   /// Spawns a tokio task that runs the query. The task should
   /// expect to be polled via the `get_query_results()` method.
-  fn start_query(&mut self, query: String) -> Result<()>;
+  async fn start_query(&mut self, query: String) -> Result<()>;
 
   /// Aborts the tokio task running the active query or transaction.
-  fn abort_query(&mut self) -> Result<bool>;
+  async fn abort_query(&mut self) -> Result<bool>;
 
   /// Polls the tokio task for the active query or transaction if
   /// it exists. Returns `DbTaskResult::NoTask` if no task is running,
