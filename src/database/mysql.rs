@@ -142,7 +142,7 @@ impl Database for MySqlDriver<'_> {
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::MySql)?;
-    let mut tx = self.pool.as_mut().unwrap().begin().await?;
+    let mut tx = self.pool.clone().unwrap().begin().await?;
     let pid = sqlx::raw_sql("SELECT CONNECTION_ID()").fetch_one(&mut *tx).await?.get::<u64, _>(0);
     log::info!("Starting transaction with PID {}", pid.clone());
     self.querying_pid = Some(pid.to_string());
