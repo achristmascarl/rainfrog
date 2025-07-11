@@ -13,8 +13,9 @@ use sqlparser::ast::Statement;
 use sqlx::{
   Column, Either, Row, ValueRef,
   mysql::{MySql, MySqlConnectOptions, MySqlPoolOptions},
+  pool::PoolConnection,
 };
-use tokio::task::JoinHandle;
+use tokio::{sync::Mutex, task::JoinHandle};
 
 use super::{Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value};
 
@@ -30,6 +31,8 @@ enum MySqlTask<'a> {
 pub struct MySqlDriver<'a> {
   pool: Option<Arc<sqlx::Pool<MySql>>>,
   task: Option<MySqlTask<'a>>,
+  querying_conn: Option<Arc<Mutex<PoolConnection<MySql>>>>,
+  querying_pid: Option<String>,
 }
 
 #[async_trait(?Send)]
@@ -95,10 +98,19 @@ impl Database for MySqlDriver<'_> {
             Ok(rows) => rows.rows_affected,
             _ => None,
           };
-          (
-            DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-            Some(MySqlTask::TxPending(Box::new((tx, result)))),
-          )
+          match result {
+            // if tx failed to start, return the error immediately
+            QueryResultsWithMetadata { results: Err(e), statement_type } => {
+              log::error!("Transaction didn't start: {e:?}");
+              self.querying_conn = None;
+              self.querying_pid = None;
+              (DbTaskResult::Finished(QueryResultsWithMetadata { results: Err(e), statement_type }), None)
+            },
+            _ => (
+              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+              Some(MySqlTask::TxPending(Box::new((tx, result)))),
+            ),
+          }
         }
       },
       Some(MySqlTask::TxPending(b)) => (DbTaskResult::Pending, Some(MySqlTask::TxPending(b))),
@@ -210,7 +222,7 @@ impl Database for MySqlDriver<'_> {
 
 impl MySqlDriver<'_> {
   pub fn new() -> Self {
-    Self { pool: None, task: None }
+    Self { pool: None, task: None, querying_conn: None, querying_pid: None }
   }
 
   fn build_connection_opts(

@@ -95,10 +95,17 @@ impl Database for SqliteDriver<'_> {
             Ok(rows) => rows.rows_affected,
             _ => None,
           };
-          (
-            DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-            Some(SqliteTask::TxPending(Box::new((tx, result)))),
-          )
+          match result {
+            // if tx failed to start, return the error immediately
+            QueryResultsWithMetadata { results: Err(e), statement_type } => {
+              log::error!("Transaction didn't start: {e:?}");
+              (DbTaskResult::Finished(QueryResultsWithMetadata { results: Err(e), statement_type }), None)
+            },
+            _ => (
+              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+              Some(SqliteTask::TxPending(Box::new((tx, result)))),
+            ),
+          }
         }
       },
       Some(SqliteTask::TxPending(b)) => (DbTaskResult::Pending, Some(SqliteTask::TxPending(b))),
