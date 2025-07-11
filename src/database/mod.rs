@@ -86,6 +86,9 @@ pub trait Database {
   async fn start_query(&mut self, query: String) -> Result<()>;
 
   /// Aborts the tokio task running the active query or transaction.
+  /// Some drivers also kill the process that was running the query,
+  /// so that the query does not continue running in the background.
+  /// This behavior needs to be implemented by the driver.
   async fn abort_query(&mut self) -> Result<bool>;
 
   /// Polls the tokio task for the active query or transaction if
