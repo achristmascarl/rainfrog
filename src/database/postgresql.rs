@@ -83,7 +83,7 @@ impl Database for PostgresDriver<'_> {
           _ => {},
         };
         if let Some(pid) = self.querying_pid.take() {
-          let success = sqlx::raw_sql(&format!("SELECT pg_cancel_backend('{pid}')"))
+          let success = sqlx::raw_sql(&format!("SELECT pg_cancel_backend({pid})"))
             .fetch_one(&*self.pool.clone().unwrap())
             .await?
             .get::<bool, _>(0);
