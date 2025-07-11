@@ -389,14 +389,14 @@ impl App {
               },
               Ok((ExecutionType::Normal, _)) => {
                 self.components.data.set_loading();
-                database.start_query(query_string)?;
+                database.start_query(query_string).await?;
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },
               Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
             }
           },
-          Action::AbortQuery => match database.abort_query() {
+          Action::AbortQuery => match database.abort_query().await {
             Ok(true) => {
               self.components.data.set_cancelled();
               self.state.last_query_end = Some(chrono::Utc::now());
@@ -478,7 +478,7 @@ impl App {
         })?;
       }
       if self.should_quit {
-        database.abort_query()?;
+        database.abort_query().await?;
         tui.stop()?;
         break;
       }

@@ -3,7 +3,7 @@ use std::{
   io::{self, Write as _},
   str::FromStr,
   string::String,
-  sync::{Arc, Mutex},
+  sync::Arc,
 };
 
 use async_trait::async_trait;
@@ -11,11 +11,12 @@ use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
 use sqlparser::ast::Statement;
 use sqlx::{
-  Acquire, Column, Either, Row, ValueRef,
+  Column, Either, Row, ValueRef,
   pool::PoolConnection,
   postgres::{PgConnectOptions, PgConnection, PgPoolOptions, Postgres},
   types::Uuid,
 };
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use super::{
@@ -53,11 +54,13 @@ impl Database for PostgresDriver<'_> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Postgres)?;
     let pool = self.pool.clone().unwrap();
     self.querying_conn = Some(Arc::new(Mutex::new(pool.acquire().await?)));
-    let conn = self.querying_conn.clone().unwrap().clone().try_lock().unwrap().as_mut();
-    let pid = sqlx::raw_sql("SELECT pg_backend_pid()").fetch_one(conn).await?.get::<String, _>(0);
+    let conn = self.querying_conn.clone().unwrap();
+    let conn_for_task = conn.clone();
+    let pid = sqlx::raw_sql("SELECT pg_backend_pid()").fetch_one(conn.lock().await.as_mut()).await?.get::<i32, _>(0);
+    log::info!("Starting query with PID {}", pid.clone());
+    self.querying_pid = Some(pid.to_string().clone());
     self.task = Some(PostgresTask::Query(tokio::spawn(async move {
-      let cloned_conn = self.querying_conn.clone().unwrap().clone().try_lock().unwrap().as_mut();
-      let results = query_with_conn(cloned_conn, first_query.clone()).await;
+      let results = query_with_conn(conn_for_task.lock().await.as_mut(), first_query.clone()).await;
       match results {
         Ok(ref rows) => {
           log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
@@ -79,9 +82,25 @@ impl Database for PostgresDriver<'_> {
           PostgresTask::TxStart(handle) => handle.abort(),
           _ => {},
         };
+        if let Some(pid) = self.querying_pid.take() {
+          let success = sqlx::raw_sql(&format!("SELECT pg_cancel_backend('{pid}')"))
+            .fetch_one(&*self.pool.clone().unwrap())
+            .await?
+            .get::<bool, _>(0);
+          if !success {
+            log::warn!("Failed to cancel backend process with PID {pid}");
+          } else {
+            log::info!("Cancelled backend process with PID {pid}");
+          }
+        }
+        self.querying_conn = None;
         Ok(true)
       },
-      _ => Ok(false),
+      _ => {
+        self.querying_conn = None;
+        self.querying_pid = None;
+        Ok(false)
+      },
     }
   }
 
@@ -93,6 +112,8 @@ impl Database for PostgresDriver<'_> {
           (DbTaskResult::Pending, Some(PostgresTask::Query(handle)))
         } else {
           let result = handle.await?;
+          self.querying_conn = None;
+          self.querying_pid = None;
           (DbTaskResult::Finished(result), None)
         }
       },
@@ -119,7 +140,10 @@ impl Database for PostgresDriver<'_> {
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Postgres)?;
-    let tx = self.pool.as_mut().unwrap().begin().await?;
+    let mut tx = self.pool.clone().unwrap().begin().await.unwrap();
+    let pid = sqlx::raw_sql("SELECT pg_backend_pid()").fetch_one(&mut *tx).await?.get::<i32, _>(0);
+    log::info!("Starting transaction with PID {}", pid.clone());
+    self.querying_pid = Some(pid.to_string().clone());
     self.task = Some(PostgresTask::TxStart(tokio::spawn(async move {
       let (results, tx) = query_with_tx(tx, &first_query).await;
       match results {
@@ -153,6 +177,8 @@ impl Database for PostgresDriver<'_> {
       match self.task.take() {
         Some(PostgresTask::TxPending(b)) => {
           b.0.commit().await?;
+          self.querying_conn = None;
+          self.querying_pid = None;
           Ok(Some(b.1))
         },
         _ => Ok(None),
@@ -164,6 +190,8 @@ impl Database for PostgresDriver<'_> {
     if let Some(PostgresTask::TxPending(b)) = self.task.take() {
       b.0.rollback().await?;
     }
+    self.querying_conn = None;
+    self.querying_pid = None;
     Ok(())
   }
 
@@ -208,7 +236,7 @@ impl Database for PostgresDriver<'_> {
 
 impl PostgresDriver<'_> {
   pub fn new() -> Self {
-    Self { pool: None, task: None, active_pid: None }
+    Self { pool: None, task: None, querying_conn: None, querying_pid: None }
   }
 
   fn build_connection_opts(

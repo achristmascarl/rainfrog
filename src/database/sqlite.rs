@@ -43,7 +43,7 @@ impl Database for SqliteDriver<'_> {
 
   // since it's possible for raw_sql to execute multiple queries in a single string,
   // we only execute the first one and then drop the rest.
-  fn start_query(&mut self, query: String) -> Result<()> {
+  async fn start_query(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Sqlite)?;
     let pool = self.pool.clone().unwrap();
     self.task = Some(SqliteTask::Query(tokio::spawn(async move {
@@ -61,7 +61,7 @@ impl Database for SqliteDriver<'_> {
     Ok(())
   }
 
-  fn abort_query(&mut self) -> Result<bool> {
+  async fn abort_query(&mut self) -> Result<bool> {
     match self.task.take() {
       Some(task) => {
         match task {
