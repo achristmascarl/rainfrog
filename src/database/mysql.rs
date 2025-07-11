@@ -11,7 +11,7 @@ use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
 use sqlparser::ast::Statement;
 use sqlx::{
-  Column, Either, Row, ValueRef,
+  Column, Either, MySqlConnection, Row, ValueRef,
   mysql::{MySql, MySqlConnectOptions, MySqlPoolOptions},
   pool::PoolConnection,
 };
@@ -49,8 +49,14 @@ impl Database for MySqlDriver<'_> {
   async fn start_query(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::MySql)?;
     let pool = self.pool.clone().unwrap();
+    self.querying_conn = Some(Arc::new(Mutex::new(pool.acquire().await?)));
+    let conn = self.querying_conn.clone().unwrap();
+    let conn_for_task = conn.clone();
+    let pid = sqlx::raw_sql("SELECT CONNECTION_ID()").fetch_one(conn.lock().await.as_mut()).await?.get::<u64, _>(0);
+    log::info!("Starting query with PID {}", pid.clone());
+    self.querying_pid = Some(pid.to_string().clone());
     self.task = Some(MySqlTask::Query(tokio::spawn(async move {
-      let results = query_with_pool(pool, first_query.clone()).await;
+      let results = query_with_conn(conn_for_task.lock().await.as_mut(), first_query.clone()).await;
       match results {
         Ok(ref rows) => {
           log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
@@ -72,9 +78,22 @@ impl Database for MySqlDriver<'_> {
           MySqlTask::TxStart(handle) => handle.abort(),
           _ => {},
         };
+        if let Some(pid) = self.querying_pid.take() {
+          let result = sqlx::raw_sql(&format!("KILL {pid}")).execute(&*self.pool.clone().unwrap()).await;
+          let msg = match result {
+            Ok(_) => "successfully killed".to_string(),
+            Err(e) => format!("failed to kill: {e:?}"),
+          };
+          log::info!("Tried to cancel backend process with PID {pid}: {msg} ");
+        }
+        self.querying_conn = None;
         Ok(true)
       },
-      _ => Ok(false),
+      _ => {
+        self.querying_conn = None;
+        self.querying_pid = None;
+        Ok(false)
+      },
     }
   }
 
@@ -86,6 +105,8 @@ impl Database for MySqlDriver<'_> {
           (DbTaskResult::Pending, Some(MySqlTask::Query(handle)))
         } else {
           let result = handle.await?;
+          self.querying_conn = None;
+          self.querying_pid = None;
           (DbTaskResult::Finished(result), None)
         }
       },
@@ -121,7 +142,10 @@ impl Database for MySqlDriver<'_> {
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::MySql)?;
-    let tx = self.pool.as_mut().unwrap().begin().await?;
+    let mut tx = self.pool.as_mut().unwrap().begin().await?;
+    let pid = sqlx::raw_sql("SELECT CONNECTION_ID()").fetch_one(&mut *tx).await?.get::<u64, _>(0);
+    log::info!("Starting transaction with PID {}", pid.clone());
+    self.querying_pid = Some(pid.to_string().clone());
     self.task = Some(MySqlTask::TxStart(tokio::spawn(async move {
       let (results, tx) = query_with_tx(tx, &first_query).await;
       match results {
@@ -155,6 +179,8 @@ impl Database for MySqlDriver<'_> {
       match self.task.take() {
         Some(MySqlTask::TxPending(b)) => {
           b.0.commit().await?;
+          self.querying_conn = None;
+          self.querying_pid = None;
           Ok(Some(b.1))
         },
         _ => Ok(None),
@@ -166,6 +192,8 @@ impl Database for MySqlDriver<'_> {
     if let Some(MySqlTask::TxPending(b)) = self.task.take() {
       b.0.rollback().await?;
     }
+    self.querying_conn = None;
+    self.querying_pid = None;
     Ok(())
   }
 
@@ -308,6 +336,10 @@ impl MySqlDriver<'_> {
 
 async fn query_with_pool(pool: Arc<sqlx::Pool<MySql>>, query: String) -> Result<Rows> {
   query_with_stream(&*pool.clone(), &query).await
+}
+
+async fn query_with_conn(conn: &mut MySqlConnection, query: String) -> Result<Rows> {
+  query_with_stream(conn, &query).await
 }
 
 async fn query_with_stream<'a, E>(e: E, query: &'a str) -> Result<Rows>
