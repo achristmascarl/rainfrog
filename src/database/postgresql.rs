@@ -12,9 +12,11 @@ use futures::stream::StreamExt;
 use sqlparser::ast::Statement;
 use sqlx::{
   Column, Either, Row, ValueRef,
-  postgres::{PgConnectOptions, PgPoolOptions, Postgres},
+  pool::PoolConnection,
+  postgres::{PgConnectOptions, PgConnection, PgPoolOptions, Postgres},
   types::Uuid,
 };
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use super::{
@@ -33,6 +35,8 @@ enum PostgresTask<'a> {
 pub struct PostgresDriver<'a> {
   pool: Option<Arc<sqlx::Pool<Postgres>>>,
   task: Option<PostgresTask<'a>>,
+  querying_conn: Option<Arc<Mutex<PoolConnection<Postgres>>>>,
+  querying_pid: Option<String>,
 }
 
 #[async_trait(?Send)]
@@ -46,11 +50,17 @@ impl Database for PostgresDriver<'_> {
 
   // since it's possible for raw_sql to execute multiple queries in a single string,
   // we only execute the first one and then drop the rest.
-  fn start_query(&mut self, query: String) -> Result<()> {
+  async fn start_query(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Postgres)?;
     let pool = self.pool.clone().unwrap();
+    self.querying_conn = Some(Arc::new(Mutex::new(pool.acquire().await?)));
+    let conn = self.querying_conn.clone().unwrap();
+    let conn_for_task = conn.clone();
+    let pid = sqlx::raw_sql("SELECT pg_backend_pid()").fetch_one(conn.lock().await.as_mut()).await?.get::<i32, _>(0);
+    log::info!("Starting query with PID {}", pid.clone());
+    self.querying_pid = Some(pid.to_string().clone());
     self.task = Some(PostgresTask::Query(tokio::spawn(async move {
-      let results = query_with_pool(pool, first_query.clone()).await;
+      let results = query_with_conn(conn_for_task.lock().await.as_mut(), first_query.clone()).await;
       match results {
         Ok(ref rows) => {
           log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
@@ -64,7 +74,7 @@ impl Database for PostgresDriver<'_> {
     Ok(())
   }
 
-  fn abort_query(&mut self) -> Result<bool> {
+  async fn abort_query(&mut self) -> Result<bool> {
     match self.task.take() {
       Some(task) => {
         match task {
@@ -72,9 +82,25 @@ impl Database for PostgresDriver<'_> {
           PostgresTask::TxStart(handle) => handle.abort(),
           _ => {},
         };
+        if let Some(pid) = self.querying_pid.take() {
+          let success = sqlx::raw_sql(&format!("SELECT pg_cancel_backend({pid})"))
+            .fetch_one(&*self.pool.clone().unwrap())
+            .await?
+            .get::<bool, _>(0);
+          if !success {
+            log::warn!("Failed to cancel backend process with PID {pid}");
+          } else {
+            log::info!("Cancelled backend process with PID {pid}");
+          }
+        }
+        self.querying_conn = None;
         Ok(true)
       },
-      _ => Ok(false),
+      _ => {
+        self.querying_conn = None;
+        self.querying_pid = None;
+        Ok(false)
+      },
     }
   }
 
@@ -86,6 +112,8 @@ impl Database for PostgresDriver<'_> {
           (DbTaskResult::Pending, Some(PostgresTask::Query(handle)))
         } else {
           let result = handle.await?;
+          self.querying_conn = None;
+          self.querying_pid = None;
           (DbTaskResult::Finished(result), None)
         }
       },
@@ -98,10 +126,19 @@ impl Database for PostgresDriver<'_> {
             Ok(rows) => rows.rows_affected,
             _ => None,
           };
-          (
-            DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-            Some(PostgresTask::TxPending(Box::new((tx, result)))),
-          )
+          match result {
+            // if tx failed to start, return the error immediately
+            QueryResultsWithMetadata { results: Err(e), statement_type } => {
+              log::error!("Transaction didn't start: {e:?}");
+              self.querying_conn = None;
+              self.querying_pid = None;
+              (DbTaskResult::Finished(QueryResultsWithMetadata { results: Err(e), statement_type }), None)
+            },
+            _ => (
+              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+              Some(PostgresTask::TxPending(Box::new((tx, result)))),
+            ),
+          }
         }
       },
       Some(PostgresTask::TxPending(b)) => (DbTaskResult::Pending, Some(PostgresTask::TxPending(b))),
@@ -112,7 +149,10 @@ impl Database for PostgresDriver<'_> {
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Postgres)?;
-    let tx = self.pool.as_mut().unwrap().begin().await?;
+    let mut tx = self.pool.clone().unwrap().begin().await?;
+    let pid = sqlx::raw_sql("SELECT pg_backend_pid()").fetch_one(&mut *tx).await?.get::<i32, _>(0);
+    log::info!("Starting transaction with PID {}", pid.clone());
+    self.querying_pid = Some(pid.to_string().clone());
     self.task = Some(PostgresTask::TxStart(tokio::spawn(async move {
       let (results, tx) = query_with_tx(tx, &first_query).await;
       match results {
@@ -146,6 +186,8 @@ impl Database for PostgresDriver<'_> {
       match self.task.take() {
         Some(PostgresTask::TxPending(b)) => {
           b.0.commit().await?;
+          self.querying_conn = None;
+          self.querying_pid = None;
           Ok(Some(b.1))
         },
         _ => Ok(None),
@@ -157,6 +199,8 @@ impl Database for PostgresDriver<'_> {
     if let Some(PostgresTask::TxPending(b)) = self.task.take() {
       b.0.rollback().await?;
     }
+    self.querying_conn = None;
+    self.querying_pid = None;
     Ok(())
   }
 
@@ -201,7 +245,7 @@ impl Database for PostgresDriver<'_> {
 
 impl PostgresDriver<'_> {
   pub fn new() -> Self {
-    Self { pool: None, task: None }
+    Self { pool: None, task: None, querying_conn: None, querying_pid: None }
   }
 
   fn build_connection_opts(
@@ -283,6 +327,10 @@ impl PostgresDriver<'_> {
 
 async fn query_with_pool(pool: Arc<sqlx::Pool<Postgres>>, query: String) -> Result<Rows> {
   query_with_stream(&*pool.clone(), &query).await
+}
+
+async fn query_with_conn(conn: &mut PgConnection, query: String) -> Result<Rows> {
+  query_with_stream(conn, &query).await
 }
 
 async fn query_with_stream<'a, E>(e: E, query: &'a str) -> Result<Rows>
