@@ -126,10 +126,19 @@ impl Database for PostgresDriver<'_> {
             Ok(rows) => rows.rows_affected,
             _ => None,
           };
-          (
-            DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-            Some(PostgresTask::TxPending(Box::new((tx, result)))),
-          )
+          match result {
+            // if tx failed to start, return the error immediately
+            QueryResultsWithMetadata { results: Err(e), statement_type } => {
+              log::error!("Transaction didn't start: {e:?}");
+              self.querying_conn = None;
+              self.querying_pid = None;
+              (DbTaskResult::Finished(QueryResultsWithMetadata { results: Err(e), statement_type }), None)
+            },
+            _ => (
+              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+              Some(PostgresTask::TxPending(Box::new((tx, result)))),
+            ),
+          }
         }
       },
       Some(PostgresTask::TxPending(b)) => (DbTaskResult::Pending, Some(PostgresTask::TxPending(b))),
