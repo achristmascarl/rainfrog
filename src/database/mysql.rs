@@ -54,7 +54,7 @@ impl Database for MySqlDriver<'_> {
     let conn_for_task = conn.clone();
     let pid = sqlx::raw_sql("SELECT CONNECTION_ID()").fetch_one(conn.lock().await.as_mut()).await?.get::<u64, _>(0);
     log::info!("Starting query with PID {}", pid.clone());
-    self.querying_pid = Some(pid.to_string().clone());
+    self.querying_pid = Some(pid.to_string());
     self.task = Some(MySqlTask::Query(tokio::spawn(async move {
       let results = query_with_conn(conn_for_task.lock().await.as_mut(), first_query.clone()).await;
       match results {
@@ -145,7 +145,7 @@ impl Database for MySqlDriver<'_> {
     let mut tx = self.pool.as_mut().unwrap().begin().await?;
     let pid = sqlx::raw_sql("SELECT CONNECTION_ID()").fetch_one(&mut *tx).await?.get::<u64, _>(0);
     log::info!("Starting transaction with PID {}", pid.clone());
-    self.querying_pid = Some(pid.to_string().clone());
+    self.querying_pid = Some(pid.to_string());
     self.task = Some(MySqlTask::TxStart(tokio::spawn(async move {
       let (results, tx) = query_with_tx(tx, &first_query).await;
       match results {
