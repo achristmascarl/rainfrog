@@ -83,14 +83,23 @@ impl Database for PostgresDriver<'_> {
           _ => {},
         };
         if let Some(pid) = self.querying_pid.take() {
-          let success = sqlx::raw_sql(&format!("SELECT pg_cancel_backend({pid})"))
-            .fetch_one(&*self.pool.clone().unwrap())
-            .await?
-            .get::<bool, _>(0);
+          let result =
+            sqlx::raw_sql(&format!("SELECT pg_cancel_backend({pid})")).fetch_one(&*self.pool.clone().unwrap()).await;
+          let msg = match &result {
+            Ok(_) => "Successfully killed".to_string(),
+            Err(e) => format!("Failed to kill: {e:?}"),
+          };
+
+          let success = result.as_ref().is_ok_and(|r| r.try_get::<bool, _>(0).unwrap_or(false));
+          let status_string =
+            result.map_or("ERROR".to_string(), |r| r.try_get_unchecked::<String, _>(0).unwrap_or("ERROR".to_string()));
+
           if !success {
-            log::warn!("Failed to cancel backend process with PID {pid}");
+            log::warn!("Unexpected response when cancelling backend process with PID {pid}: {msg}");
+            log::warn!("Status: {status_string}");
           } else {
-            log::info!("Cancelled backend process with PID {pid}");
+            log::info!("Tried to cancel backend process with PID {pid}: {msg}");
+            log::warn!("Status: {status_string}");
           }
         }
         self.querying_conn = None;
