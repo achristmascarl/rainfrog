@@ -382,6 +382,7 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | Keybinding        | Description                            |
 | ----------------- | -------------------------------------- |
 | `Alt+Enter`, `F5` | Execute query                          |
+| `F7`              | Bypass parser to execute query (cannot rollback, no validation) |
 | `j`, `↓`          | Move cursor down 1 line                |
 | `k`, `↑`          | Move cursor up 1 line                  |
 | `h`, `←`          | Move cursor left 1 char                |
@@ -409,6 +410,7 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `Ctrl+e`          | Scroll down                            |
 | `Ctrl+y`          | Scroll up                              |
 | `Ctrl+f`*, `Alt+f`  | Save query to favorites                |
+
 *only works in normal mode
 
 <!-- TOC --><a name="query-history"></a>
