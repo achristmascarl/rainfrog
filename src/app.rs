@@ -1,6 +1,6 @@
 #[cfg(not(feature = "termux"))]
 use arboard::Clipboard;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Result, eyre};
 use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{
   Frame,
@@ -29,8 +29,8 @@ use crate::{
   database::{self, Database, DbTaskResult, ExecutionType, Rows},
   focus::Focus,
   popups::{
-    PopUp, PopUpPayload, confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx,
-    exporting::Exporting, name_favorite::NameFavorite,
+    PopUp, PopUpPayload, confirm_bypass::ConfirmBypass, confirm_export::ConfirmExport, confirm_query::ConfirmQuery,
+    confirm_tx::ConfirmTx, exporting::Exporting, name_favorite::NameFavorite,
   },
   tui,
   ui::center,
@@ -239,7 +239,11 @@ impl App {
                     self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmQuery(query)) => {
-                    action_tx.send(Action::Query(vec![query], true))?;
+                    action_tx.send(Action::Query(vec![query], true, false))?;
+                    self.set_focus(Focus::Editor);
+                  },
+                  Some(PopUpPayload::ConfirmBypass(query)) => {
+                    action_tx.send(Action::Query(vec![query], true, true))?;
                     self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmExport(confirmed)) => {
@@ -370,13 +374,21 @@ impl App {
             let rows = database.load_menu().await;
             self.components.menu.set_table_list(Some(rows));
           },
-          Action::Query(query_lines, confirmed) => 'query_action: {
+          Action::Query(query_lines, confirmed, bypass) => 'query_action: {
             let query_string = query_lines.clone().join(" \n");
             if query_string.is_empty() {
               break 'query_action;
             }
             self.add_to_history(query_lines.clone());
-            let execution_info = database::get_execution_type(query_string.clone(), *confirmed, driver);
+            if *bypass && !confirmed {
+              log::warn!("Bypassing parser");
+              self.set_popup(Box::new(ConfirmBypass::new(query_string.clone())));
+              break 'query_action;
+            }
+            let execution_info = match *bypass && *confirmed {
+              true => Ok((ExecutionType::Normal, None)),
+              false => database::get_execution_type(query_string.clone(), *confirmed, driver),
+            };
             match execution_info {
               Ok((ExecutionType::Transaction, _)) => {
                 self.components.data.set_loading();
@@ -384,7 +396,7 @@ impl App {
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },
-              Ok((ExecutionType::Confirm, statement_type)) => {
+              Ok((ExecutionType::Confirm, Some(statement_type))) => {
                 self.set_popup(Box::new(ConfirmQuery::new(query_string.clone(), statement_type)));
               },
               Ok((ExecutionType::Normal, _)) => {
@@ -394,6 +406,7 @@ impl App {
                 self.state.last_query_end = None;
               },
               Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
+              _ => self.components.data.set_data_state(Some(Err(eyre!("Missing statement type but not bypass"))), None),
             }
           },
           Action::AbortQuery => match database.abort_query().await {
@@ -417,7 +430,7 @@ impl App {
             action_tx.send(Action::QueryToEditor(vec![preview_query.clone()]))?;
             action_tx.send(Action::FocusEditor)?;
             action_tx.send(Action::FocusMenu)?;
-            action_tx.send(Action::Query(vec![preview_query.clone()], false))?;
+            action_tx.send(Action::Query(vec![preview_query.clone()], false, false))?;
           },
 
           Action::RequestSaveFavorite(query_lines) => {

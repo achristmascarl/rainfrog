@@ -144,11 +144,15 @@ fn get_first_query(query: String, driver: Driver) -> Result<(String, Statement),
   }
 }
 
-pub fn get_execution_type(query: String, confirmed: bool, driver: Driver) -> Result<(ExecutionType, Statement)> {
+pub fn get_execution_type(
+  query: String,
+  confirmed: bool,
+  driver: Driver,
+) -> Result<(ExecutionType, Option<Statement>)> {
   let first_query = get_first_query(query, driver);
 
   match first_query {
-    Ok((_, statement)) => Ok((get_default_execution_type(statement.clone(), confirmed), statement.clone())),
+    Ok((_, statement)) => Ok((get_default_execution_type(statement.clone(), confirmed), Some(statement.clone()))),
     Err(e) => Err(eyre::Report::new(e)),
   }
 }
