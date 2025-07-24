@@ -199,13 +199,13 @@ impl App {
       }
       match database.get_query_results().await? {
         DbTaskResult::Finished(results) => {
-          self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
+          self.components.data.set_data_state(Some(results.results), results.statement_type);
           self.state.last_query_end = Some(chrono::Utc::now());
           self.state.query_task_running = false;
         },
         DbTaskResult::ConfirmTx(rows_affected, statement) => {
           self.state.last_query_end = Some(chrono::Utc::now());
-          self.set_popup(Box::new(ConfirmTx::new(rows_affected, statement.clone())));
+          self.set_popup(Box::new(ConfirmTx::new(rows_affected, statement)));
           self.state.query_task_running = true;
         },
         DbTaskResult::Pending => {
@@ -265,7 +265,7 @@ impl App {
                     let response = database.commit_tx().await?;
                     self.state.last_query_end = Some(chrono::Utc::now());
                     if let Some(results) = response {
-                      self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
+                      self.components.data.set_data_state(Some(results.results), results.statement_type);
                       self.set_focus(Focus::Editor);
                     }
                   },
@@ -401,7 +401,7 @@ impl App {
               },
               Ok((ExecutionType::Normal, _)) => {
                 self.components.data.set_loading();
-                database.start_query(query_string).await?;
+                database.start_query(query_string, *bypass).await?;
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },

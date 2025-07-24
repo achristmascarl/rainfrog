@@ -34,13 +34,13 @@ impl PopUp for ConfirmQuery {
       Statement::Explain { statement, .. } => {
         format!(
           "Are you sure you want to run an EXPLAIN ANALYZE that will run a {} statement?",
-          statement_type_string(&statement).to_uppercase(),
+          statement_type_string(Some(*statement.clone())).to_uppercase(),
         )
       },
       _ => {
         format!(
           "Are you sure you want to use a {} statement?",
-          statement_type_string(&self.statement_type).to_uppercase()
+          statement_type_string(Some(self.statement_type.clone())).to_uppercase()
         )
       },
     }

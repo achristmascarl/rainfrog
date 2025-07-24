@@ -50,8 +50,14 @@ impl Database for PostgresDriver<'_> {
 
   // since it's possible for raw_sql to execute multiple queries in a single string,
   // we only execute the first one and then drop the rest.
-  async fn start_query(&mut self, query: String) -> Result<()> {
-    let (first_query, statement_type) = super::get_first_query(query, Driver::Postgres)?;
+  async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()> {
+    let (first_query, statement_type) = match bypass_parser {
+      true => (query, None),
+      false => {
+        let (first, stmt) = super::get_first_query(query, Driver::Postgres)?;
+        (first, Some(stmt))
+      },
+    };
     let pool = self.pool.clone().unwrap();
     self.querying_conn = Some(Arc::new(Mutex::new(pool.acquire().await?)));
     let conn = self.querying_conn.clone().unwrap();
@@ -170,18 +176,18 @@ impl Database for PostgresDriver<'_> {
           (
             QueryResultsWithMetadata {
               results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
-              statement_type,
+              statement_type: Some(statement_type),
             },
             tx,
           )
         },
         Ok(Either::Right(rows)) => {
           log::info!("{:?} rows affected", rows.rows_affected);
-          (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
+          (QueryResultsWithMetadata { results: Ok(rows), statement_type: Some(statement_type) }, tx)
         },
         Err(e) => {
           log::error!("{e:?}");
-          (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
+          (QueryResultsWithMetadata { results: Err(e), statement_type: Some(statement_type) }, tx)
         },
       }
     })));

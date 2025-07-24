@@ -41,7 +41,7 @@ pub struct Rows {
 #[derive(Debug)]
 pub struct QueryResultsWithMetadata {
   pub results: Result<Rows>,
-  pub statement_type: Statement,
+  pub statement_type: Option<Statement>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,7 +68,7 @@ pub type QueryTask = JoinHandle<QueryResultsWithMetadata>;
 
 pub enum DbTaskResult {
   Finished(QueryResultsWithMetadata),
-  ConfirmTx(Option<u64>, Statement),
+  ConfirmTx(Option<u64>, Option<Statement>),
   Pending,
   NoTask,
 }
@@ -83,7 +83,7 @@ pub trait Database {
 
   /// Spawns a tokio task that runs the query. The task should
   /// expect to be polled via the `get_query_results()` method.
-  async fn start_query(&mut self, query: String) -> Result<()>;
+  async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()>;
 
   /// Aborts the tokio task running the active query or transaction.
   /// Some drivers also kill the process that was running the query,
@@ -193,12 +193,15 @@ fn get_default_execution_type(statement: Statement, confirmed: bool) -> Executio
   }
 }
 
-pub fn statement_type_string(statement: &Statement) -> String {
-  format!("{statement:?}").split('(').collect::<Vec<&str>>()[0].split('{').collect::<Vec<&str>>()[0]
-    .split('[')
-    .collect::<Vec<&str>>()[0]
-    .trim()
-    .to_string()
+pub fn statement_type_string(statement: Option<Statement>) -> String {
+  match statement {
+    Some(stmt) => format!("{stmt:?}").split('(').collect::<Vec<&str>>()[0].split('{').collect::<Vec<&str>>()[0]
+      .split('[')
+      .collect::<Vec<&str>>()[0]
+      .trim()
+      .to_string(),
+    None => "UNKNOWN".to_string(),
+  }
 }
 
 pub fn vec_to_string<T: std::string::ToString>(vec: Vec<T>) -> String {

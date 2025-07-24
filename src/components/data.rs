@@ -443,7 +443,7 @@ impl Component for Data<'_> {
       },
       DataState::StatementCompleted(statement) => {
         f.render_widget(
-          Paragraph::new(format!("{} statement completed", statement_type_string(statement)))
+          Paragraph::new(format!("{} statement completed", statement_type_string(Some(statement.clone()))))
             .wrap(Wrap { trim: false })
             .block(block),
           area,
