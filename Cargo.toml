@@ -80,7 +80,7 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter", "serde"] }
 chrono = { version = "0.4", default-features = false }
 indexmap = "2.2.6"
 tui-textarea = { version = "0.7.0", features = ["search"] }
-sqlparser = "0.57.0"
+sqlparser = "0.58.0"
 arboard = { version = "3.4.1", optional = true, features = [
   "wayland-data-control",
 ] }
