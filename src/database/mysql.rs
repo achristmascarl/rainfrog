@@ -81,8 +81,8 @@ impl Database for MySqlDriver<'_> {
         if let Some(pid) = self.querying_pid.take() {
           let result = sqlx::raw_sql(&format!("KILL {pid}")).execute(&*self.pool.clone().unwrap()).await;
           let msg = match result {
-            Ok(_) => "successfully killed".to_string(),
-            Err(e) => format!("failed to kill: {e:?}"),
+            Ok(_) => "Successfully killed".to_string(),
+            Err(e) => format!("Failed to kill: {e:?}"),
           };
           log::info!("Tried to cancel backend process with PID {pid}: {msg} ");
         }
