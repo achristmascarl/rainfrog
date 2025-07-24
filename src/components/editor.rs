@@ -61,7 +61,7 @@ impl Editor<'_> {
       Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
         if !app_state.query_task_running {
           if let Some(sender) = &self.command_tx {
-            sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
+            sender.send(Action::Query(self.textarea.lines().to_vec(), false, false))?;
             self.vim_state = Vim::new(Mode::Normal);
             self.vim_state.register_action_handler(self.command_tx.clone())?;
             self.cursor_style = Mode::Normal.cursor_style();
@@ -166,9 +166,14 @@ impl Component for Editor<'_> {
 
   fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
     match action {
+      Action::SubmitEditorQueryBypassParser => {
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::Query(self.textarea.lines().to_vec(), false, true))?;
+        }
+      },
       Action::SubmitEditorQuery => {
         if let Some(sender) = &self.command_tx {
-          sender.send(Action::Query(self.textarea.lines().to_vec(), false))?;
+          sender.send(Action::Query(self.textarea.lines().to_vec(), false, false))?;
         }
       },
       Action::QueryToEditor(lines) => {

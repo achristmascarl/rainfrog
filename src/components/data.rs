@@ -375,7 +375,7 @@ impl Component for Data<'_> {
   }
 
   fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
-    if let Action::Query(query, confirmed) = action {
+    if let Action::Query(query, confirmed, bypass) = action {
       self.scrollable.reset_scroll();
     } else if let Action::ExportData(format) = action {
       let DataState::HasResults(rows) = &self.data_state else {
@@ -443,7 +443,7 @@ impl Component for Data<'_> {
       },
       DataState::StatementCompleted(statement) => {
         f.render_widget(
-          Paragraph::new(format!("{} statement completed", statement_type_string(statement)))
+          Paragraph::new(format!("{} statement completed", statement_type_string(Some(statement.clone()))))
             .wrap(Wrap { trim: false })
             .block(block),
           area,

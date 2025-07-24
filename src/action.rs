@@ -26,7 +26,8 @@ pub enum Action {
   Error(String),
   Help,
   SubmitEditorQuery,
-  Query(Vec<String>, bool),                 // (query_lines, execution_confirmed)
+  SubmitEditorQueryBypassParser,
+  Query(Vec<String>, bool, bool), // (query_lines, execution_confirmed, bypass_parser)
   MenuPreview(MenuPreview, String, String), // (preview, schema, table)
   QueryToEditor(Vec<String>),
   ClearHistory,
