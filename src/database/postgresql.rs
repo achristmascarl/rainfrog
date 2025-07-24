@@ -99,7 +99,7 @@ impl Database for PostgresDriver<'_> {
             log::warn!("Status: {status_string}");
           } else {
             log::info!("Tried to cancel backend process with PID {pid}: {msg}");
-            log::warn!("Status: {status_string}");
+            log::info!("Status: {status_string}");
           }
         }
         self.querying_conn = None;
