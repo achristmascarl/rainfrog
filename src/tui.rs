@@ -69,22 +69,22 @@ impl Tui {
   }
 
   pub fn tick_rate(mut self, tick_rate: Option<f64>) -> Self {
-    if tick_rate.is_some() {
-      self.tick_rate = tick_rate.unwrap()
+    if let Some(tick_rate) = tick_rate {
+      self.tick_rate = tick_rate;
     };
     self
   }
 
   pub fn frame_rate(mut self, frame_rate: Option<f64>) -> Self {
-    if frame_rate.is_some() {
-      self.frame_rate = frame_rate.unwrap();
+    if let Some(frame_rate) = frame_rate {
+      self.frame_rate = frame_rate;
     }
     self
   }
 
   pub fn mouse(mut self, mouse: Option<bool>) -> Self {
-    if mouse.is_some() {
-      self.mouse = mouse.unwrap();
+    if let Some(mouse) = mouse {
+      self.mouse = mouse;
     }
     self
   }

@@ -59,13 +59,13 @@ impl Editor<'_> {
   pub fn transition_vim_state(&mut self, input: Input, app_state: &AppState) -> Result<()> {
     match input {
       Input { key: Key::Enter, alt: true, .. } | Input { key: Key::Enter, ctrl: true, .. } => {
-        if !app_state.query_task_running {
-          if let Some(sender) = &self.command_tx {
-            sender.send(Action::Query(self.textarea.lines().to_vec(), false, false))?;
-            self.vim_state = Vim::new(Mode::Normal);
-            self.vim_state.register_action_handler(self.command_tx.clone())?;
-            self.cursor_style = Mode::Normal.cursor_style();
-          }
+        if !app_state.query_task_running
+          && let Some(sender) = &self.command_tx
+        {
+          sender.send(Action::Query(self.textarea.lines().to_vec(), false, false))?;
+          self.vim_state = Vim::new(Mode::Normal);
+          self.vim_state.register_action_handler(self.command_tx.clone())?;
+          self.cursor_style = Mode::Normal.cursor_style();
         }
       },
       Input { key: Key::Tab, shift: false, .. } if self.vim_state.mode != Mode::Insert => {

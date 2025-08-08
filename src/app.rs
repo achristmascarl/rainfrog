@@ -521,43 +521,45 @@ impl App {
       .constraints([Constraint::Length(1), Constraint::Fill(1)])
       .split(right_layout[0]);
 
-    if let Some(event) = &self.last_frame_mouse_event {
-      if self.popup.is_none() && event.kind != MouseEventKind::Moved && !matches!(event.kind, MouseEventKind::Down(_)) {
-        let position = Position::new(event.column, event.row);
-        let menu_target = root_layout[0];
-        let tabs_target = tabs_layout[0];
-        let tab_content_target = tabs_layout[1];
-        let data_target = right_layout[1];
-        if menu_target.contains(position) {
-          self.set_focus(Focus::Menu);
-        } else if data_target.contains(position) {
-          self.set_focus(Focus::Data);
-        } else if tab_content_target.contains(position) {
-          self.last_focused_tab();
-        } else if tabs_target.contains(position) {
-          match self.state.focus {
-            Focus::Editor => {
-              if matches!(event.kind, MouseEventKind::Up(_)) {
-                self.set_focus(Focus::History);
-              }
-            },
-            Focus::History => {
-              if matches!(event.kind, MouseEventKind::Up(_)) {
-                self.set_focus(Focus::Favorites);
-              }
-            },
-            Focus::Favorites => {
-              if matches!(event.kind, MouseEventKind::Up(_)) {
-                self.set_focus(Focus::Editor);
-              }
-            },
-            Focus::PopUp => {},
-            _ => {
-              self.state.focus = self.last_focused_tab;
-            },
-          }
-          self.last_frame_mouse_event = None;
+    if let Some(event) = &self.last_frame_mouse_event
+      && self.popup.is_none()
+      && event.kind != MouseEventKind::Moved
+      && !matches!(event.kind, MouseEventKind::Down(_))
+    {
+      let position = Position::new(event.column, event.row);
+      let menu_target = root_layout[0];
+      let tabs_target = tabs_layout[0];
+      let tab_content_target = tabs_layout[1];
+      let data_target = right_layout[1];
+      if menu_target.contains(position) {
+        self.set_focus(Focus::Menu);
+      } else if data_target.contains(position) {
+        self.set_focus(Focus::Data);
+      } else if tab_content_target.contains(position) {
+        self.last_focused_tab();
+      } else if tabs_target.contains(position) {
+        match self.state.focus {
+          Focus::Editor => {
+            if matches!(event.kind, MouseEventKind::Up(_)) {
+              self.set_focus(Focus::History);
+            }
+          },
+          Focus::History => {
+            if matches!(event.kind, MouseEventKind::Up(_)) {
+              self.set_focus(Focus::Favorites);
+            }
+          },
+          Focus::Favorites => {
+            if matches!(event.kind, MouseEventKind::Up(_)) {
+              self.set_focus(Focus::Editor);
+            }
+          },
+          Focus::PopUp => {},
+          _ => {
+            self.state.focus = self.last_focused_tab;
+          },
         }
+        self.last_frame_mouse_event = None;
       }
     }
     let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+4>", "   favorites <alt+5>"])
