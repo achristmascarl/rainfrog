@@ -1,6 +1,6 @@
 # 🐸 rainfrog
 
-a database management tui
+a database tool for the terminal
 
 ![rainfrog demo](vhs/demo.gif)
 
