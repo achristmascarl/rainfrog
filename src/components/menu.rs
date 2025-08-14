@@ -235,8 +235,9 @@ impl Component for Menu {
             KeyCode::Char('G') => self.scroll_bottom(),
             KeyCode::Char('R') => self.command_tx.as_ref().unwrap().send(Action::LoadMenu)?,
             KeyCode::Char('1') | KeyCode::Char('2') | KeyCode::Char('3') | KeyCode::Char('4') => {
-              if let Some(selected) = self.list_state.selected() {
-                let (schema, tables) = self.table_map.get_index(self.schema_index).unwrap();
+              if let Some(selected) = self.list_state.selected()
+                && let Some((schema, tables)) = self.table_map.get_index(self.schema_index)
+              {
                 let filtered_tables: Vec<String> = tables
                   .iter()
                   .filter(|t| {
