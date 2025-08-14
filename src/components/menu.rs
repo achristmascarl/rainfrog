@@ -235,31 +235,31 @@ impl Component for Menu {
             KeyCode::Char('G') => self.scroll_bottom(),
             KeyCode::Char('R') => self.command_tx.as_ref().unwrap().send(Action::LoadMenu)?,
             KeyCode::Char('1') | KeyCode::Char('2') | KeyCode::Char('3') | KeyCode::Char('4') => {
-              if let Some(selected) = self.list_state.selected() {
-                if let Some((schema, tables)) = self.table_map.get_index(self.schema_index) {
-                  let filtered_tables: Vec<String> = tables
-                    .iter()
-                    .filter(|t| {
-                      if let Some(search) = self.search.as_ref() {
-                        t.to_lowercase().contains(search.to_lowercase().trim())
-                      } else {
-                        true
-                      }
-                    })
-                    .cloned()
-                    .collect();
-                  self.command_tx.as_ref().unwrap().send(Action::MenuPreview(
-                    match key.code {
-                      KeyCode::Char('1') => MenuPreview::Columns,
-                      KeyCode::Char('2') => MenuPreview::Constraints,
-                      KeyCode::Char('3') => MenuPreview::Indexes,
-                      KeyCode::Char('4') => MenuPreview::Policies,
-                      _ => MenuPreview::Rows,
-                    },
-                    schema.clone(),
-                    filtered_tables[selected].clone(),
-                  ))?;
-                }
+              if let Some(selected) = self.list_state.selected()
+                && let Some((schema, tables)) = self.table_map.get_index(self.schema_index)
+              {
+                let filtered_tables: Vec<String> = tables
+                  .iter()
+                  .filter(|t| {
+                    if let Some(search) = self.search.as_ref() {
+                      t.to_lowercase().contains(search.to_lowercase().trim())
+                    } else {
+                      true
+                    }
+                  })
+                  .cloned()
+                  .collect();
+                self.command_tx.as_ref().unwrap().send(Action::MenuPreview(
+                  match key.code {
+                    KeyCode::Char('1') => MenuPreview::Columns,
+                    KeyCode::Char('2') => MenuPreview::Constraints,
+                    KeyCode::Char('3') => MenuPreview::Indexes,
+                    KeyCode::Char('4') => MenuPreview::Policies,
+                    _ => MenuPreview::Rows,
+                  },
+                  schema.clone(),
+                  filtered_tables[selected].clone(),
+                ))?;
               }
             },
             _ => {},
