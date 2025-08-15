@@ -303,6 +303,7 @@ postgres-dev = { connection_string = "postgresql://postgres:test123@127.0.0.1:54
 mysql-local = { host = "localhost", driver = "mysql", port = 32768, database = "rainfrog", username = "root" }
 sqlite-memory = { connection_string = "sqlite://:memory:", driver = "sqlite"}
 sqlite-disk = { connection_string = "sqlite://./my_database.db", driver = "sqlite"}
+oracle-local = { host = "localhost", driver = "oracle", port = 1521, database = "rainfrog", username = "rainfrog" }
 ```
 
 the connection details can be provided in two formats: a raw connection string or specifying individual fields.
