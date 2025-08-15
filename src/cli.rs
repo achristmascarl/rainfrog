@@ -98,7 +98,7 @@ pub fn prompt_for_database_selection(config: &Config) -> Result<Option<(Database
           let mut db_names: Vec<&str> = config.db.keys().map(|n| n.as_str()).collect();
           db_names.sort();
           for (i, name) in db_names.iter().enumerate() {
-            println!("[{i}] {}", name);
+            println!("[{i}] {name}");
           }
           print!("Input index of desired database: ");
 

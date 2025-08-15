@@ -11,9 +11,9 @@ use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
 use sqlparser::ast::Statement;
 use sqlx::{
+  Column, Either, Row, ValueRef,
   sqlite::{Sqlite, SqliteConnectOptions, SqlitePoolOptions},
   types::uuid,
-  Column, Either, Row, ValueRef,
 };
 
 use super::{Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value};
@@ -43,8 +43,14 @@ impl Database for SqliteDriver<'_> {
 
   // since it's possible for raw_sql to execute multiple queries in a single string,
   // we only execute the first one and then drop the rest.
-  fn start_query(&mut self, query: String) -> Result<()> {
-    let (first_query, statement_type) = super::get_first_query(query, Driver::Sqlite)?;
+  async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()> {
+    let (first_query, statement_type) = match bypass_parser {
+      true => (query, None),
+      false => {
+        let (first, stmt) = super::get_first_query(query, Driver::Sqlite)?;
+        (first, Some(stmt))
+      },
+    };
     let pool = self.pool.clone().unwrap();
     self.task = Some(SqliteTask::Query(tokio::spawn(async move {
       let results = query_with_pool(pool, first_query.clone()).await;
@@ -61,16 +67,17 @@ impl Database for SqliteDriver<'_> {
     Ok(())
   }
 
-  fn abort_query(&mut self) -> Result<bool> {
-    if let Some(task) = self.task.take() {
-      match task {
-        SqliteTask::Query(handle) => handle.abort(),
-        SqliteTask::TxStart(handle) => handle.abort(),
-        _ => {},
-      };
-      Ok(true)
-    } else {
-      Ok(false)
+  async fn abort_query(&mut self) -> Result<bool> {
+    match self.task.take() {
+      Some(task) => {
+        match task {
+          SqliteTask::Query(handle) => handle.abort(),
+          SqliteTask::TxStart(handle) => handle.abort(),
+          _ => {},
+        };
+        Ok(true)
+      },
+      _ => Ok(false),
     }
   }
 
@@ -94,10 +101,17 @@ impl Database for SqliteDriver<'_> {
             Ok(rows) => rows.rows_affected,
             _ => None,
           };
-          (
-            DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-            Some(SqliteTask::TxPending(Box::new((tx, result)))),
-          )
+          match result {
+            // if tx failed to start, return the error immediately
+            QueryResultsWithMetadata { results: Err(e), statement_type } => {
+              log::error!("Transaction didn't start: {e:?}");
+              (DbTaskResult::Finished(QueryResultsWithMetadata { results: Err(e), statement_type }), None)
+            },
+            _ => (
+              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+              Some(SqliteTask::TxPending(Box::new((tx, result)))),
+            ),
+          }
         }
       },
       Some(SqliteTask::TxPending(b)) => (DbTaskResult::Pending, Some(SqliteTask::TxPending(b))),
@@ -113,22 +127,22 @@ impl Database for SqliteDriver<'_> {
       let (results, tx) = query_with_tx(tx, &first_query).await;
       match results {
         Ok(Either::Left(rows_affected)) => {
-          log::info!("{:?} rows affected", rows_affected);
+          log::info!("{rows_affected:?} rows affected");
           (
             QueryResultsWithMetadata {
               results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
-              statement_type,
+              statement_type: Some(statement_type),
             },
             tx,
           )
         },
         Ok(Either::Right(rows)) => {
           log::info!("{:?} rows affected", rows.rows_affected);
-          (QueryResultsWithMetadata { results: Ok(rows), statement_type }, tx)
+          (QueryResultsWithMetadata { results: Ok(rows), statement_type: Some(statement_type) }, tx)
         },
         Err(e) => {
           log::error!("{e:?}");
-          (QueryResultsWithMetadata { results: Err(e), statement_type }, tx)
+          (QueryResultsWithMetadata { results: Err(e), statement_type: Some(statement_type) }, tx)
         },
       }
     })));
@@ -138,11 +152,14 @@ impl Database for SqliteDriver<'_> {
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if !matches!(self.task, Some(SqliteTask::TxPending(_))) {
       Ok(None)
-    } else if let Some(SqliteTask::TxPending(b)) = self.task.take() {
-      b.0.commit().await?;
-      Ok(Some(b.1))
     } else {
-      Ok(None)
+      match self.task.take() {
+        Some(SqliteTask::TxPending(b)) => {
+          b.0.commit().await?;
+          Ok(Some(b.1))
+        },
+        _ => Ok(None),
+      }
     }
   }
 
@@ -167,19 +184,19 @@ impl Database for SqliteDriver<'_> {
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
-    format!("select * from \"{}\" limit 100", table)
+    format!("select * from \"{table}\" limit 100")
   }
 
   fn preview_columns_query(&self, schema: &str, table: &str) -> String {
-    format!("pragma table_info(\"{}\")", table)
+    format!("pragma table_info(\"{table}\")")
   }
 
   fn preview_constraints_query(&self, schema: &str, table: &str) -> String {
-    format!("pragma foreign_key_list(\"{}\")", table)
+    format!("pragma foreign_key_list(\"{table}\")")
   }
 
   fn preview_indexes_query(&self, schema: &str, table: &str) -> String {
-    format!("pragma index_list(\"{}\")", table)
+    format!("pragma index_list(\"{table}\")")
   }
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
@@ -313,22 +330,27 @@ fn parse_value(row: &<Sqlite as sqlx::Database>::Row, col: &<Sqlite as sqlx::Dat
     )),
     "TEXT" => {
       // Try parsing as different types that might be stored as TEXT
-      if let Ok(dt) = row.try_get::<chrono::NaiveDateTime, _>(col.ordinal()) {
-        Some(Value { parse_error: false, string: dt.to_string(), is_null: false })
-      } else if let Ok(dt) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(col.ordinal()) {
-        Some(Value { parse_error: false, string: dt.to_string(), is_null: false })
-      } else if let Ok(date) = row.try_get::<chrono::NaiveDate, _>(col.ordinal()) {
-        Some(Value { parse_error: false, string: date.to_string(), is_null: false })
-      } else if let Ok(time) = row.try_get::<chrono::NaiveTime, _>(col.ordinal()) {
-        Some(Value { parse_error: false, string: time.to_string(), is_null: false })
-      } else if let Ok(uuid) = row.try_get::<uuid::Uuid, _>(col.ordinal()) {
-        Some(Value { parse_error: false, string: uuid.to_string(), is_null: false })
-      } else if let Ok(json) = row.try_get::<serde_json::Value, _>(col.ordinal()) {
-        Some(Value { parse_error: false, string: json.to_string(), is_null: false })
-      } else if let Ok(string) = row.try_get::<String, _>(col.ordinal()) {
-        Some(Value { parse_error: false, string, is_null: false })
-      } else {
-        Some(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false })
+      match row.try_get::<chrono::NaiveDateTime, _>(col.ordinal()) {
+        Ok(dt) => Some(Value { parse_error: false, string: dt.to_string(), is_null: false }),
+        _ => match row.try_get::<chrono::DateTime<chrono::Utc>, _>(col.ordinal()) {
+          Ok(dt) => Some(Value { parse_error: false, string: dt.to_string(), is_null: false }),
+          _ => match row.try_get::<chrono::NaiveDate, _>(col.ordinal()) {
+            Ok(date) => Some(Value { parse_error: false, string: date.to_string(), is_null: false }),
+            _ => match row.try_get::<chrono::NaiveTime, _>(col.ordinal()) {
+              Ok(time) => Some(Value { parse_error: false, string: time.to_string(), is_null: false }),
+              _ => match row.try_get::<uuid::Uuid, _>(col.ordinal()) {
+                Ok(uuid) => Some(Value { parse_error: false, string: uuid.to_string(), is_null: false }),
+                _ => match row.try_get::<serde_json::Value, _>(col.ordinal()) {
+                  Ok(json) => Some(Value { parse_error: false, string: json.to_string(), is_null: false }),
+                  _ => match row.try_get::<String, _>(col.ordinal()) {
+                    Ok(string) => Some(Value { parse_error: false, string, is_null: false }),
+                    _ => Some(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }),
+                  },
+                },
+              },
+            },
+          },
+        },
       }
     },
     "BLOB" => Some(row.try_get::<Vec<u8>, usize>(col.ordinal()).map_or(
@@ -350,41 +372,36 @@ fn parse_value(row: &<Sqlite as sqlx::Database>::Row, col: &<Sqlite as sqlx::Dat
     )),
     "DATETIME" => {
       // Similar to TEXT, but we'll try timestamp first
-      if let Ok(dt) = row.try_get::<i64, _>(col.ordinal()) {
-        Some(chrono::DateTime::from_timestamp(dt, 0).map_or(
+      match row.try_get::<i64, _>(col.ordinal()) {
+        Ok(dt) => Some(chrono::DateTime::from_timestamp(dt, 0).map_or(
           Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
           |received| Value { parse_error: false, string: received.to_string(), is_null: false },
-        ))
-      } else if let Ok(dt) = row.try_get::<chrono::NaiveDateTime, _>(col.ordinal()) {
-        Some(Value { parse_error: true, string: dt.to_string(), is_null: false })
-      } else if let Ok(dt) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(col.ordinal()) {
-        Some(Value { parse_error: true, string: dt.to_string(), is_null: false })
-      } else {
-        Some(row.try_get::<String, usize>(col.ordinal()).map_or(
-          Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-          |received| Value { parse_error: false, string: received.to_string(), is_null: false },
-        ))
+        )),
+        _ => match row.try_get::<chrono::NaiveDateTime, _>(col.ordinal()) {
+          Ok(dt) => Some(Value { parse_error: true, string: dt.to_string(), is_null: false }),
+          _ => match row.try_get::<chrono::DateTime<chrono::Utc>, _>(col.ordinal()) {
+            Ok(dt) => Some(Value { parse_error: true, string: dt.to_string(), is_null: false }),
+            _ => Some(row.try_get::<String, usize>(col.ordinal()).map_or(
+              Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+              |received| Value { parse_error: false, string: received.to_string(), is_null: false },
+            )),
+          },
+        },
       }
     },
-    "DATE" => {
-      if let Ok(date) = row.try_get::<chrono::NaiveDate, _>(col.ordinal()) {
-        Some(Value { parse_error: true, string: date.to_string(), is_null: false })
-      } else {
-        Some(row.try_get::<String, usize>(col.ordinal()).map_or(
-          Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-          |received| Value { parse_error: false, string: received.to_string(), is_null: false },
-        ))
-      }
+    "DATE" => match row.try_get::<chrono::NaiveDate, _>(col.ordinal()) {
+      Ok(date) => Some(Value { parse_error: true, string: date.to_string(), is_null: false }),
+      _ => Some(row.try_get::<String, usize>(col.ordinal()).map_or(
+        Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+        |received| Value { parse_error: false, string: received.to_string(), is_null: false },
+      )),
     },
-    "TIME" => {
-      if let Ok(time) = row.try_get::<chrono::NaiveTime, _>(col.ordinal()) {
-        Some(Value { parse_error: true, string: time.to_string(), is_null: false })
-      } else {
-        Some(row.try_get::<String, usize>(col.ordinal()).map_or(
-          Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-          |received| Value { parse_error: false, string: received.to_string(), is_null: false },
-        ))
-      }
+    "TIME" => match row.try_get::<chrono::NaiveTime, _>(col.ordinal()) {
+      Ok(time) => Some(Value { parse_error: true, string: time.to_string(), is_null: false }),
+      _ => Some(row.try_get::<String, usize>(col.ordinal()).map_or(
+        Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+        |received| Value { parse_error: false, string: received.to_string(), is_null: false },
+      )),
     },
     _ => {
       // For any other types, try to cast to string
@@ -401,7 +418,7 @@ mod tests {
   use sqlparser::{ast::Statement, dialect::SQLiteDialect, parser::ParserError};
 
   use super::*;
-  use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};
+  use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
 
   #[test]
   fn test_get_first_query() {
@@ -478,7 +495,7 @@ mod tests {
         (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {
           assert_eq!(msg, expected_msg)
         },
-        _ => panic!("Unexpected result for input: {}", input),
+        _ => panic!("Unexpected result for input: {input}"),
       }
     }
   }
@@ -501,8 +518,7 @@ mod tests {
       assert_eq!(
         get_execution_type(query.to_string(), false, Driver::Sqlite).unwrap().0,
         expected,
-        "Failed for query: {}",
-        query
+        "Failed for query: {query}"
       );
     }
   }

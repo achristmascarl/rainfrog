@@ -7,11 +7,11 @@ use crate::database::statement_type_string;
 #[derive(Debug)]
 pub struct ConfirmTx {
   rows_affected: Option<u64>,
-  statement_type: Statement,
+  statement_type: Option<Statement>,
 }
 
 impl ConfirmTx {
-  pub fn new(rows_affected: Option<u64>, statement_type: Statement) -> Self {
+  pub fn new(rows_affected: Option<u64>, statement_type: Option<Statement>) -> Self {
     Self { rows_affected, statement_type }
   }
 }
@@ -32,23 +32,26 @@ impl PopUp for ConfirmTx {
   fn get_cta_text(&self, app_state: &crate::app::AppState) -> String {
     let rows_affected = self.rows_affected.unwrap_or_default();
     match self.statement_type.clone() {
-      Statement::Delete(_) | Statement::Insert(_) | Statement::Update { .. } => {
+      None => {
+        format!("Are you sure you want to commit a transaction that will affect {rows_affected} rows?")
+      },
+      Some(Statement::Delete(_)) | Some(Statement::Insert(_)) | Some(Statement::Update { .. }) => {
         format!(
           "Are you sure you want to {} {} rows?",
-          statement_type_string(&self.statement_type).to_uppercase(),
+          statement_type_string(self.statement_type.clone()).to_uppercase(),
           rows_affected
         )
       },
-      Statement::Explain { statement, .. } => {
+      Some(Statement::Explain { statement, .. }) => {
         format!(
           "Are you sure you want to run an EXPLAIN ANALYZE that will {} rows?",
-          statement_type_string(&statement).to_uppercase(),
+          statement_type_string(Some(*statement.clone())).to_uppercase(),
         )
       },
       _ => {
         format!(
           "Are you sure you want to use a {} statement?",
-          statement_type_string(&self.statement_type).to_uppercase()
+          statement_type_string(self.statement_type.clone()).to_uppercase()
         )
       },
     }

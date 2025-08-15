@@ -34,7 +34,7 @@ impl FavoriteEntry {
   }
 
   pub fn path_impl(mut base: PathBuf, name: String) -> PathBuf {
-    base.push(format!("{}.sql", name));
+    base.push(format!("{name}.sql"));
     base
   }
 
@@ -207,10 +207,10 @@ impl Component for Favorites {
     match key.code {
       KeyCode::Enter if self.search_focused => {
         self.search_focused = false;
-        if let Some(search) = &self.search {
-          if search.is_empty() {
-            self.search = None;
-          }
+        if let Some(search) = &self.search
+          && search.is_empty()
+        {
+          self.search = None;
         }
         self.list_state = ListState::default().with_selected(Some(0));
       },

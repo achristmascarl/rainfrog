@@ -170,7 +170,7 @@ impl SettableTableList<'_> for Menu {
         }
       },
       Some(Err(e)) => {
-        log::error!("{}", e);
+        log::error!("{e}");
       },
       None => {},
     }
@@ -235,8 +235,9 @@ impl Component for Menu {
             KeyCode::Char('G') => self.scroll_bottom(),
             KeyCode::Char('R') => self.command_tx.as_ref().unwrap().send(Action::LoadMenu)?,
             KeyCode::Char('1') | KeyCode::Char('2') | KeyCode::Char('3') | KeyCode::Char('4') => {
-              if let Some(selected) = self.list_state.selected() {
-                let (schema, tables) = self.table_map.get_index(self.schema_index).unwrap();
+              if let Some(selected) = self.list_state.selected()
+                && let Some((schema, tables)) = self.table_map.get_index(self.schema_index)
+              {
                 let filtered_tables: Vec<String> = tables
                   .iter()
                   .filter(|t| {
@@ -346,7 +347,7 @@ impl Component for Menu {
       match i {
         x if x == self.schema_index => {
           let block = Block::default()
-            .title(format!(" 󰦄  {} <alt+1> (schema) ", k))
+            .title(format!(" 󰦄  {k} <alt+1> (schema) "))
             .borders(Borders::ALL)
             .border_style(if focused && self.menu_focus == MenuFocus::Schema {
               Style::default().fg(Color::Green)

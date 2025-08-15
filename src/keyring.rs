@@ -23,7 +23,7 @@ pub fn get_password(connection_name: &str, username: &str) -> Result<Password> {
     },
     Err(e) => match e {
       keyring::Error::NoEntry => {
-        println!("{}@{}", username, connection_name);
+        println!("{username}@{connection_name}");
         let password = rpassword::prompt_password("Password: ")?;
 
         print!("Save password (Y/n): ");
@@ -31,12 +31,12 @@ pub fn get_password(connection_name: &str, username: &str) -> Result<Password> {
         io::stdout().flush()?;
         io::stdin().read_line(&mut save)?;
         match save.trim() {
-          "Y" => {
+          "" | "Y" | "y" => {
             entry.set_password(&password)?;
             println!("Password saved in keyring");
             Ok(())
           },
-          "n" => {
+          "n" | "N" => {
             println!("Password not saved in keyring");
             Ok(())
           },

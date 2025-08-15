@@ -4,6 +4,7 @@ use sqlparser::ast::Statement;
 
 use crate::{app::AppState, database::Rows};
 
+pub mod confirm_bypass;
 pub mod confirm_export;
 pub mod confirm_query;
 pub mod confirm_tx;
@@ -21,6 +22,7 @@ pub enum PopUpPayload {
   CommitTx,
   RollbackTx,
   ConfirmQuery(String),
+  ConfirmBypass(String),
   ConfirmExport(bool),
   NamedFavorite(String, Vec<String>),
 }

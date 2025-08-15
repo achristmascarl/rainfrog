@@ -1,14 +1,14 @@
 #[cfg(not(feature = "termux"))]
 use arboard::Clipboard;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Result, eyre};
 use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{
+  Frame,
   layout::{Constraint, Direction, Layout, Position},
   prelude::Rect,
   style::{Color, Style, Stylize},
   text::Line,
   widgets::{Block, Borders, Clear, Padding, Paragraph, Tabs, Wrap},
-  Frame,
 };
 use sqlparser::ast::Statement;
 use strum::IntoEnumIterator;
@@ -18,19 +18,19 @@ use crate::{
   action::{Action, ExportFormat, MenuPreview},
   cli::{Cli, Driver},
   components::{
+    Component, ComponentImpls,
     data::{Data, DataComponent},
     editor::Editor,
     favorites::{FavoriteEntries, Favorites},
     history::History,
     menu::{Menu, MenuComponent},
-    Component, ComponentImpls,
   },
   config::Config,
   database::{self, Database, DbTaskResult, ExecutionType, Rows},
   focus::Focus,
   popups::{
-    confirm_export::ConfirmExport, confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, exporting::Exporting,
-    name_favorite::NameFavorite, PopUp, PopUpPayload,
+    PopUp, PopUpPayload, confirm_bypass::ConfirmBypass, confirm_export::ConfirmExport, confirm_query::ConfirmQuery,
+    confirm_tx::ConfirmTx, exporting::Exporting, name_favorite::NameFavorite,
   },
   tui,
   ui::center,
@@ -200,13 +200,13 @@ impl App {
       }
       match database.get_query_results().await? {
         DbTaskResult::Finished(results) => {
-          self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
+          self.components.data.set_data_state(Some(results.results), results.statement_type);
           self.state.last_query_end = Some(chrono::Utc::now());
           self.state.query_task_running = false;
         },
         DbTaskResult::ConfirmTx(rows_affected, statement) => {
           self.state.last_query_end = Some(chrono::Utc::now());
-          self.set_popup(Box::new(ConfirmTx::new(rows_affected, statement.clone())));
+          self.set_popup(Box::new(ConfirmTx::new(rows_affected, statement)));
           self.state.query_task_running = true;
         },
         DbTaskResult::Pending => {
@@ -240,7 +240,11 @@ impl App {
                     self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmQuery(query)) => {
-                    action_tx.send(Action::Query(vec![query], true))?;
+                    action_tx.send(Action::Query(vec![query], true, false))?;
+                    self.set_focus(Focus::Editor);
+                  },
+                  Some(PopUpPayload::ConfirmBypass(query)) => {
+                    action_tx.send(Action::Query(vec![query], true, true))?;
                     self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmExport(confirmed)) => {
@@ -262,7 +266,7 @@ impl App {
                     let response = database.commit_tx().await?;
                     self.state.last_query_end = Some(chrono::Utc::now());
                     if let Some(results) = response {
-                      self.components.data.set_data_state(Some(results.results), Some(results.statement_type));
+                      self.components.data.set_data_state(Some(results.results), results.statement_type);
                       self.set_focus(Focus::Editor);
                     }
                   },
@@ -371,13 +375,21 @@ impl App {
             let rows = database.load_menu().await;
             self.components.menu.set_table_list(Some(rows));
           },
-          Action::Query(query_lines, confirmed) => 'query_action: {
+          Action::Query(query_lines, confirmed, bypass) => 'query_action: {
             let query_string = query_lines.clone().join(" \n");
             if query_string.is_empty() {
               break 'query_action;
             }
             self.add_to_history(query_lines.clone());
-            let execution_info = database::get_execution_type(query_string.clone(), *confirmed, driver);
+            if *bypass && !confirmed {
+              log::warn!("Bypassing parser");
+              self.set_popup(Box::new(ConfirmBypass::new(query_string.clone())));
+              break 'query_action;
+            }
+            let execution_info = match *bypass && *confirmed {
+              true => Ok((ExecutionType::Normal, None)),
+              false => database::get_execution_type(query_string.clone(), *confirmed, driver),
+            };
             match execution_info {
               Ok((ExecutionType::Transaction, _)) => {
                 self.components.data.set_loading();
@@ -385,19 +397,20 @@ impl App {
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },
-              Ok((ExecutionType::Confirm, statement_type)) => {
+              Ok((ExecutionType::Confirm, Some(statement_type))) => {
                 self.set_popup(Box::new(ConfirmQuery::new(query_string.clone(), statement_type)));
               },
               Ok((ExecutionType::Normal, _)) => {
                 self.components.data.set_loading();
-                database.start_query(query_string)?;
+                database.start_query(query_string, *bypass).await?;
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },
               Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
+              _ => self.components.data.set_data_state(Some(Err(eyre!("Missing statement type but not bypass"))), None),
             }
           },
-          Action::AbortQuery => match database.abort_query() {
+          Action::AbortQuery => match database.abort_query().await {
             Ok(true) => {
               self.components.data.set_cancelled();
               self.state.last_query_end = Some(chrono::Utc::now());
@@ -418,7 +431,7 @@ impl App {
             action_tx.send(Action::QueryToEditor(vec![preview_query.clone()]))?;
             action_tx.send(Action::FocusEditor)?;
             action_tx.send(Action::FocusMenu)?;
-            action_tx.send(Action::Query(vec![preview_query.clone()], false))?;
+            action_tx.send(Action::Query(vec![preview_query.clone()], false, false))?;
           },
 
           Action::RequestSaveFavorite(query_lines) => {
@@ -479,7 +492,7 @@ impl App {
         })?;
       }
       if self.should_quit {
-        database.abort_query()?;
+        database.abort_query().await?;
         tui.stop()?;
         break;
       }
@@ -509,43 +522,45 @@ impl App {
       .constraints([Constraint::Length(1), Constraint::Fill(1)])
       .split(right_layout[0]);
 
-    if let Some(event) = &self.last_frame_mouse_event {
-      if self.popup.is_none() && event.kind != MouseEventKind::Moved && !matches!(event.kind, MouseEventKind::Down(_)) {
-        let position = Position::new(event.column, event.row);
-        let menu_target = root_layout[0];
-        let tabs_target = tabs_layout[0];
-        let tab_content_target = tabs_layout[1];
-        let data_target = right_layout[1];
-        if menu_target.contains(position) {
-          self.set_focus(Focus::Menu);
-        } else if data_target.contains(position) {
-          self.set_focus(Focus::Data);
-        } else if tab_content_target.contains(position) {
-          self.last_focused_tab();
-        } else if tabs_target.contains(position) {
-          match self.state.focus {
-            Focus::Editor => {
-              if matches!(event.kind, MouseEventKind::Up(_)) {
-                self.set_focus(Focus::History);
-              }
-            },
-            Focus::History => {
-              if matches!(event.kind, MouseEventKind::Up(_)) {
-                self.set_focus(Focus::Favorites);
-              }
-            },
-            Focus::Favorites => {
-              if matches!(event.kind, MouseEventKind::Up(_)) {
-                self.set_focus(Focus::Editor);
-              }
-            },
-            Focus::PopUp => {},
-            _ => {
-              self.state.focus = self.last_focused_tab;
-            },
-          }
-          self.last_frame_mouse_event = None;
+    if let Some(event) = &self.last_frame_mouse_event
+      && self.popup.is_none()
+      && event.kind != MouseEventKind::Moved
+      && !matches!(event.kind, MouseEventKind::Down(_))
+    {
+      let position = Position::new(event.column, event.row);
+      let menu_target = root_layout[0];
+      let tabs_target = tabs_layout[0];
+      let tab_content_target = tabs_layout[1];
+      let data_target = right_layout[1];
+      if menu_target.contains(position) {
+        self.set_focus(Focus::Menu);
+      } else if data_target.contains(position) {
+        self.set_focus(Focus::Data);
+      } else if tab_content_target.contains(position) {
+        self.last_focused_tab();
+      } else if tabs_target.contains(position) {
+        match self.state.focus {
+          Focus::Editor => {
+            if matches!(event.kind, MouseEventKind::Up(_)) {
+              self.set_focus(Focus::History);
+            }
+          },
+          Focus::History => {
+            if matches!(event.kind, MouseEventKind::Up(_)) {
+              self.set_focus(Focus::Favorites);
+            }
+          },
+          Focus::Favorites => {
+            if matches!(event.kind, MouseEventKind::Up(_)) {
+              self.set_focus(Focus::Editor);
+            }
+          },
+          Focus::PopUp => {},
+          _ => {
+            self.state.focus = self.last_focused_tab;
+          },
         }
+        self.last_frame_mouse_event = None;
       }
     }
     let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+4>", "   favorites <alt+5>"])
@@ -585,22 +600,26 @@ impl App {
   fn render_hints(&self, frame: &mut Frame, area: Rect) {
     let block = Block::default().style(Style::default().fg(Color::Blue));
     let help_text = format!(
-        "{}{}",
-        match self.state.query_task_running {
-            false => "",
-            _ if self.state.focus == Focus::Editor => "[<alt + q>] abort ",
-            _ if self.state.focus != Focus::PopUp => "[q] abort ",
-            _ => ""
-        },
-        match self.state.focus {
-            Focus::Menu  => "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
-            Focus::Editor if !self.state.query_task_running => "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
-            Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
-            Focus::Favorites => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
-            Focus::Data if !self.state.query_task_running => "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
-            Focus::PopUp => "[<esc>] cancel",
-            _ => "",
-        }
+      "{}{}",
+      match self.state.query_task_running {
+        false => "",
+        _ if self.state.focus == Focus::Editor => "[<alt + q>] abort ",
+        _ if self.state.focus != Focus::PopUp => "[q] abort ",
+        _ => "",
+      },
+      match self.state.focus {
+        Focus::Menu =>
+          "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
+        Focus::Editor if !self.state.query_task_running =>
+          "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
+        Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
+        Focus::Favorites =>
+          "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
+        Focus::Data if !self.state.query_task_running =>
+          "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
+        Focus::PopUp => "[<esc>] cancel",
+        _ => "",
+      }
     );
     let paragraph = Paragraph::new(Line::from(help_text).centered()).block(block).wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);

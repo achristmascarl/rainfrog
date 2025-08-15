@@ -3,9 +3,9 @@ use std::{collections::HashMap, path::PathBuf};
 use color_eyre::eyre::{self, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use derive_deref::{Deref, DerefMut};
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use ratatui::style::{Color, Modifier, Style};
-use serde::{de::Deserializer, Deserialize};
+use serde::{Deserialize, de::Deserializer};
 
 use crate::{action::Action, cli::Driver, focus::Focus, keyring::Password};
 
@@ -335,12 +335,12 @@ pub fn key_event_to_string(key_event: &KeyEvent) -> String {
 
 pub fn parse_key_sequence(raw: &str) -> Result<Vec<KeyEvent>, String> {
   if raw.chars().filter(|c| *c == '>').count() != raw.chars().filter(|c| *c == '<').count() {
-    return Err(format!("Unable to parse `{}`", raw));
+    return Err(format!("Unable to parse `{raw}`"));
   }
   let raw = if !raw.contains("><") {
     let raw = raw.strip_prefix('<').unwrap_or(raw);
-    let raw = raw.strip_prefix('>').unwrap_or(raw);
-    raw
+
+    raw.strip_prefix('>').unwrap_or(raw)
   } else {
     raw
   };

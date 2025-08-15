@@ -43,7 +43,7 @@ pub struct Rows {
 #[derive(Debug)]
 pub struct QueryResultsWithMetadata {
   pub results: Result<Rows>,
-  pub statement_type: Statement,
+  pub statement_type: Option<Statement>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -61,7 +61,7 @@ pub enum ParseError {
 }
 impl std::fmt::Display for ParseError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{:?}", self)
+    write!(f, "{self:?}")
   }
 }
 impl std::error::Error for ParseError {}
@@ -70,7 +70,7 @@ pub type QueryTask = JoinHandle<QueryResultsWithMetadata>;
 
 pub enum DbTaskResult {
   Finished(QueryResultsWithMetadata),
-  ConfirmTx(Option<u64>, Statement),
+  ConfirmTx(Option<u64>, Option<Statement>),
   Pending,
   NoTask,
 }
@@ -85,10 +85,13 @@ pub trait Database {
 
   /// Spawns a tokio task that runs the query. The task should
   /// expect to be polled via the `get_query_results()` method.
-  fn start_query(&mut self, query: String) -> Result<()>;
+  async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()>;
 
   /// Aborts the tokio task running the active query or transaction.
-  fn abort_query(&mut self) -> Result<bool>;
+  /// Some drivers also kill the process that was running the query,
+  /// so that the query does not continue running in the background.
+  /// This behavior needs to be implemented by the driver.
+  async fn abort_query(&mut self) -> Result<bool>;
 
   /// Polls the tokio task for the active query or transaction if
   /// it exists. Returns `DbTaskResult::NoTask` if no task is running,
@@ -143,11 +146,15 @@ fn get_first_query(query: String, driver: Driver) -> Result<(String, Statement),
   }
 }
 
-pub fn get_execution_type(query: String, confirmed: bool, driver: Driver) -> Result<(ExecutionType, Statement)> {
+pub fn get_execution_type(
+  query: String,
+  confirmed: bool,
+  driver: Driver,
+) -> Result<(ExecutionType, Option<Statement>)> {
   let first_query = get_first_query(query, driver);
 
   match first_query {
-    Ok((_, statement)) => Ok((get_default_execution_type(statement.clone(), confirmed), statement.clone())),
+    Ok((_, statement)) => Ok((get_default_execution_type(statement.clone(), confirmed), Some(statement.clone()))),
     Err(e) => Err(eyre::Report::new(e)),
   }
 }
@@ -188,12 +195,15 @@ fn get_default_execution_type(statement: Statement, confirmed: bool) -> Executio
   }
 }
 
-pub fn statement_type_string(statement: &Statement) -> String {
-  format!("{:?}", statement).split('(').collect::<Vec<&str>>()[0].split('{').collect::<Vec<&str>>()[0]
-    .split('[')
-    .collect::<Vec<&str>>()[0]
-    .trim()
-    .to_string()
+pub fn statement_type_string(statement: Option<Statement>) -> String {
+  match statement {
+    Some(stmt) => format!("{stmt:?}").split('(').collect::<Vec<&str>>()[0].split('{').collect::<Vec<&str>>()[0]
+      .split('[')
+      .collect::<Vec<&str>>()[0]
+      .trim()
+      .to_string(),
+    None => "UNKNOWN".to_string(),
+  }
 }
 
 pub fn vec_to_string<T: std::string::ToString>(vec: Vec<T>) -> String {

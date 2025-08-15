@@ -1,6 +1,6 @@
 # 🐸 rainfrog
 
-a database management tui
+a database tool for the terminal
 
 ![rainfrog demo](vhs/demo.gif)
 
@@ -32,7 +32,7 @@ tested as extensively as postgres**; use with caution, and check out the
 the postgres driver can also be used to connect to other databases that support 
 the postgres wire protocol, such as AWS Redshift. however, this functionality is not 
 well tested. in theory, the mysql driver should be able to do the same for databases 
-that support the mysql protocol. check each database's documentation for compatability.
+that support the mysql protocol. check each database's documentation for compatibility.
 
 ## disclaimer
 
@@ -53,6 +53,7 @@ access on a production database.
    * [pixi](#pixi)
    * [install script](#install-script)
    * [release page binaries](#release-page-binaries)
+   * [icons](#icons)
 - [usage](#usage)
    * [with connection options](#with-connection-options)
    * [with connection url](#with-connection-url)
@@ -171,6 +172,10 @@ curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/instal
    you're not sure which binary to pick, you can find out by installing rust and
    running `rustc -vV` to see the "host" target)
 2. move the binary to a folder in your `PATH` environment variable
+
+<!-- TOC --><a name="icons"></a>
+### icons
+you will need to have a nerd font installed and used by your terminal for the icons to show up.
 
 <!-- TOC --><a name="usage"></a>
 ## usage
@@ -378,6 +383,7 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | Keybinding        | Description                            |
 | ----------------- | -------------------------------------- |
 | `Alt+Enter`, `F5` | Execute query                          |
+| `F7`              | Bypass parser to execute query (cannot rollback, no validation) |
 | `j`, `↓`          | Move cursor down 1 line                |
 | `k`, `↑`          | Move cursor up 1 line                  |
 | `h`, `←`          | Move cursor left 1 char                |
@@ -405,6 +411,7 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `Ctrl+e`          | Scroll down                            |
 | `Ctrl+y`          | Scroll up                              |
 | `Ctrl+f`*, `Alt+f`  | Save query to favorites                |
+
 *only works in normal mode
 
 <!-- TOC --><a name="query-history"></a>
@@ -515,7 +522,7 @@ export RAINFROG_FAVORITES=~/.config/rainfrog/favorites
   
 - [x] scrollable table
 - [x] cancellable async querying (spawn tokio task)
-- [x] menu list with tables and schemas (collapsable)
+- [x] menu list with tables and schemas (collapsible)
 - [x] tui-textarea for query editor
 - [x] basic tui-textarea vim keybindings
 - [x] handle custom types / enums
@@ -552,8 +559,6 @@ features
 <!-- TOC --><a name="known-issues-and-limitations"></a>
 ## known issues and limitations
 
-- aborting a running query does not cancel the process running the query on database servers
-  like postgres or mysql. follow https://github.com/achristmascarl/rainfrog/issues/178 for updates
 - geometry types are not currently supported
 - for x11 and wayland, yanking does not copy to the system clipboard, only
   to the query editor's buffer. see <https://github.com/achristmascarl/rainfrog/issues/83>
