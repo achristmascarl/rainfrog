@@ -19,7 +19,7 @@ mouse_mode = true
 
 [keybindings.Editor]
 "<Alt-q>" = "AbortQuery"
-"<Ctrl-e>" = "SubmitEditorQuery"
+"<F5>" = "SubmitEditorQuery"
 "<Alt-1>" = "FocusMenu"
 "<Alt-2>" = "FocusEditor"
 "<Alt-3>" = "FocusData"
