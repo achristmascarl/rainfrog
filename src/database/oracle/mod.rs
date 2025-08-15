@@ -55,7 +55,7 @@ impl Database for OracleDriver {
         QueryResultsWithMetadata { results, statement_type }
       })),
       _ => OracleTask::TxStart(tokio::spawn(async move {
-        let conn = pool.get().unwrap();
+        let conn = pool.get()?;
         let results = execute_with_conn(&conn, &first_query);
         match results {
           Ok(ref rows) => {
