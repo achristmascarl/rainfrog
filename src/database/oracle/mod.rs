@@ -124,7 +124,7 @@ impl Database for OracleDriver {
 
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if let Some(OracleTask::TxPending(b)) = self.task.take() {
-      b.0.commit()?;
+      tokio::task::spawn_blocking(|| b.0.commit()).await??;
       Ok(Some(b.1))
     } else {
       Ok(None)
