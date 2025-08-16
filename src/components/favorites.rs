@@ -45,6 +45,9 @@ impl FavoriteEntry {
 
 impl FavoriteEntries {
   pub fn new(favorites_dir: &Path) -> Result<Self> {
+    if !favorites_dir.exists() {
+      std::fs::create_dir_all(favorites_dir)?;
+    }
     Ok(Self { entries: Self::read_queries(favorites_dir)?, dir: favorites_dir.to_path_buf() })
   }
 
