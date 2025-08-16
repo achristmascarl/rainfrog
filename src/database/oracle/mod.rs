@@ -46,13 +46,18 @@ impl Database for OracleDriver {
   }
 
   async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()> {
-    let (first_query, statement_type) = super::get_first_query(query, Driver::Oracle)?;
+    let (first_query, statement_type) = if bypass_parser {
+      (query, None)
+    } else {
+      let (first, stmt) = super::get_first_query(query, Driver::Oracle)?;
+      (first, Some(stmt))
+    };
     let pool = self.pool.clone().unwrap();
 
     let task = match statement_type {
-      Statement::Query(_) => OracleTask::Query(tokio::spawn(async move {
+      Some(Statement::Query(_)) | None => OracleTask::Query(tokio::spawn(async move {
         let results = query_with_pool(&pool, &first_query);
-        QueryResultsWithMetadata { results, statement_type: Some(statement_type) }
+        QueryResultsWithMetadata { results, statement_type }
       })),
       _ => OracleTask::TxStart(tokio::spawn(async move {
         let conn = pool.get()?;
@@ -65,7 +70,7 @@ impl Database for OracleDriver {
             log::error!("{e:?}");
           },
         };
-        Ok((QueryResultsWithMetadata { results, statement_type: Some(statement_type) }, conn))
+        Ok((QueryResultsWithMetadata { results, statement_type }, conn))
       })),
     };
 
