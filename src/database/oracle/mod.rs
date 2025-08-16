@@ -5,7 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use color_eyre::eyre::Result;
 use connect_options::OracleConnectOptions;
-use oracle::{pool::Pool, Connection};
+use oracle::{Connection, pool::Pool};
 use sqlparser::ast::Statement;
 use tokio::task::JoinHandle;
 
@@ -13,7 +13,7 @@ use crate::cli::Driver;
 
 use super::{Database, DbTaskResult, Header, QueryResultsWithMetadata, QueryTask, Rows};
 
-type TransactionTask = JoinHandle<(QueryResultsWithMetadata, Connection)>;
+type TransactionTask = JoinHandle<Result<(QueryResultsWithMetadata, Connection)>>;
 enum OracleTask {
   Query(QueryTask),
   TxStart(TransactionTask),
@@ -45,14 +45,14 @@ impl Database for OracleDriver {
     Ok(())
   }
 
-  fn start_query(&mut self, query: String) -> Result<()> {
+  async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Oracle)?;
     let pool = self.pool.clone().unwrap();
 
     let task = match statement_type {
       Statement::Query(_) => OracleTask::Query(tokio::spawn(async move {
         let results = query_with_pool(&pool, &first_query);
-        QueryResultsWithMetadata { results, statement_type }
+        QueryResultsWithMetadata { results, statement_type: Some(statement_type) }
       })),
       _ => OracleTask::TxStart(tokio::spawn(async move {
         let conn = pool.get()?;
@@ -65,7 +65,7 @@ impl Database for OracleDriver {
             log::error!("{e:?}");
           },
         };
-        (QueryResultsWithMetadata { results, statement_type }, conn)
+        Ok((QueryResultsWithMetadata { results, statement_type: Some(statement_type) }, conn))
       })),
     };
 
@@ -74,7 +74,7 @@ impl Database for OracleDriver {
     Ok(())
   }
 
-  fn abort_query(&mut self) -> Result<bool> {
+  async fn abort_query(&mut self) -> Result<bool> {
     if let Some(task) = self.task.take() {
       match task {
         OracleTask::Query(handle) => handle.abort(),
@@ -101,7 +101,7 @@ impl Database for OracleDriver {
         if !handle.is_finished() {
           (DbTaskResult::Pending, Some(OracleTask::TxStart(handle)))
         } else {
-          let (result, tx) = handle.await?;
+          let (result, tx) = handle.await??;
           let rows_affected = match &result.results {
             Ok(rows) => rows.rows_affected,
             _ => None,
@@ -119,12 +119,13 @@ impl Database for OracleDriver {
   }
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
-    Self::start_query(self, query)
+    Self::start_query(self, query, false).await
   }
 
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if let Some(OracleTask::TxPending(b)) = self.task.take() {
-      tokio::task::spawn_blocking(|| b.0.commit()).await??;
+      let conn = b.0;
+      tokio::task::spawn_blocking(move || conn.commit()).await??;
       Ok(Some(b.1))
     } else {
       Ok(None)
@@ -172,7 +173,7 @@ fn query_with_pool(pool: &Pool, query: &str) -> Result<Rows> {
   let mut headers = Vec::new();
   let rows = pool
     .get()?
-    .query(&query, &[])
+    .query(query, &[])
     .map_err(|e| color_eyre::eyre::eyre!("Error executing query: {}", e))?
     .filter_map(|row| row.ok())
     .map(|row| {
@@ -209,7 +210,7 @@ mod tests {
   use sqlparser::{ast::Statement, parser::ParserError};
 
   use super::*;
-  use crate::database::{get_execution_type, get_first_query, ExecutionType, ParseError};
+  use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
 
   #[test]
   fn test_get_first_query() {
