@@ -18,7 +18,7 @@ impl OracleConnectOptions {
   }
 
   fn get_connection_string(&self) -> String {
-    let port = if let Some(port) = self.port { port } else { 1521u16 };
+    let port = self.port.unwrap_or(1521u16);
     format!("//{}:{}/{}", self.host, port, self.database)
   }
   pub fn get_connection_options(&self) -> std::result::Result<(String, String, String), String> {
