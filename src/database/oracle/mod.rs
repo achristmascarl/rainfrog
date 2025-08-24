@@ -13,11 +13,29 @@ use crate::cli::Driver;
 
 use super::{Database, DbTaskResult, Header, QueryResultsWithMetadata, QueryTask, Rows};
 
-type TransactionTask = JoinHandle<Result<(QueryResultsWithMetadata, Connection)>>;
+struct ConnectionWrapper {
+  conn: Connection,
+  is_finished: bool,
+}
+impl ConnectionWrapper {
+  fn new(conn: Connection) -> Self {
+    Self { conn, is_finished: false }
+  }
+}
+
+impl Drop for ConnectionWrapper {
+  fn drop(&mut self) {
+    if !self.is_finished {
+      let _ = self.conn.break_execution();
+    }
+  }
+}
+
+type TransactionTask = JoinHandle<Result<(QueryResultsWithMetadata, ConnectionWrapper)>>;
 enum OracleTask {
   Query(QueryTask),
   TxStart(TransactionTask),
-  TxPending(Box<(Connection, QueryResultsWithMetadata)>),
+  TxPending(Box<(ConnectionWrapper, QueryResultsWithMetadata)>),
 }
 
 #[derive(Default)]
@@ -55,7 +73,7 @@ impl Database for OracleDriver {
     let pool = self.pool.clone().unwrap();
 
     let task = match statement_type {
-      Some(Statement::Query(_)) | None => OracleTask::Query(tokio::spawn(async move {
+      Some(Statement::Query(_)) => OracleTask::Query(tokio::spawn(async move {
         let results = query_with_pool(&pool, &first_query);
         QueryResultsWithMetadata { results, statement_type }
       })),
@@ -70,7 +88,7 @@ impl Database for OracleDriver {
             log::error!("{e:?}");
           },
         };
-        Ok((QueryResultsWithMetadata { results, statement_type }, conn))
+        Ok((QueryResultsWithMetadata { results, statement_type }, ConnectionWrapper::new(conn)))
       })),
     };
 
@@ -129,8 +147,15 @@ impl Database for OracleDriver {
 
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
     if let Some(OracleTask::TxPending(b)) = self.task.take() {
-      let conn = b.0;
-      tokio::task::spawn_blocking(move || conn.commit()).await??;
+      let mut conn = b.0;
+      tokio::task::spawn_blocking(move || {
+        let result = conn.conn.commit();
+        if result.is_ok() {
+          conn.is_finished = true;
+        }
+        result
+      })
+      .await??;
       Ok(Some(b.1))
     } else {
       Ok(None)
@@ -139,7 +164,7 @@ impl Database for OracleDriver {
 
   async fn rollback_tx(&mut self) -> Result<()> {
     if let Some(OracleTask::TxPending(b)) = self.task.take() {
-      b.0.rollback()?;
+      b.0.conn.rollback()?;
       Ok(())
     } else {
       Ok(())
