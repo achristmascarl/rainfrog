@@ -284,6 +284,10 @@ docker run --platform linux/amd64 -it --rm --name rainfrog \
   rainfrog --url sqlite:///rainfrog.sqlite3
 ```
 
+running drivers which have runtime dependencies (like oracle) via docker
+is not currently supported.
+
+
 <!-- TOC --><a name="customization"></a>
 ## customization
 
