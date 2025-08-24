@@ -147,6 +147,28 @@ jobs:
             docker logs -t rainfrog_test_sqlite
             exit 1
           fi
+      - name: docker run oracle
+        run: |
+          docker run -dit --name rainfrog_test_oracle \
+            --add-host host.docker.internal:host-gateway \
+            -e db_driver="oracle" \
+            -e username="rainfrog" \
+            -e password="password" \
+            -e hostname="host.docker.internal" \
+            -e db_port="1512" \
+            -e db_name="rainfrog" rainfrog_test
+          sleep 5  # wait for container
+      - name: check oracle container status
+        run: |
+          container_status=$(docker ps -f name=rainfrog_test_oracle --format "{{.Status}}")
+          if [[ "$container_status" == "Up"* ]]; then
+            echo "container started"
+          else
+            echo "container did not start"
+            echo "logs: "
+            docker logs -t rainfrog_test_oracle
+            exit 1
+          fi
 
   rustfmt:
     name: Rustfmt

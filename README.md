@@ -189,6 +189,11 @@ you can find instructions for installing those dependencies below.
 the oracle driver uses ODPI-C, which requires Oracle Client libraries to be installed. Instructions
 for installing the Oracle Instant Client can be found here: https://odpi-c.readthedocs.io/en/latest/user_guide/installation.html
 
+after installation, you may need to manually copy the client files to a
+location where ODPI-C can find them, which is either in the same folder as the rainfrog binary,
+or in the library path of your os. more details can be found in the ODPI-C
+installation instructions: https://odpi-c.readthedocs.io/en/latest/user_guide/installation.html#oracle-client-library-loading
+
 <!-- TOC --><a name="usage"></a>
 ## usage
 
