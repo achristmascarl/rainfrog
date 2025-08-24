@@ -54,6 +54,8 @@ access on a production database.
    * [install script](#install-script)
    * [release page binaries](#release-page-binaries)
    * [icons](#icons)
+- [dependencies](#dependencies)
+   * [oracle](#oracle)
 - [usage](#usage)
    * [with connection options](#with-connection-options)
    * [with connection url](#with-connection-url)
@@ -176,6 +178,16 @@ curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/instal
 <!-- TOC --><a name="icons"></a>
 ### icons
 you will need to have a nerd font installed and used by your terminal for the icons to show up.
+
+<!-- TOC --><a name="dependencies"></a>
+## dependencies
+for some of the databases supported by rainfrog, the driver has additional runtime dependencies.
+you can find instructions for installing those dependencies below.
+
+<!-- TOC --><a name="oracle"></a>
+### oracle
+the oracle driver uses ODPI-C, which requires Oracle Client libraries to be installed. Instructions
+for installing the Oracle Instant Client can be found here: https://odpi-c.readthedocs.io/en/latest/user_guide/installation.html
 
 <!-- TOC --><a name="usage"></a>
 ## usage

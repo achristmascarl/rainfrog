@@ -5,7 +5,7 @@ oracle_port ?= 1521
 postgres_url ?= postgres://root:password@localhost:$(pg_port)/rainfrog?sslmode=disable
 mysql_url ?= mysql://root:password@localhost:$(mysql_port)/rainfrog?useSSL=false
 sqlite_url ?= sqlite://./dev/rainfrog.sqlite3
-oracle_url ?= oracle://rainfrog:password@localhost:$(oracle_port)/rainfrog
+oracle_url ?= jdbc:oracle:thin:rainfrog/password@localhost:$(oracle_port):rainfrog
 url ?= $(postgres_url)
 version ?= ""
 
