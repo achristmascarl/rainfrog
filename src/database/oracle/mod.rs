@@ -164,7 +164,7 @@ impl Database for OracleDriver {
 
   async fn rollback_tx(&mut self) -> Result<()> {
     if let Some(OracleTask::TxPending(b)) = self.task.take() {
-      b.0.conn.rollback()?;
+      tokio::task::spawn_blocking(move || b.0.conn.rollback()).await??;
       Ok(())
     } else {
       Ok(())
