@@ -58,6 +58,8 @@ pub enum Driver {
   MySql,
   #[serde(alias = "sqlite", alias = "SQLITE")]
   Sqlite,
+  #[serde(alias = "oracle", alias = "ORACLE")]
+  Oracle,
 }
 
 impl FromStr for Driver {
@@ -68,6 +70,7 @@ impl FromStr for Driver {
       "postgres" | "postgresql" => Ok(Driver::Postgres),
       "mysql" => Ok(Driver::MySql),
       "sqlite" => Ok(Driver::Sqlite),
+      "oracle" => Ok(Driver::Oracle),
       _ => Err(eyre::Report::msg("Invalid driver")),
     }
   }
@@ -77,6 +80,8 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
   let url = url.trim();
   if let Some(pos) = url.find("://") {
     url[..pos].to_lowercase().parse()
+  } else if url.starts_with("jdbc:oracle:thin") {
+    Ok(Driver::Oracle)
   } else {
     Err(eyre::Report::msg("Invalid connection URL format"))
   }

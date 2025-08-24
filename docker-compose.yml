@@ -1,4 +1,5 @@
 services:
+
   rainfrog-postgres:
     container_name: rainfrog-postgres
     image: postgres:16.3
@@ -10,6 +11,7 @@ services:
       - "${PG_PORT}:5432"
     volumes:
       - ./dev/pg_init.sql:/docker-entrypoint-initdb.d/00_init.sql
+
   rainfrog-mysql:
     container_name: rainfrog-mysql
     image: mysql:8.4
@@ -20,3 +22,17 @@ services:
       - "${MYSQL_PORT}:3306"
     volumes:
       - ./dev/mysql_init.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  rainfrog-oracle:
+    container_name: rainfrog-oracle
+    image: gvenzl/oracle-xe:21.3.0
+    platform: linux/amd64 # only has this platform available
+    environment:
+      ORACLE_PASSWORD: password
+      APP_USER: rainfrog
+      APP_USER_PASSWORD: password
+      ORACLE_DATABASE: rainfrog
+    ports:
+      - "${ORACLE_PORT}:1521"
+    volumes:
+      - ./dev/oracle_init.sql:/container-entrypoint-initdb.d/init.sql

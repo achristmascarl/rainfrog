@@ -54,6 +54,8 @@ access on a production database.
    * [install script](#install-script)
    * [release page binaries](#release-page-binaries)
    * [icons](#icons)
+- [dependencies](#dependencies)
+   * [oracle](#oracle)
 - [usage](#usage)
    * [with connection options](#with-connection-options)
    * [with connection url](#with-connection-url)
@@ -177,6 +179,21 @@ curl -LSsf https://raw.githubusercontent.com/achristmascarl/rainfrog/main/instal
 ### icons
 you will need to have a nerd font installed and used by your terminal for the icons to show up.
 
+<!-- TOC --><a name="dependencies"></a>
+## dependencies
+for some of the databases supported by rainfrog, the driver has additional runtime dependencies.
+you can find instructions for installing those dependencies below.
+
+<!-- TOC --><a name="oracle"></a>
+### oracle
+the oracle driver uses ODPI-C, which requires Oracle Client libraries to be installed. instructions
+for installing the Oracle Instant Client can be found here: [ODPI-C Installation](https://odpi-c.readthedocs.io/en/latest/user_guide/installation.html).
+
+after installation, you may need to manually copy the client files to a
+location where ODPI-C can find them, which is either in the same folder as the rainfrog binary,
+or in the library path of your os. more details can be found in the ODPI-C
+installation instructions: [ODPI-C Client Library Loading](https://odpi-c.readthedocs.io/en/latest/user_guide/installation.html#oracle-client-library-loading).
+
 <!-- TOC --><a name="usage"></a>
 ## usage
 
@@ -267,6 +284,10 @@ docker run --platform linux/amd64 -it --rm --name rainfrog \
   rainfrog --url sqlite:///rainfrog.sqlite3
 ```
 
+running drivers which have runtime dependencies (like oracle) via docker
+is not currently supported.
+
+
 <!-- TOC --><a name="customization"></a>
 ## customization
 
@@ -308,6 +329,7 @@ postgres-dev = { connection_string = "postgresql://postgres:test123@127.0.0.1:54
 mysql-local = { host = "localhost", driver = "mysql", port = 32768, database = "rainfrog", username = "root" }
 sqlite-memory = { connection_string = "sqlite://:memory:", driver = "sqlite"}
 sqlite-disk = { connection_string = "sqlite://./my_database.db", driver = "sqlite"}
+oracle-local = { host = "localhost", driver = "oracle", port = 1521, database = "rainfrog", username = "rainfrog" }
 ```
 
 the connection details can be provided in two formats: a raw connection string or specifying individual fields.
