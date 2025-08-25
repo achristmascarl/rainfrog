@@ -83,7 +83,7 @@ jobs:
       - name: init db for docker test
         run: |
           make db-up
-          sleep 5 # wait for db container
+          sleep 4 # wait for db container
       - name: docker run postgres
         run: |
           docker run -dit --name rainfrog_test_postgres \
