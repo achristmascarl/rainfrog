@@ -1,6 +1,6 @@
 [package]
 name = "rainfrog"
-version = "0.3.5"
+version = "0.3.6"
 edition = "2024"
 rust-version = "1.88"
 description = "a database management tui"
