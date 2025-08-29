@@ -76,7 +76,7 @@ tokio-util = "0.7.9"
 toml = "0.8.19"
 tracing = "0.1.37"
 tracing-error = "0.2.0"
-tracing-subscriber = { version = "0.3.17", features = ["env-filter", "serde"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter", "serde"] }
 chrono = { version = "0.4", default-features = false }
 indexmap = "2.2.6"
 tui-textarea = { version = "0.7.0", features = ["search"] }
