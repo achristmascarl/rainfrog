@@ -29,7 +29,7 @@ dev-oracle:
 	cargo run -- -u $(oracle_url)
 
 dev-duckdb:
-	cargo run -- -u $(duckdb_url)
+	cargo run -- -u $(duckdb_url) --driver duckdb
 
 dev-termux:
 	cargo run --features termux --no-default-features -- -u $(url)

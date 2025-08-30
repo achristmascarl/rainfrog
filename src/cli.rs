@@ -85,8 +85,12 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
     url[..pos].to_lowercase().parse()
   } else if url.starts_with("jdbc:oracle:thin") {
     Ok(Driver::Oracle)
-  } else if url.contains(".db") {
+  } else if url.ends_with(".duckdb") | url.ends_with(".ddb") {
     Ok(Driver::DuckDb)
+  } else if url.ends_with(".sqlite") | url.ends_with(".sqlite3") {
+    Ok(Driver::Sqlite)
+  } else if url.ends_with(".db") {
+    Err(eyre::Report::msg("File extension is ambiguous, please specify driver explicitly"))
   } else {
     Err(eyre::Report::msg("Invalid connection URL format"))
   }
