@@ -72,6 +72,7 @@ jobs:
             use-cross: true
             binary-name: rainfrog
             features: default
+            rust-crossflags: "-C link-arg=-lstdc++"
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             binary-postfix: ""
@@ -95,6 +96,8 @@ jobs:
       - name: Cross build
         if: ${{ matrix.use-cross == true }}
         uses: houseabsolute/actions-rust-cross@v0
+        env:
+          RUSTFLAGS: ${{ matrix.rust-crossflags }}
         with:
           command: build
           target: ${{ matrix.target }}

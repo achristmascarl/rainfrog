@@ -26,7 +26,7 @@ jobs:
           - os: windows-latest
             os-name: windows
             features: default
-          - os: ubuntu-latest 
+          - os: ubuntu-latest
             os-name: android
             target: aarch64-linux-android
             features: termux --no-default-features
@@ -42,6 +42,7 @@ jobs:
             os-name: x86_64-musl
             target: x86_64-unknown-linux-musl
             features: default
+            cross-rustflags: "-C link-arg=-lstdc++"
 
     steps:
       - name: Checkout repository
@@ -49,13 +50,15 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }} 
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - name: Run tests (cross)
         if: ${{ matrix.target != null }}
         uses: houseabsolute/actions-rust-cross@v0
+        env:
+          RUSTFLAGS: ${{ matrix.cross-rustflags }}
         with:
-          command: test 
+          command: test
           target: ${{ matrix.target }}
           args: "--features ${{ matrix.features }} --workspace"
           cross-version: 51f46f296253d8122c927c5bb933e3c4f27cc317
