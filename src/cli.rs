@@ -73,6 +73,7 @@ impl FromStr for Driver {
       "mysql" => Ok(Driver::MySql),
       "sqlite" => Ok(Driver::Sqlite),
       "oracle" => Ok(Driver::Oracle),
+      "duckdb" => Ok(Driver::DuckDb),
       _ => Err(eyre::Report::msg("Invalid driver")),
     }
   }
@@ -84,6 +85,8 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
     url[..pos].to_lowercase().parse()
   } else if url.starts_with("jdbc:oracle:thin") {
     Ok(Driver::Oracle)
+  } else if url.contains(".db") {
+    Ok(Driver::DuckDb)
   } else {
     Err(eyre::Report::msg("Invalid connection URL format"))
   }
