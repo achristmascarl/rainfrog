@@ -60,6 +60,8 @@ pub enum Driver {
   Sqlite,
   #[serde(alias = "oracle", alias = "ORACLE")]
   Oracle,
+  #[serde(alias = "duckdb", alias = "DUCKDB")]
+  DuckDb,
 }
 
 impl FromStr for Driver {

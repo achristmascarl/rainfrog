@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use color_eyre::eyre::{self, Result};
+use color_eyre::eyre::Result;
 use sqlparser::{
   ast::Statement,
-  dialect::{Dialect, GenericDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
+  dialect::{Dialect, DuckDbDialect, GenericDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
   keywords,
   parser::{Parser, ParserError},
 };
@@ -10,11 +10,13 @@ use tokio::task::JoinHandle;
 
 use crate::cli::{Cli, Driver};
 
+mod duckdb;
 mod mysql;
 mod oracle;
 mod postgresql;
 mod sqlite;
 
+pub use duckdb::DuckDbDriver;
 pub use mysql::MySqlDriver;
 pub use oracle::OracleDriver;
 pub use postgresql::PostgresDriver;
@@ -151,11 +153,16 @@ pub fn get_execution_type(
   confirmed: bool,
   driver: Driver,
 ) -> Result<(ExecutionType, Option<Statement>)> {
-  let first_query = get_first_query(query, driver);
+  let (_, statement) = get_first_query(query, driver)?;
+  let default_execution_type = get_default_execution_type(statement.clone(), confirmed);
 
-  match first_query {
-    Ok((_, statement)) => Ok((get_default_execution_type(statement.clone(), confirmed), Some(statement.clone()))),
-    Err(e) => Err(eyre::Report::new(e)),
+  match driver {
+    Driver::DuckDb => match default_execution_type {
+      ExecutionType::Normal => Ok((ExecutionType::Normal, Some(statement))),
+      ExecutionType::Confirm => Ok((ExecutionType::Confirm, Some(statement))),
+      ExecutionType::Transaction => Ok((ExecutionType::Confirm, Some(statement))), // don't allow auto-transactions
+    },
+    _ => Ok((default_execution_type, Some(statement))),
   }
 }
 
@@ -231,6 +238,7 @@ pub fn get_dialect(driver: Driver) -> Box<dyn Dialect + Send + Sync> {
     Driver::MySql => Box::new(MySqlDialect {}),
     Driver::Sqlite => Box::new(SQLiteDialect {}),
     Driver::Oracle => Box::new(GenericDialect {}),
+    Driver::DuckDb => Box::new(DuckDbDialect {}),
   }
 }
 

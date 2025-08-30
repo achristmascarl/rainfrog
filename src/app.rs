@@ -161,6 +161,7 @@ impl App {
       Driver::MySql => Box::new(database::MySqlDriver::new()),
       Driver::Sqlite => Box::new(database::SqliteDriver::new()),
       Driver::Oracle => Box::new(database::OracleDriver::new()),
+      Driver::DuckDb => Box::new(database::DuckDbDriver::new()),
     };
     database.init(args).await?;
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
