@@ -7,13 +7,13 @@ a database tool for the terminal
 > [!WARNING]
 > rainfrog is currently in beta
 
-the goal for rainfrog is to provide a lightweight, terminal-based alternative to
-pgadmin/dbeaver.
+the goal for rainfrog is to provide a lightweight, terminal-based tool for
+interacting with databases.
 
 ## features
 
 - efficient navigation via vim-like keybindings and mouse controls
-- query editor with keyword highlighting and session history
+- query editor with keyword highlighting, session history, and favorites
 - quickly copy data, filter tables, and switch between schemas
 - shortcuts to view table metadata and properties
 - cross-platform (macOS, linux, windows, android via termux)
@@ -24,12 +24,25 @@ pgadmin/dbeaver.
 
 ### supported databases
 
-rainfrog has mainly been tested with postgres, and postgres will be the primary
-database targeted. **mysql and sqlite are also supported, but they have not been 
-tested as extensively as postgres**; use with caution, and check out the
-[known issues](#known-issues-and-limitations) section for things to look out for!
+the levels of support for different databases can be split into 4 tiers:
+- **tier 1**: most frequently tested, bugs will be addressed as soon as possible.
+- **tier 2**: often tested, fixed when necessary.
+- **tier 3**: community supported; contributions are welcome, but otherwise development is minimal.
+- **tier 4**: new or experimental; should be treated as unstable, and behavior is subject to change.
 
-the postgres driver can also be used to connect to other databases that support 
+
+| database | tier | known issues | via wire protocol* |
+| -------- | ---- | ------------ | ------------------ |
+| postgres | 1 |  | |
+| mysql | 2 |  | |
+| sqlite | 2  |          | |
+| redshift| 2  |          | postgres |
+| duckdb | 4 | musl binaries do not include this driver          | |
+| oracle | 4 | requires additional runtime dependencies          | |
+
+
+
+*the postgres driver can also be used to connect to other databases that support 
 the postgres wire protocol, such as AWS Redshift. however, this functionality is not 
 well tested. in theory, the mysql driver should be able to do the same for databases 
 that support the mysql protocol. check each database's documentation for compatibility.
