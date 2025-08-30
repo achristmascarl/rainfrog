@@ -6,6 +6,7 @@ postgres_url ?= postgres://root:password@localhost:$(pg_port)/rainfrog?sslmode=d
 mysql_url ?= mysql://root:password@localhost:$(mysql_port)/rainfrog?useSSL=false
 sqlite_url ?= sqlite://./dev/rainfrog.sqlite3
 oracle_url ?= jdbc:oracle:thin:rainfrog/password@localhost:$(oracle_port):rainfrog
+duckdb_url ?= ./dev/rainfrog.db
 url ?= $(postgres_url)
 version ?= ""
 
@@ -26,6 +27,9 @@ dev-sqlite:
 
 dev-oracle:
 	cargo run -- -u $(oracle_url)
+
+dev-duckdb:
+	cargo run -- -u $(duckdb_url) --driver duckdb
 
 dev-termux:
 	cargo run --features termux --no-default-features -- -u $(url)

@@ -60,6 +60,9 @@ pub enum Driver {
   Sqlite,
   #[serde(alias = "oracle", alias = "ORACLE")]
   Oracle,
+  #[cfg(not(feature = "musl"))]
+  #[serde(alias = "duckdb", alias = "DUCKDB")]
+  DuckDb,
 }
 
 impl FromStr for Driver {
@@ -71,6 +74,8 @@ impl FromStr for Driver {
       "mysql" => Ok(Driver::MySql),
       "sqlite" => Ok(Driver::Sqlite),
       "oracle" => Ok(Driver::Oracle),
+      #[cfg(not(feature = "musl"))]
+      "duckdb" => Ok(Driver::DuckDb),
       _ => Err(eyre::Report::msg("Invalid driver")),
     }
   }
@@ -82,6 +87,16 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
     url[..pos].to_lowercase().parse()
   } else if url.starts_with("jdbc:oracle:thin") {
     Ok(Driver::Oracle)
+  } else if url.ends_with(".duckdb") || url.ends_with(".ddb") {
+    #[cfg(not(feature = "musl"))]
+    {
+      return Ok(Driver::DuckDb);
+    }
+    Err(eyre::Report::msg("DuckDb is not supported on this architecture"))
+  } else if url.ends_with(".sqlite") || url.ends_with(".sqlite3") {
+    Ok(Driver::Sqlite)
+  } else if url.ends_with(".db") {
+    Err(eyre::Report::msg("File extension is ambiguous, please specify driver explicitly"))
   } else {
     Err(eyre::Report::msg("Invalid connection URL format"))
   }
