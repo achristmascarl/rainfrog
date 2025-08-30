@@ -90,7 +90,7 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
   } else if url.ends_with(".duckdb") || url.ends_with(".ddb") {
     #[cfg(not(feature = "musl"))]
     {
-      Ok(Driver::DuckDb)
+      return Ok(Driver::DuckDb);
     }
     Err(eyre::Report::msg("DuckDb is not supported on this architecture"))
   } else if url.ends_with(".sqlite") || url.ends_with(".sqlite3") {
