@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 #![allow(async_fn_in_trait)]
+#![warn(unused_extern_crates)]
 
 pub mod action;
 pub mod app;
