@@ -113,7 +113,7 @@ impl<'a> ScrollTable<'a> {
     self.y_offset = self.y_offset.saturating_sub(std::cmp::max(
       1,
       self.pg_height.saturating_div(2).saturating_sub(
-        u16::from(self.pg_height % 2 == 0), // always round down
+        u16::from(self.pg_height.is_multiple_of(2)), // always round down
       ) as usize,
     ));
     self
@@ -123,7 +123,7 @@ impl<'a> ScrollTable<'a> {
     let new_y_offset = self.y_offset.saturating_add(std::cmp::max(
       1,
       self.pg_height.saturating_div(2).saturating_sub(
-        u16::from(self.pg_height % 2 == 0), // always rounds down
+        u16::from(self.pg_height.is_multiple_of(2)), // always rounds down
       ) as usize,
     ));
     self.y_offset = std::cmp::min(self.max_y_offset, new_y_offset);
