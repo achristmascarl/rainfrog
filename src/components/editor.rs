@@ -1,7 +1,6 @@
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::prelude::*;
-use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{Input, Key, TextArea};
 
@@ -15,18 +14,6 @@ use crate::{
   tui::Event,
   vim::{Mode, Transition, Vim},
 };
-
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-struct CursorPosition {
-  pub row: u32,
-  pub col: u32,
-}
-
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-struct Selection {
-  pub start: CursorPosition,
-  pub end: CursorPosition,
-}
 
 fn keyword_regex() -> String {
   format!("(?i)(^|[^a-zA-Z0-9\'\"`._]+)({})($|[^a-zA-Z0-9\'\"`._]+)", get_keywords().join("|"))

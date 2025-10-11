@@ -1,11 +1,16 @@
 use std::{
+  fmt::Write,
   io::{self, Write as _},
   string::String,
 };
 
 use async_trait::async_trait;
+use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveTime};
 use color_eyre::eyre::{self, Result};
-use duckdb::{Config, Connection};
+use duckdb::{
+  Config, Connection,
+  types::{OrderedMap, TimeUnit, Value as DuckValue},
+};
 
 use crate::cli::{Cli, Driver};
 
@@ -151,16 +156,127 @@ fn fetch_rows(mut rows: duckdb::Rows<'_>) -> Result<Rows> {
     }
     let mut r: Vec<String> = Vec::new();
     for i in 0..headers.len() {
-      let value = row.get::<_, Option<String>>(i);
-      if let Ok(Some(value)) = value {
-        r.push(value);
-      } else {
-        r.push(String::new());
+      let value = row.get::<usize, DuckValue>(i);
+      match value {
+        Ok(value) => r.push(duck_value_to_string(&value)),
+        Err(_) => r.push("_ERROR_".to_string()),
       }
     }
     results.push(r);
   }
   Ok(Rows { headers, rows: results, rows_affected: None })
+}
+
+fn duck_value_to_string(value: &DuckValue) -> String {
+  match value {
+    DuckValue::Null => "NULL".to_string(),
+    DuckValue::Boolean(v) => v.to_string(),
+    DuckValue::TinyInt(v) => v.to_string(),
+    DuckValue::SmallInt(v) => v.to_string(),
+    DuckValue::Int(v) => v.to_string(),
+    DuckValue::BigInt(v) => v.to_string(),
+    DuckValue::HugeInt(v) => v.to_string(),
+    DuckValue::UTinyInt(v) => v.to_string(),
+    DuckValue::USmallInt(v) => v.to_string(),
+    DuckValue::UInt(v) => v.to_string(),
+    DuckValue::UBigInt(v) => v.to_string(),
+    DuckValue::Float(v) => v.to_string(),
+    DuckValue::Double(v) => v.to_string(),
+    DuckValue::Decimal(v) => v.to_string(),
+    DuckValue::Timestamp(unit, raw) => format_timestamp(*unit, *raw),
+    DuckValue::Text(text) => text.clone(),
+    DuckValue::Blob(bytes) => bytes_to_string(bytes),
+    DuckValue::Date32(days) => format_date(*days),
+    DuckValue::Time64(unit, raw) => format_time(*unit, *raw),
+    DuckValue::Interval { months, days, nanos } => format_interval(*months, *days, *nanos),
+    DuckValue::List(values) | DuckValue::Array(values) => format_list(values),
+    DuckValue::Enum(value) => value.clone(),
+    DuckValue::Struct(map) => format_struct(map),
+    DuckValue::Map(map) => format_map(map),
+    DuckValue::Union(inner) => duck_value_to_string(inner.as_ref()),
+  }
+}
+
+fn format_timestamp(unit: TimeUnit, raw: i64) -> String {
+  match unit {
+    TimeUnit::Second => format_timestamp_from_parts(raw, 0),
+    TimeUnit::Millisecond => {
+      let secs = raw.div_euclid(1_000);
+      let nanos = (raw.rem_euclid(1_000) * 1_000_000) as u32;
+      format_timestamp_from_parts(secs, nanos)
+    },
+    TimeUnit::Microsecond => {
+      let secs = raw.div_euclid(1_000_000);
+      let nanos = (raw.rem_euclid(1_000_000) * 1_000) as u32;
+      format_timestamp_from_parts(secs, nanos)
+    },
+    TimeUnit::Nanosecond => {
+      let secs = raw.div_euclid(1_000_000_000);
+      let nanos = raw.rem_euclid(1_000_000_000) as u32;
+      format_timestamp_from_parts(secs, nanos)
+    },
+  }
+}
+
+fn format_timestamp_from_parts(secs: i64, nanos: u32) -> String {
+  DateTime::from_timestamp(secs, nanos).map_or_else(|| format!("{secs}.{nanos:09}"), |dt| dt.to_string())
+}
+
+fn format_date(days_since_epoch: i32) -> String {
+  let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+  epoch
+    .checked_add_signed(ChronoDuration::days(days_since_epoch as i64))
+    .map_or_else(|| days_since_epoch.to_string(), |date| date.to_string())
+}
+
+fn format_time(unit: TimeUnit, raw: i64) -> String {
+  let nanos_total: i128 = match unit {
+    TimeUnit::Second => (raw as i128) * 1_000_000_000,
+    TimeUnit::Millisecond => (raw as i128) * 1_000_000,
+    TimeUnit::Microsecond => (raw as i128) * 1_000,
+    TimeUnit::Nanosecond => raw as i128,
+  };
+  let nanos_per_day = 86_400_000_000_000i128;
+  let normalized = ((nanos_total % nanos_per_day) + nanos_per_day) % nanos_per_day;
+  let secs = (normalized / 1_000_000_000) as u32;
+  let nanos = (normalized % 1_000_000_000) as u32;
+  NaiveTime::from_num_seconds_from_midnight_opt(secs, nanos)
+    .map(|time| time.to_string())
+    .unwrap_or_else(|| raw.to_string())
+}
+
+fn format_interval(months: i32, days: i32, nanos: i64) -> String {
+  format!("months={months}, days={days}, nanos={nanos}")
+}
+
+fn format_list(values: &[DuckValue]) -> String {
+  let formatted: Vec<String> = values.iter().map(duck_value_to_string).collect();
+  format!("[{}]", formatted.join(", "))
+}
+
+fn format_struct(map: &OrderedMap<String, DuckValue>) -> String {
+  let formatted: Vec<String> =
+    map.iter().map(|(key, value)| format!("{key}: {}", duck_value_to_string(value))).collect();
+  format!("{{{}}}", formatted.join(", "))
+}
+
+fn format_map(map: &OrderedMap<DuckValue, DuckValue>) -> String {
+  let formatted: Vec<String> =
+    map.iter().map(|(key, value)| format!("{}: {}", duck_value_to_string(key), duck_value_to_string(value))).collect();
+  format!("{{{}}}", formatted.join(", "))
+}
+
+fn bytes_to_string(bytes: &[u8]) -> String {
+  match std::str::from_utf8(bytes) {
+    Ok(text) => text.to_owned(),
+    Err(_) => {
+      let mut output = String::from("0x");
+      for b in bytes {
+        let _ = write!(&mut output, "{b:02X}");
+      }
+      output
+    },
+  }
 }
 
 impl DuckDbDriver {

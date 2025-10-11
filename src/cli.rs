@@ -92,6 +92,7 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
     {
       return Ok(Driver::DuckDb);
     }
+    #[allow(unreachable_code)] // because of cfg above
     Err(eyre::Report::msg("DuckDb is not supported on this architecture"))
   } else if url.ends_with(".sqlite") || url.ends_with(".sqlite3") {
     Ok(Driver::Sqlite)
