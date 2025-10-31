@@ -8,7 +8,6 @@ pub mod confirm_bypass;
 pub mod confirm_export;
 pub mod confirm_query;
 pub mod confirm_tx;
-pub mod confirm_yank_data;
 pub mod exporting;
 pub mod name_favorite;
 
@@ -25,7 +24,6 @@ pub enum PopUpPayload {
   ConfirmQuery(String),
   ConfirmBypass(String),
   ConfirmExport(bool),
-  ConfirmYank(bool),
   NamedFavorite(String, Vec<String>),
 }
 

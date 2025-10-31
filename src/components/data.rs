@@ -1,6 +1,4 @@
 use std::collections::VecDeque;
-use std::io::{self, Write};
-use std::process::{Command, Stdio};
 
 use color_eyre::eyre::{self, Result};
 use crossterm::event::{KeyEvent, MouseEventKind};
@@ -372,7 +370,9 @@ impl Component for Data<'_> {
       },
       Input { key: Key::Char('Y'), .. } => {
         if let DataState::HasResults(rows) = &self.data_state {
-          self.command_tx.clone().unwrap().send(Action::RequestYankData(rows.rows.len() as i64))?;
+          let table_for_yank = TableForYank::new(rows, app_state).yank();
+          self.command_tx.clone().unwrap().send(Action::CopyData(table_for_yank))?;
+          self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
         }
       },
       Input { key: Key::Esc, .. } => {
@@ -398,12 +398,6 @@ impl Component for Data<'_> {
       }
       writer.flush()?;
       self.command_tx.clone().unwrap().send(Action::ExportDataFinished)?;
-    } else if let Action::YankData = action {
-      let DataState::HasResults(rows) = &self.data_state else {
-        return Ok(None);
-      };
-      yank_to_clipboard(rows, app_state)?;
-      self.command_tx.clone().unwrap().send(Action::YankDataFinished)?;
     }
     Ok(None)
   }
@@ -546,31 +540,12 @@ impl Component for Data<'_> {
   }
 }
 
-const SYSTEM_WINDOW_PROTOCOL: &str = env!("XDG_SESSION_TYPE");
-
-fn yank_to_clipboard(rows: &Rows, app_state: &AppState) -> Result<()> {
-  let (mut pipe, _) = clipboard(SYSTEM_WINDOW_PROTOCOL)?;
-  let data_for_yank = DataForYank::new(rows, app_state).yank();
-  pipe.write_all(data_for_yank.as_bytes())?;
-  Ok(())
-}
-
-fn clipboard(system_window_protocol: &str) -> Result<(std::process::ChildStdin, std::process::Child)> {
-  let mut child = match system_window_protocol {
-    "wayland" => Command::new("wl-copy").stdin(Stdio::piped()).spawn(),
-    "x11" => Command::new("xclip -selection clipboard").stdin(Stdio::piped()).spawn(),
-    _ => Err(io::Error::new(io::ErrorKind::Unsupported, format!("Unsupported for {system_window_protocol}"))),
-  }?;
-  let pipe = child.stdin.take().expect("expected obtain clipboard's pipe");
-  Ok((pipe, child))
-}
-
-struct DataForYank {
+struct TableForYank {
   sql: Vec<String>,
   table: Vec<VecDeque<String>>,
 }
 
-impl DataForYank {
+impl TableForYank {
   fn new(rows: &Rows, app_state: &AppState) -> Self {
     let sql = app_state.history.first().expect("expected the last SQL query in history").query_lines.clone();
 
@@ -583,7 +558,8 @@ impl DataForYank {
   }
 
   fn yank(&mut self) -> String {
-    self.table.iter_mut().enumerate().for_each(|(index, col)| Self::format_column(col, index));
+    let last_index = self.table.len() - 1;
+    self.table.iter_mut().enumerate().for_each(|(index, col)| Self::format_column(col, index, last_index));
 
     let mut buff = String::new();
 
@@ -610,12 +586,12 @@ impl DataForYank {
     buff
   }
 
-  fn format_column(col: &mut VecDeque<String>, index: usize) {
+  fn format_column(col: &mut VecDeque<String>, index: usize, last_index: usize) {
     let width = col.iter().map(|s| s.len()).max().unwrap_or(1) + 1;
 
     let format_cell = |s: &str| {
       let prefix = if index == 0 { " " } else { "| " };
-      let padding = " ".repeat(width.saturating_sub(s.len()));
+      let padding = if index == last_index { " ".repeat(0) } else { " ".repeat(width.saturating_sub(s.len())) };
       format!("{prefix}{s}{padding}")
     };
 
@@ -644,15 +620,8 @@ impl DataForYank {
 #[cfg(test)]
 mod yank {
 
-  use crate::components::data::{DataForYank, clipboard};
+  use crate::components::data::TableForYank;
   use std::collections::VecDeque;
-
-  #[test]
-  #[should_panic(expected = "Unsupported for whatever")]
-  fn clipboard_error_unsupported() {
-    const SYSTEM_WINDOW_PROTOCOL: &str = "whatever";
-    let result = clipboard(SYSTEM_WINDOW_PROTOCOL).unwrap();
-  }
 
   #[test]
   fn to_columns_is_works() {
@@ -663,7 +632,7 @@ mod yank {
       vec!["id3".to_string(), "name3".to_string(), "age3".to_string()],
     ];
 
-    let result = DataForYank::to_columns(&headers, &rows);
+    let result = TableForYank::to_columns(&headers, &rows);
 
     let expected = vec![
       VecDeque::from(["id".to_string(), "id1".to_string(), "id2".to_string(), "id3".to_string()]),
@@ -683,9 +652,9 @@ mod yank {
       vec!["id3".to_string(), "name3".to_string(), "age3".to_string()],
     ];
 
-    let mut data_to_yank = DataForYank {
+    let mut data_to_yank = TableForYank {
       sql: vec!["select".to_string(), "*".to_string(), "from".to_string(), "something".to_string()],
-      table: DataForYank::to_columns(&headers, &rows),
+      table: TableForYank::to_columns(&headers, &rows),
     };
 
     let result = data_to_yank.yank();
@@ -696,43 +665,13 @@ select
 from
 something
 
- id  | name  | age  
+ id  | name  | age
 -----+-------+------
- id1 | name1 | age1 
- id2 | name2 | age2 
- id3 | name3 | age3 
+ id1 | name1 | age1
+ id2 | name2 | age2
+ id3 | name3 | age3
 ";
 
     assert_eq!(expected, result)
-  }
-
-  #[test]
-  fn fomart_column_is_work() {
-    let table = vec![VecDeque::from([
-      "states".to_string(),
-      "Sao Paulo".to_string(),
-      "Minas Gerais".to_string(),
-      "Amazonas".to_string(),
-      "Rio Grande do Sul".to_string(),
-      "Mato Grosso".to_string(),
-    ])];
-
-    let mut data_to_yank = DataForYank { sql: vec!["".to_string()], table };
-
-    data_to_yank.table.iter_mut().enumerate().for_each(|(index, col)| DataForYank::format_column(col, index));
-
-    let result = data_to_yank.table.first().unwrap();
-
-    let expected = VecDeque::from([
-      format!(" states{}", " ".repeat(12)),
-      "-".to_string().repeat(19),
-      format!(" Sao Paulo{}", " ".repeat(9)),
-      format!(" Minas Gerais{}", " ".repeat(6)),
-      format!(" Amazonas{}", " ".repeat(10)),
-      " Rio Grande do Sul ".to_string(),
-      format!(" Mato Grosso{}", " ".repeat(7)),
-    ]);
-
-    assert_eq!(result, &expected)
   }
 }
