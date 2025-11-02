@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use color_eyre::eyre::{self, Result};
 use crossterm::event::{KeyEvent, MouseEventKind};
 use csv::Writer;
@@ -366,6 +368,11 @@ impl Component for Data<'_> {
           self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
         }
       },
+      Input { key: Key::Char('Y'), .. } => {
+        if let DataState::HasResults(rows) = &self.data_state {
+          self.command_tx.clone().unwrap().send(Action::RequestYankAll(rows.rows.len() as i64))?;
+        }
+      },
       Input { key: Key::Esc, .. } => {
         self.scrollable.transition_selection_mode(None);
       },
@@ -389,6 +396,13 @@ impl Component for Data<'_> {
       }
       writer.flush()?;
       self.command_tx.clone().unwrap().send(Action::ExportDataFinished)?;
+    } else if let Action::YankAll = action {
+      let DataState::HasResults(rows) = &self.data_state else {
+        return Ok(None);
+      };
+      let table_for_yank = TableForYank::new(rows, app_state).yank();
+      self.command_tx.clone().unwrap().send(Action::CopyData(table_for_yank))?;
+      self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
     }
     Ok(None)
   }
@@ -528,5 +542,140 @@ impl Component for Data<'_> {
     }
 
     Ok(())
+  }
+}
+
+struct TableForYank {
+  sql: Vec<String>,
+  table: Vec<VecDeque<String>>,
+}
+
+impl TableForYank {
+  fn new(rows: &Rows, app_state: &AppState) -> Self {
+    let sql = app_state.history.first().expect("expected the last SQL query in history").query_lines.clone();
+
+    let headers: &Vec<String> = &rows.headers.iter().map(|h| h.name.clone()).collect();
+    let rows = &rows.rows;
+
+    let table = Self::to_columns(headers, rows);
+
+    Self { sql, table }
+  }
+
+  fn yank(&mut self) -> String {
+    let last_index = self.table.len() - 1;
+    self.table.iter_mut().enumerate().for_each(|(index, col)| Self::format_column(col, index, last_index));
+
+    let mut buff = String::new();
+
+    for statement in &self.sql {
+      buff.push_str(statement);
+      buff.push('\n');
+    }
+
+    buff.push('\n');
+
+    while let Some(col) = self.table.first() {
+      if col.is_empty() {
+        break;
+      }
+
+      for col in &mut self.table {
+        if let Some(cell) = col.pop_front() {
+          buff.push_str(&cell);
+        }
+      }
+      buff.push('\n');
+    }
+
+    buff
+  }
+
+  fn format_column(col: &mut VecDeque<String>, index: usize, last_index: usize) {
+    let width = col.iter().map(|s| s.len()).max().unwrap_or(1) + 1;
+
+    let format_cell = |s: &str| {
+      let prefix = if index == 0 { " " } else { "| " };
+      let padding = if index == last_index { " ".repeat(0) } else { " ".repeat(width.saturating_sub(s.len())) };
+      format!("{prefix}{s}{padding}")
+    };
+
+    col.iter_mut().for_each(|s| *s = format_cell(s));
+
+    if let Some(header) = col.pop_front() {
+      let div = if index == 0 { "-".repeat(width + 1) } else { format!("+{}", "-".repeat(width + 1)) };
+      col.push_front(div);
+      col.push_front(header);
+    }
+  }
+
+  fn to_columns(headers: &[String], rows: &[Vec<String>]) -> Vec<VecDeque<String>> {
+    headers
+      .iter()
+      .enumerate()
+      .map(|(i, h)| {
+        let mut col: VecDeque<String> = VecDeque::from([h.clone()]);
+        rows.iter().filter_map(|row| row.get(i)).cloned().for_each(|v| col.push_back(v));
+        col
+      })
+      .collect()
+  }
+}
+
+#[cfg(test)]
+mod yank {
+
+  use std::collections::VecDeque;
+
+  use crate::components::data::TableForYank;
+
+  #[test]
+  fn to_columns_is_works() {
+    let headers = vec!["id".to_string(), "name".to_string(), "age".to_string()];
+    let rows = vec![
+      vec!["id1".to_string(), "name1".to_string(), "age1".to_string()],
+      vec!["id2".to_string(), "name2".to_string(), "age2".to_string()],
+      vec!["id3".to_string(), "name3".to_string(), "age3".to_string()],
+    ];
+
+    let result = TableForYank::to_columns(&headers, &rows);
+
+    let expected = vec![
+      VecDeque::from(["id".to_string(), "id1".to_string(), "id2".to_string(), "id3".to_string()]),
+      VecDeque::from(["name".to_string(), "name1".to_string(), "name2".to_string(), "name3".to_string()]),
+      VecDeque::from(["age".to_string(), "age1".to_string(), "age2".to_string(), "age3".to_string()]),
+    ];
+
+    assert_eq!(expected, result)
+  }
+
+  #[test]
+  fn yank_is_works() {
+    let headers = vec!["id".to_string(), "name".to_string(), "age".to_string()];
+    let rows = vec![
+      vec!["id1".to_string(), "name1".to_string(), "age1".to_string()],
+      vec!["id2".to_string(), "name2".to_string(), "age2".to_string()],
+      vec!["id3".to_string(), "name3".to_string(), "age3".to_string()],
+    ];
+
+    let mut data_to_yank = TableForYank {
+      sql: vec!["select".to_string(), "*".to_string(), "from".to_string(), "something".to_string()],
+      table: TableForYank::to_columns(&headers, &rows),
+    };
+
+    let result = data_to_yank.yank();
+
+    let expected = "\
+select
+*
+from
+something
+
+ id  | name  | age
+-----+-------+------
+ id1 | name1 | age1
+ id2 | name2 | age2
+ id3 | name3 | age3
+";
   }
 }

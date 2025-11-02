@@ -44,6 +44,8 @@ pub enum Action {
   RequestExportData(i64),
   ExportData(ExportFormat),
   ExportDataFinished,
+  RequestYankAll(i64),
+  YankAll,
   RequestSaveFavorite(Vec<String>),
   SaveFavorite(String, Vec<String>),
   DeleteFavorite(String),

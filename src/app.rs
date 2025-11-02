@@ -30,7 +30,7 @@ use crate::{
   focus::Focus,
   popups::{
     PopUp, PopUpPayload, confirm_bypass::ConfirmBypass, confirm_export::ConfirmExport, confirm_query::ConfirmQuery,
-    confirm_tx::ConfirmTx, exporting::Exporting, name_favorite::NameFavorite,
+    confirm_tx::ConfirmTx, confirm_yank::ConfirmYank, exporting::Exporting, name_favorite::NameFavorite,
   },
   tui,
   ui::center,
@@ -257,6 +257,13 @@ impl App {
                       self.set_focus(Focus::Data);
                     }
                   },
+                  Some(PopUpPayload::ConfirmYank(confirmed)) => {
+                    if confirmed {
+                      action_tx.send(Action::YankAll)?;
+                    } else {
+                      self.set_focus(Focus::Data);
+                    }
+                  },
                   Some(PopUpPayload::Cancel) => {
                     self.last_focused_component();
                   },
@@ -462,12 +469,16 @@ impl App {
                 },
               );
             }
+            self.set_focus(Focus::Data);
           },
           Action::RequestExportData(row_count) => {
             self.set_popup(Box::new(ConfirmExport::new(*row_count)));
           },
           Action::ExportDataFinished => {
             self.set_focus(Focus::Data);
+          },
+          Action::RequestYankAll(row_count) => {
+            self.set_popup(Box::new(ConfirmYank::new(*row_count)));
           },
           _ => {},
         }
@@ -618,7 +629,7 @@ impl App {
         Focus::Favorites =>
           "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
         Focus::Data if !self.state.query_task_running =>
-          "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [g] top [G] bottom [0] first col [$] last col",
+          "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [Y] copy all [g] top [G] bottom [0] first col [$] last col",
         Focus::PopUp => "[<esc>] cancel",
         _ => "",
       }

@@ -98,6 +98,7 @@ jobs:
         env:
           RUSTFLAGS: ${{ matrix.rust-crossflags }}
         with:
+          toolchain: 1.88
           command: build
           target: ${{ matrix.target }}
           args: "--release --features ${{ matrix.features }}"
