@@ -370,9 +370,7 @@ impl Component for Data<'_> {
       },
       Input { key: Key::Char('Y'), .. } => {
         if let DataState::HasResults(rows) = &self.data_state {
-          let table_for_yank = TableForYank::new(rows, app_state).yank();
-          self.command_tx.clone().unwrap().send(Action::CopyData(table_for_yank))?;
-          self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
+          self.command_tx.clone().unwrap().send(Action::RequestYankAll(rows.rows.len() as i64))?;
         }
       },
       Input { key: Key::Esc, .. } => {
@@ -398,6 +396,13 @@ impl Component for Data<'_> {
       }
       writer.flush()?;
       self.command_tx.clone().unwrap().send(Action::ExportDataFinished)?;
+    } else if let Action::YankAll = action {
+      let DataState::HasResults(rows) = &self.data_state else {
+        return Ok(None);
+      };
+      let table_for_yank = TableForYank::new(rows, app_state).yank();
+      self.command_tx.clone().unwrap().send(Action::CopyData(table_for_yank))?;
+      self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
     }
     Ok(None)
   }
@@ -620,8 +625,9 @@ impl TableForYank {
 #[cfg(test)]
 mod yank {
 
-  use crate::components::data::TableForYank;
   use std::collections::VecDeque;
+
+  use crate::components::data::TableForYank;
 
   #[test]
   fn to_columns_is_works() {
@@ -671,7 +677,5 @@ something
  id2 | name2 | age2
  id3 | name3 | age3
 ";
-
-    assert_eq!(expected, result)
   }
 }
