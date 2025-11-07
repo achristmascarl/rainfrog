@@ -194,12 +194,7 @@ mod tests {
 
   #[test]
   fn extracts_driver_from_file_extensions() {
-    let sqlite_paths = [
-      "/tmp/app.sqlite",
-      "/tmp/app.sqlite3",
-      "./relative/state.sqlite",
-      r"C:\data\inventory.sqlite3",
-    ];
+    let sqlite_paths = ["/tmp/app.sqlite", "/tmp/app.sqlite3", "./relative/state.sqlite", r"C:\data\inventory.sqlite3"];
     for path in sqlite_paths {
       assert_eq!(
         extract_driver_from_url(path).unwrap_or_else(|err| panic!("url: {path}, err: {err}")),
@@ -247,10 +242,7 @@ mod tests {
   fn errors_on_invalid_format() {
     for url in ["localhost:5432/db", "postgresql:/localhost/db", "oracle//prod-host:1521/service"] {
       let err = extract_driver_from_url(url).unwrap_err();
-      assert!(
-        err.to_string().contains("Invalid connection URL format"),
-        "Unexpected error for {url}: {err}"
-      );
+      assert!(err.to_string().contains("Invalid connection URL format"), "Unexpected error for {url}: {err}");
     }
   }
 }
