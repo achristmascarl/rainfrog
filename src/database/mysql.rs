@@ -263,7 +263,7 @@ impl MySqlDriver<'_> {
     args: crate::cli::Cli,
   ) -> Result<<<sqlx::MySql as sqlx::Database>::Connection as sqlx::Connection>::Options> {
     match args.connection_url {
-      Some(url) => Ok(MySqlConnectOptions::from_str(&url.trim().trim_start_matches("jdbc:"))?),
+      Some(url) => Ok(MySqlConnectOptions::from_str(url.trim().trim_start_matches("jdbc:"))?),
       None => {
         let mut opts = MySqlConnectOptions::new();
 

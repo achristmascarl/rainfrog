@@ -267,7 +267,7 @@ impl PostgresDriver<'_> {
     args: crate::cli::Cli,
   ) -> Result<<<sqlx::Postgres as sqlx::Database>::Connection as sqlx::Connection>::Options> {
     match args.connection_url {
-      Some(url) => Ok(PgConnectOptions::from_str(&url.trim().trim_start_matches("jdbc:"))?),
+      Some(url) => Ok(PgConnectOptions::from_str(url.trim().trim_start_matches("jdbc:"))?),
       None => {
         let mut opts = PgConnectOptions::new();
 
