@@ -213,7 +213,7 @@ impl SqliteDriver<'_> {
     args: crate::cli::Cli,
   ) -> Result<<<sqlx::Sqlite as sqlx::Database>::Connection as sqlx::Connection>::Options> {
     match args.connection_url {
-      Some(url) => Ok(SqliteConnectOptions::from_str(&url)?),
+      Some(url) => Ok(SqliteConnectOptions::from_str(&url.trim().trim_start_matches("jdbc:"))?),
       None => {
         let filename = if let Some(database) = args.database {
           database
