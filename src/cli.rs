@@ -50,7 +50,7 @@ pub struct Cli {
   pub driver: Option<Driver>,
 }
 
-#[derive(Parser, Debug, Clone, Copy, Deserialize)]
+#[derive(Parser, Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 pub enum Driver {
   #[serde(alias = "postgres", alias = "POSTGRES")]
   Postgres,
@@ -83,10 +83,14 @@ impl FromStr for Driver {
 
 pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
   let url = url.trim();
-  if let Some(pos) = url.find("://") {
+  if url.starts_with("jdbc:") {
+    if let Some(driver_part) = url.split(':').nth(1) {
+      driver_part.to_lowercase().parse()
+    } else {
+      Err(eyre::Report::msg("Invalid connection URL format"))
+    }
+  } else if let Some(pos) = url.find("://") {
     url[..pos].to_lowercase().parse()
-  } else if url.starts_with("jdbc:oracle:thin") {
-    Ok(Driver::Oracle)
   } else if url.ends_with(".duckdb") || url.ends_with(".ddb") {
     #[cfg(not(feature = "musl"))]
     {
@@ -135,5 +139,110 @@ pub fn prompt_for_database_selection(config: &Config) -> Result<Option<(Database
         _ => Err(eyre::Report::msg("Multiple default database connections defined")),
       }
     },
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  #[test]
+  fn extracts_driver_from_standard_urls() {
+    let cases = [
+      ("postgres://username:password@localhost:5432/dbname", Driver::Postgres),
+      ("postgresql://readonly@reports.example.com/reporting?sslmode=require", Driver::Postgres),
+      ("postgres://user:pass@[2001:db8::1]:5432/app", Driver::Postgres),
+      ("postgresql://user@/analytics?host=/var/run/postgresql", Driver::Postgres),
+      ("POSTGRES://localhost/dbname", Driver::Postgres),
+      ("mysql://localhost/dbname", Driver::MySql),
+      ("mysql://app:pw@192.168.10.10:3307/metrics?useSSL=false", Driver::MySql),
+      ("mysql://reader:secret@db.example.com/app?charset=utf8mb4", Driver::MySql),
+      ("sqlite:///tmp/data.sqlite", Driver::Sqlite),
+      ("sqlite:///var/lib/sqlite/app.sqlite3", Driver::Sqlite),
+      ("sqlite://localhost/var/data.sqlite?mode=ro", Driver::Sqlite),
+      ("oracle://scott:tiger@//prod-db.example.com:1521/ORCLPDB1", Driver::Oracle),
+      ("oracle://user:pass@db-host/service_name", Driver::Oracle),
+      #[cfg(not(feature = "musl"))]
+      ("duckdb:///var/tmp/cache.duckdb", Driver::DuckDb),
+    ];
+
+    for (url, expected) in cases {
+      let actual = extract_driver_from_url(url).unwrap_or_else(|err| panic!("url: {url}, err: {err}"));
+      assert_eq!(actual, expected, "url: {url}");
+    }
+  }
+
+  #[test]
+  fn extracts_driver_from_jdbc_urls() {
+    let cases = [
+      ("jdbc:postgresql://localhost:5432/dbname", Driver::Postgres),
+      ("jdbc:postgresql://readonly@reports.example.com:5432/reporting?sslmode=require", Driver::Postgres),
+      ("jdbc:mysql://localhost:3306/dbname", Driver::MySql),
+      ("jdbc:mysql:loadbalance://db1.example.com:3306,db2.example.com:3306/app", Driver::MySql),
+      ("jdbc:sqlite://localhost/path", Driver::Sqlite),
+      ("jdbc:sqlite:/var/lib/sqlite/cache.sqlite3", Driver::Sqlite),
+      ("jdbc:oracle:thin:@localhost:1521/dbname", Driver::Oracle),
+      ("jdbc:oracle:oci:@//prod-host:1521/ORCLCDB.localdomain", Driver::Oracle),
+      #[cfg(not(feature = "musl"))]
+      ("jdbc:duckdb:/var/lib/duckdb/cache.duckdb", Driver::DuckDb),
+    ];
+
+    for (url, expected) in cases {
+      let actual = extract_driver_from_url(url).unwrap_or_else(|err| panic!("url: {url}, err: {err}"));
+      assert_eq!(actual, expected, "url: {url}");
+    }
+  }
+
+  #[test]
+  fn extracts_driver_from_file_extensions() {
+    let sqlite_paths = ["/tmp/app.sqlite", "/tmp/app.sqlite3", "./relative/state.sqlite", r"C:\data\inventory.sqlite3"];
+    for path in sqlite_paths {
+      assert_eq!(
+        extract_driver_from_url(path).unwrap_or_else(|err| panic!("url: {path}, err: {err}")),
+        Driver::Sqlite,
+        "url: {path}"
+      );
+    }
+
+    #[cfg(not(feature = "musl"))]
+    {
+      let duckdb_paths = ["/tmp/data.duckdb", "/tmp/data.ddb", "./var/cache/session.duckdb"];
+      for path in duckdb_paths {
+        assert_eq!(
+          extract_driver_from_url(path).unwrap_or_else(|err| panic!("url: {path}, err: {err}")),
+          Driver::DuckDb,
+          "url: {path}"
+        );
+      }
+    }
+
+    #[cfg(feature = "musl")]
+    {
+      assert!(extract_driver_from_url("/tmp/data.duckdb").is_err());
+    }
+
+    let err = extract_driver_from_url("/tmp/unknown.db").unwrap_err();
+    assert!(err.to_string().contains("ambiguous"));
+  }
+
+  #[test]
+  fn trims_whitespace_before_parsing() {
+    let cases = [
+      ("  mysql://user@localhost/db  ", Driver::MySql),
+      ("\tpostgres://readonly@reports/db\n", Driver::Postgres),
+      (" \nsqlite:///tmp/cache.sqlite3\t", Driver::Sqlite),
+    ];
+
+    for (url, expected) in cases {
+      let actual = extract_driver_from_url(url).unwrap_or_else(|err| panic!("url: {url:?}, err: {err}"));
+      assert_eq!(actual, expected, "url: {url:?}");
+    }
+  }
+
+  #[test]
+  fn errors_on_invalid_format() {
+    for url in ["localhost:5432/db", "postgresql:/localhost/db", "oracle//prod-host:1521/service"] {
+      let err = extract_driver_from_url(url).unwrap_err();
+      assert!(err.to_string().contains("Invalid connection URL format"), "Unexpected error for {url}: {err}");
+    }
   }
 }

@@ -146,7 +146,7 @@ impl FromStr for OracleConnectOptions {
   type Err = String;
 
   fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-    let s = s.trim().trim_start_matches("jdbc:oracle:thin:");
+    let s = s.trim().trim_start_matches("jdbc:oracle:thin:").trim_start_matches("jdbc:");
     let (is_easy_connect, (auth_part, host_part)) = if s.contains("@//") {
       (true, s.split_once("@//").ok_or("Invalid Oracle Easy Connect connection string format".to_string())?)
     } else if s.contains("@") {

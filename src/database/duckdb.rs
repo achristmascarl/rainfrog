@@ -286,7 +286,7 @@ impl DuckDbDriver {
 
   fn build_connection_opts(args: crate::cli::Cli) -> Result<(String, Config)> {
     match args.connection_url {
-      Some(url) => Ok((url, Config::default())),
+      Some(url) => Ok((url.trim().trim_start_matches("jdbc:").to_string(), Config::default())),
       None => {
         if let Some(database) = args.database {
           Ok((database, Config::default()))
