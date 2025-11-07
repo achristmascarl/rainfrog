@@ -58,7 +58,8 @@ impl Database for MySqlDriver<'_> {
     self.querying_conn = Some(Arc::new(Mutex::new(pool.acquire().await?)));
     let conn = self.querying_conn.clone().unwrap();
     let conn_for_task = conn.clone();
-    let pid = sqlx::raw_sql("SELECT CONNECTION_ID()").fetch_one(conn.lock().await.as_mut()).await?.get::<u64, _>(0);
+    let pid_row = sqlx::raw_sql("SELECT CONNECTION_ID()").fetch_one(conn.lock().await.as_mut()).await?;
+    let pid = pid_row.try_get::<u64, _>(0).unwrap_or_else(|_| pid_row.get::<i64, _>(0) as u64);
     log::info!("Starting query with PID {}", pid.clone());
     self.querying_pid = Some(pid.to_string());
     self.task = Some(MySqlTask::Query(tokio::spawn(async move {
