@@ -469,7 +469,7 @@ impl App {
                 },
               );
             }
-            self.set_focus(Focus::Data);
+            self.last_focused_component();
           },
           Action::RequestExportData(row_count) => {
             self.set_popup(Box::new(ConfirmExport::new(*row_count)));
