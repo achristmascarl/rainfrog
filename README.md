@@ -324,11 +324,11 @@ export RAINFROG_CONFIG=~/.config/rainfrog
 <!-- TOC --><a name="settings"></a>
 ### settings
 
-right now, the only setting available is whether rainfrog
-captures mouse events by default. capturing mouse events
-allows you to change focus and scroll using the mouse.
-however, your terminal will not handle mouse events like it
-normally does (you won't be able to copy by highlighting, for example).
+| Name | Default | Description |
+| -------- | ----------------------------------------------------------------------- | ------------------------------------------------------------- |
+| mouse_mode | `true` | whether to capture mouse events. capturing mouse events allows you to change focus and scroll using the mouse. however, your terminal will not handle mouse events like it normally does (you won't be able to copy by highlighting, for example). |
+| data_compact_columns | `true` | whether column widths should be dynamic based on the length of the contents of each column. there is still a max column width that won't be exceeded, so this will save some space by compressing the widths of columns with shorter strings. |
+| data_row_spacer | `false` | whether rows will have a space separating them to make the data table less visually dense.                    |
 
 <!-- TOC --><a name="database-connections"></a>
 ### database connections
