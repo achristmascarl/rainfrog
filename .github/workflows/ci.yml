@@ -61,6 +61,7 @@ jobs:
         env:
           RUSTFLAGS: ${{ matrix.cross-rustflags }}
         with:
+          toolchain: 1.88
           command: test
           target: ${{ matrix.target }}
           args: "--features ${{ matrix.features }} --workspace"
