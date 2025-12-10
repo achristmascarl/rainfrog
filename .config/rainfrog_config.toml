@@ -1,5 +1,7 @@
 [settings]
 mouse_mode = true
+data_compact_columns = true
+data_row_spacer = false
 
 [keybindings.Menu]
 "<Ctrl-c>" = "Quit"

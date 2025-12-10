@@ -166,6 +166,18 @@ impl Config {
         cfg.settings.mouse_mode = default_config.settings.mouse_mode;
       },
     };
+    match cfg.settings.data_compact_columns {
+      Some(_) => {},
+      None => {
+        cfg.settings.data_compact_columns = default_config.settings.data_compact_columns;
+      },
+    };
+    match cfg.settings.data_row_spacer {
+      Some(_) => {},
+      None => {
+        cfg.settings.data_row_spacer = default_config.settings.data_row_spacer;
+      },
+    };
 
     Ok(cfg)
   }
@@ -362,9 +374,11 @@ pub fn parse_key_sequence(raw: &str) -> Result<Vec<KeyEvent>, String> {
   sequences.into_iter().map(parse_key_event).collect()
 }
 
-#[derive(Clone, Debug, Default, Deref, DerefMut, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct Settings {
   pub mouse_mode: Option<bool>,
+  pub data_compact_columns: Option<bool>,
+  pub data_row_spacer: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deref, DerefMut)]
