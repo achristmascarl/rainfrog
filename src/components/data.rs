@@ -231,19 +231,23 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
           self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset: 0 });
           self.data_state = DataState::Explain(Text::from_iter(rows.rows.iter().map(|r| r.join(" "))));
         } else {
+          let row_spacing_enabled = self.config.settings.data_row_spacer.unwrap_or(false);
+          let row_bottom_margin: u16 = if row_spacing_enabled { 1 } else { 0 };
+          let header_height: u16 = 2;
+          let data_row_offset = header_height.saturating_add(row_bottom_margin);
           let header_row = Row::new(
             rows.headers.iter().map(|h| Cell::from(format!("{}\n{}", h.name, h.type_name))).collect::<Vec<Cell>>(),
           )
-          .height(2)
-          .bottom_margin(1);
-          let value_rows = rows.rows.iter().map(|r| Row::new(r.clone()).bottom_margin(1));
+          .height(header_height)
+          .bottom_margin(row_bottom_margin);
+          let value_rows = rows.rows.iter().map(|r| Row::new(r.clone()).bottom_margin(row_bottom_margin));
           let column_widths = self.column_widths(&rows);
           let buf_table = Table::new(value_rows, column_widths.clone())
             .header(header_row)
             .style(Style::default())
             .column_spacing(COLUMN_SPACING)
             .row_highlight_style(Style::default().fg(Color::LightBlue).reversed().bold());
-          self.scrollable.set_table(buf_table, column_widths, rows.rows.len());
+          self.scrollable.set_table(buf_table, column_widths, rows.rows.len(), data_row_offset);
           self.data_state = DataState::HasResults(rows);
         }
       },

@@ -40,6 +40,7 @@ pub struct ScrollTable<'a> {
   max_x_offset: u16,
   max_y_offset: usize,
   selection_mode: Option<SelectionMode>,
+  data_row_offset: u16,
 }
 
 impl<'a> ScrollTable<'a> {
@@ -58,10 +59,17 @@ impl<'a> ScrollTable<'a> {
       max_x_offset: 0,
       max_y_offset: 0,
       selection_mode: None,
+      data_row_offset: 0,
     }
   }
 
-  pub fn set_table(&mut self, table: Table<'a>, column_widths: Vec<u16>, row_count: usize) -> &mut Self {
+  pub fn set_table(
+    &mut self,
+    table: Table<'a>,
+    column_widths: Vec<u16>,
+    row_count: usize,
+    data_row_offset: u16,
+  ) -> &mut Self {
     let requested_width = Self::requested_width(&column_widths);
     let max_height = u16::MAX.saturating_div(std::cmp::max(1, requested_width));
     self.table = table;
@@ -70,6 +78,7 @@ impl<'a> ScrollTable<'a> {
     self.requested_width = requested_width;
     self.max_height = max_height;
     self.max_y_offset = row_count.saturating_sub(1);
+    self.data_row_offset = data_row_offset;
     self
   }
 
@@ -341,7 +350,7 @@ impl Widget for Renderer<'_> {
           _ => &row[content_x as usize],
         };
         let should_highlight = matches!(scrollable.selection_mode.as_ref(), Some(SelectionMode::Cell))
-          && content_y == 3
+          && content_y == scrollable.data_row_offset
           && scrollable.is_within_selected_column(content_x);
         let style = if should_highlight {
           Style::default().fg(Color::LightBlue).reversed().bold().italic()
