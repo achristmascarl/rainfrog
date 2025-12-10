@@ -9,6 +9,8 @@ use symbols::scrollbar;
 use super::Component;
 use crate::app::AppState;
 
+pub const COLUMN_SPACING: u16 = 1;
+
 pub enum ScrollDirection {
   Left,
   Right,
@@ -30,13 +32,15 @@ pub struct ScrollTable<'a> {
   block: Option<Block<'a>>,
   pg_height: u16,
   requested_width: u16,
-  column_width: u16,
+  column_widths: Vec<u16>,
+  column_offsets: Vec<u16>,
   max_height: u16,
   x_offset: u16,
   y_offset: usize,
   max_x_offset: u16,
   max_y_offset: usize,
   selection_mode: Option<SelectionMode>,
+  data_row_offset: u16,
 }
 
 impl<'a> ScrollTable<'a> {
@@ -47,24 +51,34 @@ impl<'a> ScrollTable<'a> {
       block: None,
       pg_height: 0,
       requested_width: 0,
-      column_width: 0,
+      column_widths: Vec::new(),
+      column_offsets: Vec::new(),
       max_height: 0,
       x_offset: 0,
       y_offset: 0,
       max_x_offset: 0,
       max_y_offset: 0,
       selection_mode: None,
+      data_row_offset: 0,
     }
   }
 
-  pub fn set_table(&mut self, table: Table<'a>, column_count: usize, row_count: usize, column_width: u16) -> &mut Self {
-    let requested_width = column_width.saturating_mul(column_count as u16);
+  pub fn set_table(
+    &mut self,
+    table: Table<'a>,
+    column_widths: Vec<u16>,
+    row_count: usize,
+    data_row_offset: u16,
+  ) -> &mut Self {
+    let requested_width = Self::requested_width(&column_widths);
     let max_height = u16::MAX.saturating_div(std::cmp::max(1, requested_width));
     self.table = table;
-    self.column_width = column_width;
+    self.column_widths = column_widths;
+    self.column_offsets = Self::build_offsets(&self.column_widths);
     self.requested_width = requested_width;
     self.max_height = max_height;
     self.max_y_offset = row_count.saturating_sub(1);
+    self.data_row_offset = data_row_offset;
     self
   }
 
@@ -84,27 +98,30 @@ impl<'a> ScrollTable<'a> {
   }
 
   pub fn next_column(&mut self) -> &mut Self {
-    if self.column_width == 0 {
+    if self.column_widths.is_empty() {
       return self;
     }
-    let x_over = self.x_offset % self.column_width;
-    self.x_offset =
-      std::cmp::min(self.x_offset.saturating_add(self.column_width).saturating_sub(x_over), self.max_x_offset);
+    let current_index = self.current_column_index().unwrap_or(0);
+    if current_index + 1 < self.column_offsets.len() {
+      self.x_offset = self.column_offsets[current_index + 1];
+    } else {
+      self.x_offset = self.max_x_offset;
+    }
     self
   }
 
   pub fn prev_column(&mut self) -> &mut Self {
-    if self.column_width == 0 {
+    if self.column_widths.is_empty() {
       return self;
     }
-    let x_over = self.x_offset % self.column_width;
-    match x_over {
-      0 => {
-        self.x_offset = self.x_offset.saturating_sub(self.column_width);
-      },
-      x => {
-        self.x_offset = self.x_offset.saturating_sub(x);
-      },
+    let current_index = self.current_column_index().unwrap_or(0);
+    let current_start = self.column_offsets[current_index];
+    if self.x_offset > current_start {
+      self.x_offset = current_start;
+    } else if current_index > 0 {
+      self.x_offset = self.column_offsets[current_index - 1];
+    } else {
+      self.x_offset = 0;
     }
     self
   }
@@ -156,9 +173,8 @@ impl<'a> ScrollTable<'a> {
     self
   }
 
-  pub fn get_cell_offsets(&self) -> (u16, usize) {
-    let column_count = self.requested_width.saturating_div(self.column_width);
-    let col_index = (self.x_offset.saturating_sub(self.x_offset % self.column_width)).saturating_div(self.column_width);
+  pub fn get_cell_offsets(&self) -> (usize, usize) {
+    let col_index = self.current_column_index().unwrap_or(0);
     (col_index, self.y_offset)
   }
 
@@ -176,8 +192,59 @@ impl<'a> ScrollTable<'a> {
     if render_area.is_empty() {
       return 0_u16;
     }
-    let parent_width = render_area.width;
-    self.requested_width.saturating_sub(self.column_width)
+    self.column_offsets.last().copied().unwrap_or(0)
+  }
+
+  fn requested_width(column_widths: &[u16]) -> u16 {
+    if column_widths.is_empty() {
+      return 0;
+    }
+    let width_total = column_widths.iter().fold(0_u16, |acc, width| acc.saturating_add(*width));
+    let gaps = column_widths.len().saturating_sub(1);
+    let gaps_u16 = std::cmp::min(gaps, u16::MAX as usize) as u16;
+    let spacing_total = COLUMN_SPACING.saturating_mul(gaps_u16);
+    width_total.saturating_add(spacing_total)
+  }
+
+  fn build_offsets(column_widths: &[u16]) -> Vec<u16> {
+    let mut offsets = Vec::with_capacity(column_widths.len());
+    let mut current = 0_u16;
+    for (index, width) in column_widths.iter().enumerate() {
+      offsets.push(current);
+      current = current.saturating_add(*width);
+      if index + 1 < column_widths.len() {
+        current = current.saturating_add(COLUMN_SPACING);
+      }
+    }
+    offsets
+  }
+
+  fn current_column_index(&self) -> Option<usize> {
+    if self.column_offsets.is_empty() {
+      return None;
+    }
+    let mut current_index = 0;
+    for (index, start) in self.column_offsets.iter().enumerate() {
+      if *start > self.x_offset {
+        break;
+      }
+      current_index = index;
+    }
+    Some(current_index)
+  }
+
+  fn selected_column_bounds(&self) -> Option<(u16, u16)> {
+    let index = self.current_column_index()?;
+    let start = *self.column_offsets.get(index)?;
+    let width = *self.column_widths.get(index)?;
+    Some((start, start.saturating_add(width)))
+  }
+
+  fn is_within_selected_column(&self, position: u16) -> bool {
+    if let Some((start, end)) = self.selected_column_bounds() {
+      return position >= start && position < end;
+    }
+    false
   }
 
   fn widget(&'a self) -> Renderer<'a> {
@@ -282,16 +349,13 @@ impl Widget for Renderer<'_> {
           0 => &default_cell,
           _ => &row[content_x as usize],
         };
-        let right_edge = scrollable
-          .column_width
-          .saturating_sub(1) // account for column spacing
-          .saturating_add(scrollable.x_offset)
-          .saturating_sub(scrollable.x_offset % scrollable.column_width);
-        let style = match (scrollable.selection_mode.as_ref(), content_x, content_y) {
-          (Some(SelectionMode::Cell), x, y) if y == 3 && x < right_edge => {
-            Style::default().fg(Color::LightBlue).reversed().bold().italic()
-          },
-          _ => cell.style(),
+        let should_highlight = matches!(scrollable.selection_mode.as_ref(), Some(SelectionMode::Cell))
+          && content_y == scrollable.data_row_offset
+          && scrollable.is_within_selected_column(content_x);
+        let style = if should_highlight {
+          Style::default().fg(Color::LightBlue).reversed().bold().italic()
+        } else {
+          cell.style()
         };
         buf
           .cell_mut(Position::from((x, y)))
