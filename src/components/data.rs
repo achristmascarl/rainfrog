@@ -8,19 +8,21 @@ use sqlparser::ast::Statement;
 use tokio::sync::mpsc::UnboundedSender;
 use tui_textarea::{Input, Key};
 
-use super::{Frame, scroll_table::SelectionMode};
+use super::{
+  Frame,
+  scroll_table::{COLUMN_SPACING, ScrollDirection, ScrollTable, SelectionMode},
+};
 use crate::{
   action::Action,
   app::AppState,
-  components::{
-    Component,
-    scroll_table::{ScrollDirection, ScrollTable},
-  },
+  components::Component,
   config::Config,
   database::{Rows, header_to_vec, statement_type_string},
   focus::Focus,
   utils::get_export_dir,
 };
+
+const MAX_COLUMN_WIDTH: u16 = 36;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Default)]
@@ -166,6 +168,42 @@ impl Data<'_> {
       self.scrollable.last_column();
     }
   }
+
+  fn column_widths(&self, rows: &Rows) -> Vec<u16> {
+    if self.config.settings.data_compact_columns.unwrap_or(false) {
+      Self::compact_column_widths(rows)
+    } else {
+      vec![MAX_COLUMN_WIDTH; rows.headers.len()]
+    }
+  }
+
+  fn compact_column_widths(rows: &Rows) -> Vec<u16> {
+    let column_count = rows.headers.len();
+    if column_count == 0 {
+      return Vec::new();
+    }
+    let mut widths = vec![0_usize; column_count];
+    for (index, header) in rows.headers.iter().enumerate() {
+      widths[index] = Self::cell_display_width(&header.name).max(Self::cell_display_width(&header.type_name));
+    }
+    for row in &rows.rows {
+      for (index, value) in row.iter().enumerate().take(column_count) {
+        widths[index] = widths[index].max(Self::cell_display_width(value));
+      }
+    }
+    widths
+      .into_iter()
+      .map(|len| {
+        let len_with_padding = len.saturating_add(1);
+        let clamped = std::cmp::min(len_with_padding, MAX_COLUMN_WIDTH as usize);
+        std::cmp::max(1, clamped) as u16
+      })
+      .collect()
+  }
+
+  fn cell_display_width(value: &str) -> usize {
+    value.chars().count()
+  }
 }
 
 impl<'a> SettableDataTable<'a> for Data<'a> {
@@ -199,13 +237,13 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
           .height(2)
           .bottom_margin(1);
           let value_rows = rows.rows.iter().map(|r| Row::new(r.clone()).bottom_margin(1));
-          let buf_table = Table::default()
-            .rows(value_rows)
+          let column_widths = self.column_widths(&rows);
+          let buf_table = Table::new(value_rows, column_widths.clone())
             .header(header_row)
             .style(Style::default())
-            .column_spacing(1)
+            .column_spacing(COLUMN_SPACING)
             .row_highlight_style(Style::default().fg(Color::LightBlue).reversed().bold());
-          self.scrollable.set_table(buf_table, rows.headers.len(), rows.rows.len(), 36_u16);
+          self.scrollable.set_table(buf_table, column_widths, rows.rows.len());
           self.data_state = DataState::HasResults(rows);
         }
       },
@@ -354,9 +392,10 @@ impl Component for Data<'_> {
               self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
             },
             Some(SelectionMode::Cell) => {
-              let cell = row[x as usize].clone();
-              self.command_tx.clone().unwrap().send(Action::CopyData(cell))?;
-              self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
+              if let Some(cell) = row.get(x) {
+                self.command_tx.clone().unwrap().send(Action::CopyData(cell.clone()))?;
+                self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
+              }
             },
             _ => {},
           }
@@ -435,7 +474,8 @@ impl Component for Data<'_> {
           format!(" 󰆼 results <alt+3> (row {} of {})", y.saturating_add(1), rows.len())
         },
         Some(SelectionMode::Cell) => {
-          format!(" 󰆼 results <alt+3> (row {} of {}) - {} ", y.saturating_add(1), rows.len(), row[x as usize].clone())
+          let cell = row.get(x).cloned().unwrap_or_default();
+          format!(" 󰆼 results <alt+3> (row {} of {}) - {} ", y.saturating_add(1), rows.len(), cell)
         },
         Some(SelectionMode::Copied) => {
           format!(" 󰆼 results <alt+3> ({} rows) - copied! ", rows.len())
