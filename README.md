@@ -314,12 +314,15 @@ the [directories](https://crates.io/crates/directories) crate:
 | macOS    | `$HOME`/Library/Application Support/`_project_path_`                    | /Users/Alice/Library/Application Support/com.Foo-Corp.Bar-App |
 | Windows  | `{FOLDERID_LocalAppData}`\\`_project_path_`\\config                     | C:\Users\Alice\AppData\Local\Foo Corp\Bar App\config          |
 
-you can change the default config location by exporting an environment variable.
+you can change the default config directory by exporting an environment variable.
 to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
 
 ```sh
 export RAINFROG_CONFIG=~/.config/rainfrog
 ```
+> [!WARNING]
+> this should be the path to the directory that the config file is in,
+> NOT the path to the actual file
 
 <!-- TOC --><a name="settings"></a>
 ### settings
