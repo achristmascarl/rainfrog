@@ -7,46 +7,30 @@ use color_eyre::eyre::Result;
 use connect_options::OracleConnectOptions;
 use oracle::{Connection, pool::Pool};
 use sqlparser::ast::Statement;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use crate::cli::Driver;
 
 use super::{Database, DbTaskResult, Header, QueryResultsWithMetadata, QueryTask, Rows};
 
-struct ConnectionWrapper {
-  conn: Connection,
-  is_finished: bool,
-}
-impl ConnectionWrapper {
-  fn new(conn: Connection) -> Self {
-    Self { conn, is_finished: false }
-  }
-}
-
-impl Drop for ConnectionWrapper {
-  fn drop(&mut self) {
-    if !self.is_finished {
-      let _ = self.conn.break_execution();
-    }
-  }
-}
-
-type TransactionTask = JoinHandle<Result<(QueryResultsWithMetadata, ConnectionWrapper)>>;
+type TransactionTask = JoinHandle<Result<QueryResultsWithMetadata>>;
 enum OracleTask {
   Query(QueryTask),
   TxStart(TransactionTask),
-  TxPending(Box<(ConnectionWrapper, QueryResultsWithMetadata)>),
+  TxPending(Box<QueryResultsWithMetadata>),
 }
 
 #[derive(Default)]
 pub struct OracleDriver {
   pool: Option<Arc<oracle::pool::Pool>>,
   task: Option<OracleTask>,
+  querying_conn: Option<Arc<Mutex<Connection>>>,
 }
 
 impl OracleDriver {
   pub fn new() -> Self {
-    OracleDriver { pool: None, task: None }
+    OracleDriver { pool: None, task: None, querying_conn: None }
   }
 }
 
@@ -72,14 +56,18 @@ impl Database for OracleDriver {
     };
     let pool = self.pool.clone().unwrap();
 
+    let conn = Arc::new(Mutex::new(pool.get()?));
+    let query_conn = conn.clone();
+    self.querying_conn = Some(conn);
     let task = match statement_type {
       Some(Statement::Query(_)) => OracleTask::Query(tokio::spawn(async move {
-        let results = query_with_pool(&pool, &first_query);
+        let c = query_conn.lock().await;
+        let results = query_with_conn(&c, &first_query);
         QueryResultsWithMetadata { results, statement_type }
       })),
       _ => OracleTask::TxStart(tokio::spawn(async move {
-        let conn = pool.get()?;
-        let results = execute_with_conn(&conn, &first_query);
+        let c = query_conn.lock().await;
+        let results = execute_with_conn(&c, &first_query);
         match results {
           Ok(ref rows) => {
             log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
@@ -88,7 +76,7 @@ impl Database for OracleDriver {
             log::error!("{e:?}");
           },
         };
-        Ok((QueryResultsWithMetadata { results, statement_type }, ConnectionWrapper::new(conn)))
+        Ok(QueryResultsWithMetadata { results, statement_type })
       })),
     };
 
@@ -104,8 +92,14 @@ impl Database for OracleDriver {
         OracleTask::TxStart(handle) => handle.abort(),
         _ => {},
       };
+      if let Some(conn) = &self.querying_conn {
+        let c = conn.lock().await;
+        let _ = c.break_execution();
+      }
+      self.querying_conn = None;
       Ok(true)
     } else {
+      self.querying_conn = None;
       Ok(false)
     }
   }
@@ -124,14 +118,14 @@ impl Database for OracleDriver {
         if !handle.is_finished() {
           (DbTaskResult::Pending, Some(OracleTask::TxStart(handle)))
         } else {
-          let (result, tx) = handle.await??;
+          let result = handle.await??;
           let rows_affected = match &result.results {
             Ok(rows) => rows.rows_affected,
             _ => None,
           };
           (
             DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-            Some(OracleTask::TxPending(Box::new((tx, result)))),
+            Some(OracleTask::TxPending(Box::new(result))),
           )
         }
       },
@@ -146,25 +140,23 @@ impl Database for OracleDriver {
   }
 
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
-    if let Some(OracleTask::TxPending(b)) = self.task.take() {
-      let mut conn = b.0;
-      tokio::task::spawn_blocking(move || {
-        let result = conn.conn.commit();
-        if result.is_ok() {
-          conn.is_finished = true;
-        }
-        result
-      })
-      .await??;
-      Ok(Some(b.1))
+    if let Some(OracleTask::TxPending(b)) = self.task.take()
+      && let Some(self_conn) = self.querying_conn.clone()
+    {
+      let conn = self_conn.lock().await;
+      let result = conn.commit()?;
+      Ok(Some(*b))
     } else {
       Ok(None)
     }
   }
 
   async fn rollback_tx(&mut self) -> Result<()> {
-    if let Some(OracleTask::TxPending(b)) = self.task.take() {
-      tokio::task::spawn_blocking(move || b.0.conn.rollback()).await??;
+    if let Some(OracleTask::TxPending(b)) = self.task.take()
+      && let Some(self_conn) = self.querying_conn.clone()
+    {
+      let conn = self_conn.lock().await;
+      let result = conn.rollback()?;
       Ok(())
     } else {
       Ok(())
@@ -200,9 +192,13 @@ impl Database for OracleDriver {
 }
 
 fn query_with_pool(pool: &Pool, query: &str) -> Result<Rows> {
+  let conn = pool.get()?;
+  query_with_conn(&conn, query)
+}
+
+fn query_with_conn(conn: &Connection, query: &str) -> Result<Rows> {
   let mut headers = Vec::new();
-  let rows = pool
-    .get()?
+  let rows = conn
     .query(query, &[])
     .map_err(|e| color_eyre::eyre::eyre!("Error executing query: {}", e))?
     .filter_map(|row| row.ok())
