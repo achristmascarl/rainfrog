@@ -7,7 +7,6 @@ use color_eyre::eyre::Result;
 use connect_options::OracleConnectOptions;
 use oracle::{Connection, pool::Pool};
 use sqlparser::ast::Statement;
-use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use crate::cli::Driver;
@@ -25,7 +24,7 @@ enum OracleTask {
 pub struct OracleDriver {
   pool: Option<Arc<oracle::pool::Pool>>,
   task: Option<OracleTask>,
-  querying_conn: Option<Arc<Mutex<Connection>>>,
+  querying_conn: Option<Arc<Connection>>,
 }
 
 impl OracleDriver {
@@ -56,18 +55,16 @@ impl Database for OracleDriver {
     };
     let pool = self.pool.clone().unwrap();
 
-    let conn = Arc::new(Mutex::new(pool.get()?));
+    let conn = Arc::new(pool.get()?);
     let query_conn = conn.clone();
     self.querying_conn = Some(conn);
     let task = match statement_type {
       Some(Statement::Query(_)) => OracleTask::Query(tokio::spawn(async move {
-        let c = query_conn.lock().await;
-        let results = query_with_conn(&c, &first_query);
+        let results = query_with_conn(query_conn.as_ref(), &first_query);
         QueryResultsWithMetadata { results, statement_type }
       })),
       _ => OracleTask::TxStart(tokio::spawn(async move {
-        let c = query_conn.lock().await;
-        let results = execute_with_conn(&c, &first_query);
+        let results = execute_with_conn(query_conn.as_ref(), &first_query);
         match results {
           Ok(ref rows) => {
             log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
@@ -93,8 +90,7 @@ impl Database for OracleDriver {
         _ => {},
       };
       if let Some(conn) = &self.querying_conn {
-        let c = conn.lock().await;
-        let _ = c.break_execution();
+        conn.break_execution()?;
       }
       self.querying_conn = None;
       Ok(true)
@@ -152,8 +148,7 @@ impl Database for OracleDriver {
     if let Some(OracleTask::TxPending(b)) = self.task.take()
       && let Some(self_conn) = self.querying_conn.clone()
     {
-      let conn = self_conn.lock().await;
-      let result = conn.commit()?;
+      self_conn.commit()?;
       self.querying_conn = None;
       Ok(Some(*b))
     } else {
@@ -165,8 +160,7 @@ impl Database for OracleDriver {
     if let Some(OracleTask::TxPending(b)) = self.task.take()
       && let Some(self_conn) = self.querying_conn.clone()
     {
-      let conn = self_conn.lock().await;
-      let result = conn.rollback()?;
+      self_conn.rollback()?;
       self.querying_conn = None;
       Ok(())
     } else {
