@@ -29,6 +29,7 @@ impl OracleConnectOptions {
   }
 
   pub fn build_connection_opts(args: crate::cli::Cli) -> Result<OracleConnectOptions> {
+    let empty_user = String::new();
     match args.connection_url {
       Some(url) => {
         let mut opts = OracleConnectOptions::from_str(&url).map_err(|e| color_eyre::eyre::eyre!(e))?;
@@ -55,7 +56,8 @@ impl OracleConnectOptions {
             opts.password = Some(password);
           } else {
             let password =
-              rpassword::prompt_password(format!("password for user {}: ", opts.user.as_ref().unwrap())).unwrap();
+              rpassword::prompt_password(format!("password for user {}: ", opts.user.as_ref().unwrap_or(&empty_user)))
+                .unwrap();
             let password = password.trim();
             if !password.is_empty() {
               opts.password = Some(password.to_string());
@@ -87,7 +89,8 @@ impl OracleConnectOptions {
           opts.password = Some(password);
         } else {
           let password =
-            rpassword::prompt_password(format!("password for user {}: ", opts.user.as_ref().unwrap())).unwrap();
+            rpassword::prompt_password(format!("password for user {}: ", opts.user.as_ref().unwrap_or(&empty_user)))
+              .unwrap();
           let password = password.trim();
           if !password.is_empty() {
             opts.password = Some(password.to_string());
