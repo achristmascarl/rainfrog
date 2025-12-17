@@ -429,6 +429,7 @@ impl Component for Data<'_> {
       self.scrollable.reset_scroll();
     } else if let Action::ExportData(format) = action {
       let DataState::HasResults(rows) = &self.data_state else {
+        self.command_tx.clone().unwrap().send(Action::ExportDataFinished)?;
         return Ok(None);
       };
       let name = format!("rainfrog_export_{}_rows_{}.csv", rows.rows.len(), chrono::Utc::now().timestamp());

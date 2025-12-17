@@ -54,8 +54,11 @@ impl OracleConnectOptions {
           if let Some(password) = args.password {
             opts.password = Some(password);
           } else {
-            let password =
-              rpassword::prompt_password(format!("password for user {}: ", opts.user.as_ref().unwrap())).unwrap();
+            let password = rpassword::prompt_password(format!(
+              "password for user {}: ",
+              opts.user.clone().unwrap_or("".to_string())
+            ))
+            .unwrap();
             let password = password.trim();
             if !password.is_empty() {
               opts.password = Some(password.to_string());
@@ -87,7 +90,8 @@ impl OracleConnectOptions {
           opts.password = Some(password);
         } else {
           let password =
-            rpassword::prompt_password(format!("password for user {}: ", opts.user.as_ref().unwrap())).unwrap();
+            rpassword::prompt_password(format!("password for user {}: ", opts.user.clone().unwrap_or("".to_string())))
+              .unwrap();
           let password = password.trim();
           if !password.is_empty() {
             opts.password = Some(password.to_string());
