@@ -24,7 +24,7 @@ impl PopUp for NameFavorite {
     match key.code {
       KeyCode::Char(c) => {
         // ignore invalid characters
-        if c.is_ascii_whitespace() || (c.is_ascii_punctuation() && c != '_' && c != '-') {
+        if c.is_whitespace() || c.is_ascii_whitespace() || (c.is_ascii_punctuation() && c != '_' && c != '-') {
           return Ok(None);
         }
         self.name.push(c);
@@ -56,7 +56,7 @@ impl PopUp for NameFavorite {
     format!(
       "{}.sql{}",
       self.name,
-      if self.existing_names.iter().any(|n| n.as_str() == self.name.as_str()) {
+      if self.existing_names.iter().any(|n| n.as_str().trim() == self.name.as_str().trim()) {
         " (WARNING! a favorite with this name already exists, saving now will overwrite it.)"
       } else {
         ""
