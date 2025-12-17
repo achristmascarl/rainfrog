@@ -124,11 +124,18 @@ impl Database for OracleDriver {
             Ok(rows) => rows.rows_affected,
             _ => None,
           };
-          self.querying_conn = None;
-          (
-            DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
-            Some(OracleTask::TxPending(Box::new(result))),
-          )
+          match result {
+            // if tx failed to start, return the error immediately
+            QueryResultsWithMetadata { results: Err(e), statement_type } => {
+              log::error!("Transaction didn't start: {e:?}");
+              self.querying_conn = None;
+              (DbTaskResult::Finished(QueryResultsWithMetadata { results: Err(e), statement_type }), None)
+            },
+            _ => (
+              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+              Some(OracleTask::TxPending(Box::new(result))),
+            ),
+          }
         }
       },
       Some(OracleTask::TxPending(handle)) => (DbTaskResult::Pending, Some(OracleTask::TxPending(handle))),
