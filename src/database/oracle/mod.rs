@@ -111,6 +111,7 @@ impl Database for OracleDriver {
         if !handle.is_finished() {
           (DbTaskResult::Pending, Some(OracleTask::Query(handle)))
         } else {
+          self.querying_conn = None;
           (DbTaskResult::Finished(handle.await?), None)
         }
       },
@@ -123,6 +124,7 @@ impl Database for OracleDriver {
             Ok(rows) => rows.rows_affected,
             _ => None,
           };
+          self.querying_conn = None;
           (
             DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
             Some(OracleTask::TxPending(Box::new(result))),
@@ -145,6 +147,7 @@ impl Database for OracleDriver {
     {
       let conn = self_conn.lock().await;
       let result = conn.commit()?;
+      self.querying_conn = None;
       Ok(Some(*b))
     } else {
       Ok(None)
@@ -157,6 +160,7 @@ impl Database for OracleDriver {
     {
       let conn = self_conn.lock().await;
       let result = conn.rollback()?;
+      self.querying_conn = None;
       Ok(())
     } else {
       Ok(())
