@@ -168,6 +168,9 @@ impl Component for History {
       Some(x) if x > items.len().saturating_sub(1) => {
         self.list_state.select(Some(0));
       },
+      None if items.len() > 0 => {
+        self.list_state.select(Some(0));
+      },
       _ => {},
     };
 
