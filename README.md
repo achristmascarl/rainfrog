@@ -104,7 +104,7 @@ after installing rust (recommended to do so via
 [rustup](https://www.rust-lang.org/tools/install)):
 
 ```sh
-cargo install rainfrog
+cargo install rainfrog --locked
 ```
 
 <!-- TOC --><a name="homebrew"></a>
