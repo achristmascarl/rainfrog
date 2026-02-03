@@ -37,7 +37,7 @@ the levels of support for different databases can be split into 4 tiers:
 | mysql | 2 |  | |
 | sqlite | 2  |          | |
 | redshift| 2  |          | postgres |
-| duckdb | 4 | `duckdb` must be installed separately, and android and musl binaries are not compatible with this driver      | |
+| duckdb | 4 | musl binaries are not compatible with this driver      | |
 | oracle | 4 | requires additional runtime dependencies          | |
 
 
@@ -69,7 +69,6 @@ access on a production database.
    * [icons](#icons)
 - [dependencies](#dependencies)
    * [oracle](#oracle)
-   * [duckdb](#duckdb)
 - [usage](#usage)
    * [with connection options](#with-connection-options)
    * [with connection url](#with-connection-url)
@@ -210,12 +209,6 @@ after installation, you may need to manually copy the client files to a
 location where ODPI-C can find them, which is either in the same folder as the rainfrog binary,
 or in the library path of your os. more details can be found in the ODPI-C
 installation instructions: [ODPI-C Client Library Loading](https://odpi-c.readthedocs.io/en/latest/user_guide/installation.html#oracle-client-library-loading).
-
-<!-- TOC --><a name="duckdb"></a>
-### duckdb
-you must install duckdb on your system separately in order to use it with rainfrog. instructions can be found here: [DuckDB Installation](https://duckdb.org/install/)
-
-even if you have duckdb installed, rainfrog does not support duckdb on Android or musl platforms.
 
 <!-- TOC --><a name="usage"></a>
 ## usage

@@ -2105,6 +2105,7 @@ version = "1.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d78bacb8933586cee3b550c39b610d314f9b7a48701ac7a914a046165a4ad8da"
 dependencies = [
+ "cc",
  "flate2",
  "pkg-config",
  "reqwest",

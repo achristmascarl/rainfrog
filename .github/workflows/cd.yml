@@ -65,7 +65,7 @@ jobs:
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
-            features: --no-default-features
+            features: --features duckdb --no-default-features
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             binary-postfix: ""
