@@ -85,13 +85,13 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
-
+          toolchain: 1.88
           target: ${{ matrix.target }}
-
           profile: minimal
           override: true
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - name: Cross build
         if: ${{ matrix.use-cross == true }}
         uses: houseabsolute/actions-rust-cross@v0
@@ -108,7 +108,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          toolchain: stable
+          toolchain: 1.88
           args: --release --target ${{ matrix.target }} ${{ matrix.features }}
 
       - name: Packaging final binary
