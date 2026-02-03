@@ -36,15 +36,15 @@ jobs:
           - os: ubuntu-latest
             os-name: ish
             target: i686-unknown-linux-musl
-            features: musl --no-default-features
+            features: default
           - os: ubuntu-latest
             os-name: aarch64-musl
             target: aarch64-unknown-linux-musl
-            features: musl --no-default-features
+            features: default
           - os: ubuntu-latest
             os-name: x86_64-musl
             target: x86_64-unknown-linux-musl
-            features: musl --no-default-features
+            features: default
 
     steps:
       - name: Checkout repository

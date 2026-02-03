@@ -161,7 +161,7 @@ impl App {
       Driver::MySql => Box::new(database::MySqlDriver::new()),
       Driver::Sqlite => Box::new(database::SqliteDriver::new()),
       Driver::Oracle => Box::new(database::OracleDriver::new()),
-      #[cfg(not(feature = "musl"))]
+      #[cfg(not(feature = "noduckdb"))]
       Driver::DuckDb => Box::new(database::DuckDbDriver::new()),
     };
     database.init(args).await?;

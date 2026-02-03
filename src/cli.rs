@@ -60,7 +60,7 @@ pub enum Driver {
   Sqlite,
   #[serde(alias = "oracle", alias = "ORACLE")]
   Oracle,
-  #[cfg(not(feature = "musl"))]
+  #[cfg(not(feature = "noduckdb"))]
   #[serde(alias = "duckdb", alias = "DUCKDB")]
   DuckDb,
 }
@@ -74,7 +74,7 @@ impl FromStr for Driver {
       "mysql" => Ok(Driver::MySql),
       "sqlite" => Ok(Driver::Sqlite),
       "oracle" => Ok(Driver::Oracle),
-      #[cfg(not(feature = "musl"))]
+      #[cfg(not(feature = "noduckdb"))]
       "duckdb" => Ok(Driver::DuckDb),
       _ => Err(eyre::Report::msg("Invalid driver")),
     }
@@ -92,7 +92,7 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
   } else if let Some(pos) = url.find("://") {
     url[..pos].to_lowercase().parse()
   } else if url.ends_with(".duckdb") || url.ends_with(".ddb") {
-    #[cfg(not(feature = "musl"))]
+    #[cfg(not(feature = "noduckdb"))]
     {
       return Ok(Driver::DuckDb);
     }
@@ -161,7 +161,7 @@ mod tests {
       ("sqlite://localhost/var/data.sqlite?mode=ro", Driver::Sqlite),
       ("oracle://scott:tiger@//prod-db.example.com:1521/ORCLPDB1", Driver::Oracle),
       ("oracle://user:pass@db-host/service_name", Driver::Oracle),
-      #[cfg(not(feature = "musl"))]
+      #[cfg(not(feature = "noduckdb"))]
       ("duckdb:///var/tmp/cache.duckdb", Driver::DuckDb),
     ];
 
@@ -182,7 +182,7 @@ mod tests {
       ("jdbc:sqlite:/var/lib/sqlite/cache.sqlite3", Driver::Sqlite),
       ("jdbc:oracle:thin:@localhost:1521/dbname", Driver::Oracle),
       ("jdbc:oracle:oci:@//prod-host:1521/ORCLCDB.localdomain", Driver::Oracle),
-      #[cfg(not(feature = "musl"))]
+      #[cfg(not(feature = "noduckdb"))]
       ("jdbc:duckdb:/var/lib/duckdb/cache.duckdb", Driver::DuckDb),
     ];
 
@@ -203,7 +203,7 @@ mod tests {
       );
     }
 
-    #[cfg(not(feature = "musl"))]
+    #[cfg(not(feature = "noduckdb"))]
     {
       let duckdb_paths = ["/tmp/data.duckdb", "/tmp/data.ddb", "./var/cache/session.duckdb"];
       for path in duckdb_paths {
@@ -215,7 +215,7 @@ mod tests {
       }
     }
 
-    #[cfg(feature = "musl")]
+    #[cfg(feature = "noduckdb")]
     {
       assert!(extract_driver_from_url("/tmp/data.duckdb").is_err());
     }
