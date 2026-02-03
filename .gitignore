@@ -6,4 +6,5 @@ flamegraph*
 *.data
 test.tape
 dev/*.sqlite3
+dev/*.db
 *.env

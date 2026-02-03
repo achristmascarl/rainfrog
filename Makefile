@@ -42,11 +42,13 @@ profile:
 
 db-up:
 	sqlite3 ./dev/rainfrog.sqlite3 < ./dev/sqlite_init.sql
+	duckdb -init ./dev/duckdb_init.sql -no-stdin ./dev/rainfrog.db
 	PG_PORT=$(pg_port) MYSQL_PORT=$(mysql_port) ORACLE_PORT=$(oracle_port) docker compose up -d --wait
 	sleep 1
 
 db-down:
 	rm -f ./dev/rainfrog.sqlite3
+	rm -f ./dev/rainfrog.db
 	docker compose kill
 	docker compose rm -f -v
 
