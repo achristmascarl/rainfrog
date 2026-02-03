@@ -40,9 +40,13 @@ dev-termux-sqlite:
 profile:
 	cargo flamegraph --post-process flamelens --root -- -u $(url)
 
-db-up:
-	sqlite3 ./dev/rainfrog.sqlite3 < ./dev/sqlite_init.sql
+db-up: duckdb-up ci-db-up
+
+duckdb-up:
 	duckdb ./dev/rainfrog.db < ./dev/duckdb_init.sql
+
+ci-db-up:
+	sqlite3 ./dev/rainfrog.sqlite3 < ./dev/sqlite_init.sql
 	PG_PORT=$(pg_port) MYSQL_PORT=$(mysql_port) ORACLE_PORT=$(oracle_port) docker compose up -d --wait
 	sleep 1
 
