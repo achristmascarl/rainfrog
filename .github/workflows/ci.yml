@@ -40,11 +40,11 @@ jobs:
           - os: ubuntu-latest
             os-name: aarch64-musl
             target: aarch64-unknown-linux-musl
-            features: default
+            features: noduckdb --no-default-features
           - os: ubuntu-latest
             os-name: x86_64-musl
             target: x86_64-unknown-linux-musl
-            features: default
+            features: noduckdb --no-default-features
 
     steps:
       - name: Checkout repository
