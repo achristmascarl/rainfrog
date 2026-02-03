@@ -53,7 +53,7 @@ jobs:
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
-            features: --features default
+            features: --features arboard --no-default-features
           - os: ubuntu-latest
             target: i686-unknown-linux-musl
             binary-postfix: ""
