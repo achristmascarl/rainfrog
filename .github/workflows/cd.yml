@@ -90,6 +90,8 @@ jobs:
           profile: minimal
           override: true
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - name: Cross build
         if: ${{ matrix.use-cross == true }}
         uses: houseabsolute/actions-rust-cross@v0
