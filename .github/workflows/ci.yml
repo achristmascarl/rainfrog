@@ -22,29 +22,29 @@ jobs:
         include:
           - os: macos-latest
             os-name: mac
-            features: default
+            features: --features default
           - os: ubuntu-latest
             os-name: ubuntu
-            features: default
+            features: --features default
           - os: windows-latest
             os-name: windows
-            features: default
+            features: --features default
           - os: ubuntu-latest
             os-name: android
             target: aarch64-linux-android
-            features: termux --no-default-features
+            features: --no-default-features
           - os: ubuntu-latest
             os-name: ish
             target: i686-unknown-linux-musl
-            features: musl --no-default-features
+            features: --features arboard --no-default-features
           - os: ubuntu-latest
             os-name: aarch64-musl
             target: aarch64-unknown-linux-musl
-            features: musl --no-default-features
+            features: --features arboard --no-default-features
           - os: ubuntu-latest
             os-name: x86_64-musl
             target: x86_64-unknown-linux-musl
-            features: musl --no-default-features
+            features: --features arboard --no-default-features
 
     steps:
       - name: Checkout repository
@@ -64,11 +64,11 @@ jobs:
           toolchain: 1.88
           command: test
           target: ${{ matrix.target }}
-          args: "--features ${{ matrix.features }} --workspace"
+          args: "${{ matrix.features }} --workspace"
           cross-version: 51f46f296253d8122c927c5bb933e3c4f27cc317
       - name: Run tests (default)
         if: ${{ matrix.target == null }}
-        run: cargo test --features ${{ matrix.features }} --workspace
+        run: cargo test ${{ matrix.features }} --workspace
 
   docker:
     name: Test Docker

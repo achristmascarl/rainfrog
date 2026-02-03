@@ -2,7 +2,7 @@
 // https://github.com/rhysd/tui-textarea/blob/main/examples/vim.rs
 use std::fmt;
 
-#[cfg(not(feature = "termux"))]
+#[cfg(feature = "arboard")]
 use arboard::Clipboard;
 use color_eyre::eyre::Result;
 use ratatui::{
@@ -140,7 +140,7 @@ impl Vim {
             return Transition::Mode(Mode::Insert);
           },
           Input { key: Key::Char('p'), .. } => {
-            #[cfg(not(feature = "termux"))]
+            #[cfg(feature = "arboard")]
             {
               Clipboard::new().map_or_else(
                 |e| log::error!("{e:?}"),

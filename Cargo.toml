@@ -91,7 +91,7 @@ dotenvy = "0.15.7"
 csv = "1.3.1"
 oracle = "0.6.3"
 percent-encoding = "2.3.1"
-duckdb = { version = "1.3.2", features = ["bundled"], optional = true }
+duckdb = { version = "1.4.4", optional = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))'.dependencies]
 keyring = { version = "3.6.2", features = [
@@ -119,6 +119,6 @@ vergen-git2 = { version = "1.0.0", features = [
 ] }
 
 [features]
-default = ["dep:arboard", "dep:duckdb"]
-musl = ["dep:arboard"]
-termux = ["dep:duckdb"]
+default = ["duckdb", "arboard"]
+duckdb = ["dep:duckdb"]
+arboard = ["dep:arboard"]

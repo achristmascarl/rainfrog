@@ -24,6 +24,7 @@ RUN useradd -m -s /bin/bash rainfrog
 
 # Copy the binary from the builder image
 COPY --from=builder /app/target/release/rainfrog /usr/local/bin/rainfrog
+COPY --from=builder /app/target/release/deps /usr/lib
 
 USER rainfrog
 

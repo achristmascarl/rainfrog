@@ -111,7 +111,7 @@ impl StructuredConnection {
         "jdbc:oracle:thin:{}/{}@//{}:{}/{}",
         self.username, encoded_password, self.host, self.port, self.database
       )),
-      #[cfg(not(feature = "musl"))]
+      #[cfg(feature = "duckdb")]
       Driver::DuckDb => Err(eyre::Report::msg("DuckDb only supports raw connection strings")),
     }
   }

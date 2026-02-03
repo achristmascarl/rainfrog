@@ -138,7 +138,7 @@ and then make sure to install with termux features (and disable default
 features):
 
 ```sh
-cargo install rainfrog --features termux --no-default-features
+cargo install rainfrog --no-default-features
 ```
 
 <!-- TOC --><a name="nix"></a>
