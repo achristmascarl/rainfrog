@@ -119,3 +119,17 @@ INSERT INTO `sensor_data` (robot_id, temperature, humidity, pressure, coordinate
 (6, 36.5, 0.07, 1013.80, X'0000000000000095CBFF1E110100', '16:00:00', X'FEEDBEEF', 'NORMAL', JSON_ARRAY(512, 1024, 2048)),
 (7, 39.7, 0.04, 1011.90, X'00000000000000944DFF1E2D0400', '19:30:00', X'CAFEBABE', 'CRITICAL', JSON_ARRAY(4096, 8192, 16384)),
 (8, 37.1, 0.06, 1012.50, X'000000000000009524FF1E100100', '22:15:00', X'FACEFEED', 'WARNING', JSON_ARRAY(2048, 4096, 8192));
+
+-- Views for testing
+CREATE VIEW `active_users` AS
+SELECT `id`, `email`, `age`, `last_login`
+FROM `user`
+WHERE `is_active` = 1;
+
+CREATE VIEW `robot_part_counts` AS
+SELECT r.`id` AS `robot_id`,
+       r.`name` AS `robot_name`,
+       COUNT(rp.`id`) AS `part_count`
+FROM `robot` r
+LEFT JOIN `robot_parts` rp ON rp.`robot_id` = r.`id`
+GROUP BY r.`id`, r.`name`;

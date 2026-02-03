@@ -200,6 +200,29 @@ CREATE TABLE "etl"."jira" (
 	PRIMARY KEY("id")
 );
 
+-- Views for testing
+CREATE VIEW "active_users" AS
+SELECT "id", "email", "age", "last_login"
+FROM "user"
+WHERE "is_active" = true;
+
+CREATE VIEW "robot_part_counts" AS
+SELECT r."id" AS "robot_id",
+       r."name" AS "robot_name",
+       COUNT(rp."id") AS "part_count"
+FROM "robot" r
+LEFT JOIN "robot_parts" rp ON rp."robot_id" = r."id"
+GROUP BY r."id", r."name";
+
+CREATE MATERIALIZED VIEW "robot_part_costs" AS
+SELECT r."id" AS "robot_id",
+       r."name" AS "robot_name",
+       COALESCE(SUM(p."cost" * rp."part_quantity"), 0) AS "total_part_cost"
+FROM "robot" r
+LEFT JOIN "robot_parts" rp ON rp."robot_id" = r."id"
+LEFT JOIN "part" p ON p."id" = rp."part_id"
+GROUP BY r."id", r."name";
+
 CREATE TABLE "etl"."teams" (
 	"id" INTEGER NOT NULL UNIQUE,
 	"data" VARCHAR,

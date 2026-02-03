@@ -121,6 +121,20 @@ INSERT INTO `sensor_data` (robot_id, temperature, humidity, pressure, coordinate
 (7, 39.7, 0.04, 1011.90, ST_POINTFROMTEXT('POINT(36.0 -115.3)'), '19:30:00', UNHEX('CAFEBABE'), 'CRITICAL', JSON_ARRAY(4096, 8192, 16384)),
 (8, 37.1, 0.06, 1012.50, ST_POINTFROMTEXT('POINT(35.8 -115.1)'), '22:15:00', UNHEX('FACEFEED'), 'WARNING', JSON_ARRAY(2048, 4096, 8192));
 
+-- Views for testing
+CREATE VIEW `active_users` AS
+SELECT `id`, `email`, `age`, `last_login`
+FROM `user`
+WHERE `is_active` = true;
+
+CREATE VIEW `robot_part_counts` AS
+SELECT r.`id` AS `robot_id`,
+       r.`name` AS `robot_name`,
+       COUNT(rp.`id`) AS `part_count`
+FROM `robot` r
+LEFT JOIN `robot_parts` rp ON rp.`robot_id` = r.`id`
+GROUP BY r.`id`, r.`name`;
+
 -- Additional schema for testing
 CREATE DATABASE `etl`;
 
