@@ -121,4 +121,4 @@ vergen-git2 = { version = "1.0.0", features = [
 [features]
 default = ["dep:arboard", "dep:duckdb"]
 termux = ["dep:duckdb"]
-noduckdb = ["dep:duckdb"]
+noduckdb = ["dep:arboard"]
