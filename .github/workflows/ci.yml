@@ -32,7 +32,7 @@ jobs:
           - os: ubuntu-latest
             os-name: android
             target: aarch64-linux-android
-            features: --no-default-features
+            features: --features duckdb --no-default-features
           - os: ubuntu-latest
             os-name: ish
             target: i686-unknown-linux-musl
