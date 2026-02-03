@@ -206,7 +206,10 @@ impl Database for OracleDriver {
 
   fn preview_view_definition_query(&self, schema: &str, view: &str, materialized: bool) -> String {
     if materialized {
-      return format!("select query as definition from user_mviews where mview_name = '{}' and user = '{}'", view, schema);
+      return format!(
+        "select query as definition from user_mviews where mview_name = '{}' and user = '{}'",
+        view, schema
+      );
     }
     format!("select text as definition from user_views where view_name = '{}' and user = '{}'", view, schema)
   }

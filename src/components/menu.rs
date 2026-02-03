@@ -242,10 +242,10 @@ impl SettableTableList<'_> for Menu {
     match data {
       Some(Ok(rows)) => {
         rows.rows.iter().for_each(|row| {
-          let schema = row.get(0).cloned().unwrap_or_default();
+          let schema = row.first().cloned().unwrap_or_default();
           let name = row.get(1).cloned().unwrap_or_default();
           let kind = row.get(2).map(|value| value.to_lowercase()).unwrap_or_else(|| "table".to_owned());
-          let entry = self.table_map.entry(schema.clone()).or_insert_with(MenuSchemaItems::default);
+          let entry = self.table_map.entry(schema.clone()).or_default();
           match kind.as_str() {
             "view" => entry.views.push(MenuViewItem { name, materialized: false }),
             "materialized_view" | "materialized view" | "mview" => {

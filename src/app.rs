@@ -433,16 +433,16 @@ impl App {
             let preview_query = match preview_type {
               MenuPreview::Rows => database.preview_rows_query(target.schema.as_str(), target.name.as_str()),
               MenuPreview::Columns => database.preview_columns_query(target.schema.as_str(), target.name.as_str()),
-              MenuPreview::Constraints => database.preview_constraints_query(target.schema.as_str(), target.name.as_str()),
+              MenuPreview::Constraints => {
+                database.preview_constraints_query(target.schema.as_str(), target.name.as_str())
+              },
               MenuPreview::Indexes => database.preview_indexes_query(target.schema.as_str(), target.name.as_str()),
               MenuPreview::Policies => database.preview_policies_query(target.schema.as_str(), target.name.as_str()),
               MenuPreview::Definition => match target.kind {
                 MenuItemKind::View { materialized } => {
                   database.preview_view_definition_query(target.schema.as_str(), target.name.as_str(), materialized)
                 },
-                MenuItemKind::Table => {
-                  "select 'Definition preview is only available for views' as message".to_owned()
-                },
+                MenuItemKind::Table => "select 'Definition preview is only available for views' as message".to_owned(),
               },
             };
             action_tx.send(Action::QueryToEditor(vec![preview_query.clone()]))?;
