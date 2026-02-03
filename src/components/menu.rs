@@ -445,40 +445,40 @@ impl Component for Menu {
             .enumerate()
             .map(|(i, entry)| match entry {
               MenuEntry::Header(title) => {
-                ListItem::new(Text::styled(format!("── {title}"), Style::default().fg(Color::DarkGray)))
+                ListItem::new(Text::styled(format!("─ {title}"), Style::default().fg(Color::DarkGray)))
               },
               MenuEntry::Item(item) => {
                 let display_name = match item.kind {
-                  MenuItemKind::View { materialized: true } => format!("{} (mat)", item.name),
-                  _ => item.name.clone(),
+                  MenuItemKind::View { materialized: true } => format!(" {} (materialized)", item.name),
+                  _ => " ".to_owned() + &item.name.clone(),
                 };
                 let is_selected = selected_index == Some(i);
                 if is_selected && focused && !self.search_focused {
                   match item.kind {
                     MenuItemKind::Table => ListItem::new(Text::from(vec![
                       Line::from(display_name),
-                      Line::from(if app_state.query_task_running { "├[...] rows" } else { "├[<enter>] rows" }),
-                      Line::from(if app_state.query_task_running { "├[...] columns" } else { "├[1] columns" }),
+                      Line::from(if app_state.query_task_running { " ├[...] rows" } else { " ├[<enter>] rows" }),
+                      Line::from(if app_state.query_task_running { " ├[...] columns" } else { " ├[1] columns" }),
                       Line::from(if app_state.query_task_running {
-                        "├[...] constraints"
+                        " ├[...] constraints"
                       } else {
-                        "├[2] constraints"
+                        " ├[2] constraints"
                       }),
-                      Line::from(if app_state.query_task_running { "├[...] indexes" } else { "├[3] indexes" }),
+                      Line::from(if app_state.query_task_running { " ├[...] indexes" } else { " ├[3] indexes" }),
                       Line::from(if app_state.query_task_running {
-                        "└[...] rls policies"
+                        " └[...] rls policies"
                       } else {
-                        "└[4] rls policies"
+                        " └[4] rls policies"
                       }),
                     ])),
                     MenuItemKind::View { .. } => ListItem::new(Text::from(vec![
                       Line::from(display_name),
-                      Line::from(if app_state.query_task_running { "├[...] rows" } else { "├[<enter>] rows" }),
-                      Line::from(if app_state.query_task_running { "├[...] columns" } else { "├[1] columns" }),
+                      Line::from(if app_state.query_task_running { " ├[...] rows" } else { " ├[<enter>] rows" }),
+                      Line::from(if app_state.query_task_running { " ├[...] columns" } else { " ├[1] columns" }),
                       Line::from(if app_state.query_task_running {
-                        "└[...] schema definition"
+                        "  └[...] schema definition"
                       } else {
-                        "└[2] schema definition"
+                        " └[2] schema definition"
                       }),
                     ])),
                   }
