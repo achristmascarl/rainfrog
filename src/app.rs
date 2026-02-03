@@ -15,7 +15,7 @@ use strum::IntoEnumIterator;
 use tokio::sync::mpsc::{self};
 
 use crate::{
-  action::{Action, ExportFormat, MenuPreview},
+  action::{Action, ExportFormat, MenuItemKind, MenuPreview},
   cli::{Cli, Driver},
   components::{
     Component, ComponentImpls,
@@ -429,13 +429,21 @@ impl App {
               self.components.data.set_data_state(Some(Err(e)), None);
             },
           },
-          Action::MenuPreview(preview_type, schema, table) => {
+          Action::MenuPreview(preview_type, target) => {
             let preview_query = match preview_type {
-              MenuPreview::Rows => database.preview_rows_query(schema, table),
-              MenuPreview::Columns => database.preview_columns_query(schema, table),
-              MenuPreview::Constraints => database.preview_constraints_query(schema, table),
-              MenuPreview::Indexes => database.preview_indexes_query(schema, table),
-              MenuPreview::Policies => database.preview_policies_query(schema, table),
+              MenuPreview::Rows => database.preview_rows_query(target.schema.as_str(), target.name.as_str()),
+              MenuPreview::Columns => database.preview_columns_query(target.schema.as_str(), target.name.as_str()),
+              MenuPreview::Constraints => {
+                database.preview_constraints_query(target.schema.as_str(), target.name.as_str())
+              },
+              MenuPreview::Indexes => database.preview_indexes_query(target.schema.as_str(), target.name.as_str()),
+              MenuPreview::Policies => database.preview_policies_query(target.schema.as_str(), target.name.as_str()),
+              MenuPreview::Definition => match target.kind {
+                MenuItemKind::View { materialized } => {
+                  database.preview_view_definition_query(target.schema.as_str(), target.name.as_str(), materialized)
+                },
+                MenuItemKind::Table => "select 'Definition preview is only available for views' as message".to_owned(),
+              },
             };
             action_tx.send(Action::QueryToEditor(vec![preview_query.clone()]))?;
             action_tx.send(Action::FocusEditor)?;

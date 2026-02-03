@@ -8,6 +8,20 @@ pub enum MenuPreview {
   Constraints,
   Indexes,
   Policies,
+  Definition,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MenuItemKind {
+  Table,
+  View { materialized: bool },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MenuTarget {
+  pub schema: String,
+  pub name: String,
+  pub kind: MenuItemKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
@@ -28,7 +42,7 @@ pub enum Action {
   SubmitEditorQuery,
   SubmitEditorQueryBypassParser,
   Query(Vec<String>, bool, bool), // (query_lines, execution_confirmed, bypass_parser)
-  MenuPreview(MenuPreview, String, String), // (preview, schema, table)
+  MenuPreview(MenuPreview, MenuTarget), // (preview, target)
   QueryToEditor(Vec<String>),
   ClearHistory,
   AbortQuery,

@@ -225,4 +225,27 @@ INSERT INTO sensor_data (robot_id, temperature, humidity, pressure, coordinates,
 (8, 37.1, 0.06, 1012.50, SDO_GEOMETRY(2001, NULL, SDO_POINT_TYPE(35.8, -115.1, NULL), NULL, NULL),
   TO_TIMESTAMP('22:15:00', 'HH24:MI:SS'), HEXTORAW('FACEFEED'), 'WARNING', '[2048, 4096, 8192]');
 
+-- Views for testing
+CREATE VIEW active_users AS
+SELECT id, email, age, last_login
+FROM "user"
+WHERE is_active = 1;
+
+CREATE VIEW robot_part_counts AS
+SELECT r.id AS robot_id,
+       r.name AS robot_name,
+       COUNT(rp.id) AS part_count
+FROM robot r
+LEFT JOIN robot_parts rp ON rp.robot_id = r.id
+GROUP BY r.id, r.name;
+
+CREATE MATERIALIZED VIEW robot_part_costs AS
+SELECT r.id AS robot_id,
+       r.name AS robot_name,
+       COALESCE(SUM(p.cost * rp.part_quantity), 0) AS total_part_cost
+FROM robot r
+LEFT JOIN robot_parts rp ON rp.robot_id = r.id
+LEFT JOIN part p ON p.id = rp.part_id
+GROUP BY r.id, r.name;
+
 COMMIT;

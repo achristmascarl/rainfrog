@@ -62,3 +62,19 @@ INSERT INTO duckdb_all_types VALUES (
   map { 'alpha': 10, 'beta': 20 },
   union_value(num := 999)::UNION(num INT, txt VARCHAR)
 );
+
+-- Views for testing
+CREATE VIEW duckdb_numeric_snapshot AS
+SELECT id,
+       int_col,
+       bigint_col,
+       hugeint_col,
+       decimal_col
+FROM duckdb_all_types;
+
+CREATE VIEW duckdb_text_snapshot AS
+SELECT id,
+       text_col,
+       enum_col,
+       struct_col
+FROM duckdb_all_types;

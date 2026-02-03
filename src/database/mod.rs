@@ -119,7 +119,7 @@ pub trait Database {
   async fn rollback_tx(&mut self) -> Result<()>;
 
   /// Returns rows representing the database menu. The menu component
-  /// expects each row to be combination of schema and table name.
+  /// expects each row to be combination of schema, object name, and kind.
   async fn load_menu(&self) -> Result<Rows>;
 
   /// Returns a query that can be used to preview the rows in a table.
@@ -136,6 +136,9 @@ pub trait Database {
 
   /// Returns a query that can be used to preview the policies in a table.
   fn preview_policies_query(&self, schema: &str, table: &str) -> String;
+
+  /// Returns a query that can be used to preview the definition of a view.
+  fn preview_view_definition_query(&self, schema: &str, view: &str, materialized: bool) -> String;
 }
 
 fn get_first_query(query: String, driver: Driver) -> Result<(String, Statement), ParseError> {

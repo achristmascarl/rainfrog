@@ -207,10 +207,16 @@ impl Database for MySqlDriver<'_> {
   async fn load_menu(&self) -> Result<Rows> {
     query_with_pool(
       self.pool.clone().unwrap(),
-      "select table_schema as table_schema, table_name as table_name
+      "select table_schema as table_schema,
+        table_name as table_name,
+        case
+          when table_type = 'BASE TABLE' then 'table'
+          when table_type = 'VIEW' then 'view'
+          else 'table'
+        end as object_kind
       from information_schema.tables
       where table_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
-      order by table_schema, table_name asc"
+      order by table_schema, object_kind, table_name asc"
         .to_owned(),
     )
     .await
@@ -252,6 +258,17 @@ impl Database for MySqlDriver<'_> {
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
     "select 'MySQL does not support row-level security policies' as message".to_owned()
+  }
+
+  fn preview_view_definition_query(&self, schema: &str, view: &str, materialized: bool) -> String {
+    if materialized {
+      return "select 'MySQL does not support materialized views' as message".to_owned();
+    }
+    format!(
+      "select view_definition
+        from information_schema.views
+        where table_schema = '{schema}' and table_name = '{view}'"
+    )
   }
 }
 

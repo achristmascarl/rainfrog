@@ -89,7 +89,7 @@ jobs:
           outputs: type=docker
       - name: init db for docker test
         run: |
-          make db-up
+          make ci-db-up
           sleep 10 # wait for db container
       - name: docker run postgres
         run: |
