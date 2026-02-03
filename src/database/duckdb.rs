@@ -95,11 +95,17 @@ impl Database for DuckDbDriver {
     let connection = self.connection.as_ref().unwrap().try_clone()?;
     run_query(
       connection,
-      "select table_schema, table_name
+      "select table_schema,
+        table_name,
+        case
+          when table_type = 'BASE TABLE' then 'table'
+          when table_type = 'VIEW' then 'view'
+          else 'table'
+        end as object_kind
       from information_schema.tables
       where table_schema != 'information_schema'
-      group by table_schema, table_name
-      order by table_schema, table_name asc"
+      group by table_schema, table_name, table_type
+      order by table_schema, object_kind, table_name asc"
         .to_string(),
     )
     .await
@@ -129,6 +135,17 @@ impl Database for DuckDbDriver {
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
     "select 'DuckDB does not support row-level security policies' as message".to_owned()
+  }
+
+  fn preview_view_definition_query(&self, schema: &str, view: &str, materialized: bool) -> String {
+    if materialized {
+      return "select 'DuckDB does not support materialized views' as message".to_owned();
+    }
+    format!(
+      "select view_definition
+        from information_schema.views
+        where table_schema = '{schema}' and table_name = '{view}'"
+    )
   }
 }
 

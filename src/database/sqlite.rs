@@ -173,11 +173,17 @@ impl Database for SqliteDriver<'_> {
   async fn load_menu(&self) -> Result<Rows> {
     query_with_pool(
       self.pool.clone().unwrap(),
-      "select '' as table_schema, name as table_name
+      "select '' as table_schema,
+        name as table_name,
+        case
+          when type = 'table' then 'table'
+          when type = 'view' then 'view'
+          else 'table'
+        end as object_kind
       from sqlite_master
-      where type = 'table'
+      where type in ('table', 'view')
       and name not like 'sqlite_%'
-      order by name asc"
+      order by object_kind, name asc"
         .to_owned(),
     )
     .await
@@ -201,6 +207,13 @@ impl Database for SqliteDriver<'_> {
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
     "select 'SQLite does not support row-level security policies' as message".to_owned()
+  }
+
+  fn preview_view_definition_query(&self, schema: &str, view: &str, materialized: bool) -> String {
+    if materialized {
+      return "select 'SQLite does not support materialized views' as message".to_owned();
+    }
+    format!("select sql as definition from sqlite_master where type = 'view' and name = '{view}'")
   }
 }
 

@@ -222,12 +222,19 @@ impl Database for PostgresDriver<'_> {
   async fn load_menu(&self) -> Result<Rows> {
     query_with_pool(
       self.pool.clone().unwrap(),
-      "select table_schema, table_name
-      from information_schema.tables
-      where table_schema != 'pg_catalog'
-      and table_schema != 'information_schema'
-      group by table_schema, table_name
-      order by table_schema, table_name asc"
+      "select n.nspname as table_schema,
+        c.relname as table_name,
+        case
+          when c.relkind in ('r', 'p', 'f') then 'table'
+          when c.relkind = 'v' then 'view'
+          when c.relkind = 'm' then 'materialized_view'
+        end as object_kind
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname != 'pg_catalog'
+        and n.nspname != 'information_schema'
+        and c.relkind in ('r', 'p', 'f', 'v', 'm')
+      order by n.nspname, object_kind, c.relname asc"
         .to_owned(),
     )
     .await
@@ -255,6 +262,18 @@ impl Database for PostgresDriver<'_> {
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
     format!("select * from pg_policies where schemaname = '{schema}' and tablename = '{table}'")
+  }
+
+  fn preview_view_definition_query(&self, schema: &str, view: &str, materialized: bool) -> String {
+    let relkind = if materialized { "m" } else { "v" };
+    format!(
+      "select pg_get_viewdef(c.oid, true) as definition
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = '{schema}'
+          and c.relname = '{view}'
+          and c.relkind = '{relkind}'"
+    )
   }
 }
 

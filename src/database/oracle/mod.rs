@@ -171,7 +171,16 @@ impl Database for OracleDriver {
   async fn load_menu(&self) -> Result<Rows> {
     query_with_pool(
       self.pool.as_ref().unwrap(),
-      "select user, table_name from user_tables where tablespace_name is not null order by user, table_name",
+      "select user, table_name, 'table' as object_kind
+        from user_tables
+        where tablespace_name is not null
+      union all
+      select user, view_name, 'view' as object_kind
+        from user_views
+      union all
+      select user, mview_name, 'materialized_view' as object_kind
+        from user_mviews
+      order by 1, 3, 2",
     )
   }
 
@@ -193,6 +202,13 @@ impl Database for OracleDriver {
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
     format!("select * from user_policies where object_name = '{}' and user = '{}'", table, schema)
+  }
+
+  fn preview_view_definition_query(&self, schema: &str, view: &str, materialized: bool) -> String {
+    if materialized {
+      return format!("select query as definition from user_mviews where mview_name = '{}' and user = '{}'", view, schema);
+    }
+    format!("select text as definition from user_views where view_name = '{}' and user = '{}'", view, schema)
   }
 }
 
