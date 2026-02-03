@@ -36,7 +36,7 @@ jobs:
           - os: ubuntu-latest
             os-name: ish
             target: i686-unknown-linux-musl
-            features: default
+            features: noduckdb --no-default-features
           - os: ubuntu-latest
             os-name: aarch64-musl
             target: aarch64-unknown-linux-musl
