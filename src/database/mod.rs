@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use color_eyre::eyre::Result;
-#[cfg(not(feature = "noduckdb"))]
+#[cfg(feature = "duckdb")]
 use sqlparser::dialect::DuckDbDialect;
 
 use sqlparser::{
@@ -13,14 +13,14 @@ use tokio::task::JoinHandle;
 
 use crate::cli::{Cli, Driver};
 
-#[cfg(not(feature = "noduckdb"))]
+#[cfg(feature = "duckdb")]
 mod duckdb;
 mod mysql;
 mod oracle;
 mod postgresql;
 mod sqlite;
 
-#[cfg(not(feature = "noduckdb"))]
+#[cfg(feature = "duckdb")]
 pub use duckdb::DuckDbDriver;
 pub use mysql::MySqlDriver;
 pub use oracle::OracleDriver;
@@ -165,7 +165,7 @@ pub fn get_execution_type(
   let default_execution_type = get_default_execution_type(statement.clone(), confirmed);
 
   match driver {
-    #[cfg(not(feature = "noduckdb"))]
+    #[cfg(feature = "duckdb")]
     Driver::DuckDb => match default_execution_type {
       ExecutionType::Normal => Ok((ExecutionType::Normal, Some(statement))),
       ExecutionType::Confirm => Ok((ExecutionType::Confirm, Some(statement))),
@@ -247,7 +247,7 @@ pub fn get_dialect(driver: Driver) -> Box<dyn Dialect + Send + Sync> {
     Driver::MySql => Box::new(MySqlDialect {}),
     Driver::Sqlite => Box::new(SQLiteDialect {}),
     Driver::Oracle => Box::new(GenericDialect {}),
-    #[cfg(not(feature = "noduckdb"))]
+    #[cfg(feature = "duckdb")]
     Driver::DuckDb => Box::new(DuckDbDialect {}),
   }
 }

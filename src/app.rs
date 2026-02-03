@@ -1,4 +1,4 @@
-#[cfg(not(feature = "termux"))]
+#[cfg(feature = "arboard")]
 use arboard::Clipboard;
 use color_eyre::eyre::{Result, eyre};
 use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
@@ -161,7 +161,7 @@ impl App {
       Driver::MySql => Box::new(database::MySqlDriver::new()),
       Driver::Sqlite => Box::new(database::SqliteDriver::new()),
       Driver::Oracle => Box::new(database::OracleDriver::new()),
-      #[cfg(not(feature = "noduckdb"))]
+      #[cfg(feature = "duckdb")]
       Driver::DuckDb => Box::new(database::DuckDbDriver::new()),
     };
     database.init(args).await?;
@@ -172,7 +172,7 @@ impl App {
     tui.enter()?;
 
     #[allow(unused_mut)]
-    #[cfg(not(feature = "termux"))]
+    #[cfg(feature = "arboard")]
     let mut clipboard = Clipboard::new();
 
     self.components.menu.register_action_handler(action_tx.clone())?;
@@ -464,7 +464,7 @@ impl App {
             self.clear_history();
           },
           Action::CopyData(data) => {
-            #[cfg(not(feature = "termux"))]
+            #[cfg(feature = "arboard")]
             {
               clipboard.as_mut().map_or_else(
                 |e| {

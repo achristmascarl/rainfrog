@@ -32,10 +32,10 @@ dev-duckdb:
 	cargo run -- -u $(duckdb_url) --driver duckdb
 
 dev-termux:
-	cargo run --features termux --no-default-features -- -u $(url)
+	cargo run --no-default-features -- -u $(url)
 
 dev-termux-sqlite:
-	cargo run --features termux --no-default-features -- -u $(sqlite_url)
+	cargo run --no-default-features -- -u $(sqlite_url)
 
 profile:
 	cargo flamegraph --post-process flamelens --root -- -u $(url)
