@@ -476,7 +476,7 @@ impl Component for Menu {
                       Line::from(if app_state.query_task_running { " ├[...] rows" } else { " ├[<enter>] rows" }),
                       Line::from(if app_state.query_task_running { " ├[...] columns" } else { " ├[1] columns" }),
                       Line::from(if app_state.query_task_running {
-                        "  └[...] schema definition"
+                        " └[...] schema definition"
                       } else {
                         " └[2] schema definition"
                       }),
