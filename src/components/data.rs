@@ -23,6 +23,7 @@ use crate::{
 };
 
 const MAX_COLUMN_WIDTH: u16 = 36;
+const TITLE_CELL_PREVIEW_MAX_CHARS: usize = 96;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Default)]
@@ -202,7 +203,37 @@ impl Data<'_> {
   }
 
   fn cell_display_width(value: &str) -> usize {
-    value.chars().count()
+    value.chars().take(MAX_COLUMN_WIDTH as usize).count()
+  }
+
+  fn clamp_render_text(value: &str, max_chars: usize) -> String {
+    if max_chars == 0 || value.is_empty() {
+      return String::new();
+    }
+    let mut chars_seen = 0_usize;
+    for (idx, _) in value.char_indices() {
+      if chars_seen == max_chars {
+        return value[..idx].to_owned();
+      }
+      chars_seen = chars_seen.saturating_add(1);
+    }
+    value.to_owned()
+  }
+
+  fn preview_text(value: &str, max_chars: usize) -> String {
+    if max_chars == 0 || value.is_empty() {
+      return String::new();
+    }
+    let mut chars_seen = 0_usize;
+    for (idx, _) in value.char_indices() {
+      if chars_seen == max_chars {
+        let mut preview = value[..idx].to_owned();
+        preview.push_str("...");
+        return preview;
+      }
+      chars_seen = chars_seen.saturating_add(1);
+    }
+    value.to_owned()
   }
 }
 
@@ -235,13 +266,34 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
           let row_bottom_margin: u16 = if row_spacing_enabled { 1 } else { 0 };
           let header_height: u16 = 2;
           let data_row_offset = header_height.saturating_add(row_bottom_margin);
+          let column_widths = self.column_widths(&rows);
           let header_row = Row::new(
-            rows.headers.iter().map(|h| Cell::from(format!("{}\n{}", h.name, h.type_name))).collect::<Vec<Cell>>(),
+            rows
+              .headers
+              .iter()
+              .enumerate()
+              .map(|(index, h)| {
+                let col_width = column_widths.get(index).copied().unwrap_or(MAX_COLUMN_WIDTH) as usize;
+                let header_name = Self::clamp_render_text(&h.name, col_width);
+                let header_type = Self::clamp_render_text(&h.type_name, col_width);
+                Cell::from(format!("{header_name}\n{header_type}"))
+              })
+              .collect::<Vec<Cell>>(),
           )
           .height(header_height)
           .bottom_margin(row_bottom_margin);
-          let value_rows = rows.rows.iter().map(|r| Row::new(r.clone()).bottom_margin(row_bottom_margin));
-          let column_widths = self.column_widths(&rows);
+          let value_rows = rows.rows.iter().map(|r| {
+            Row::new(
+              r.iter()
+                .enumerate()
+                .map(|(index, value)| {
+                  let col_width = column_widths.get(index).copied().unwrap_or(MAX_COLUMN_WIDTH) as usize;
+                  Self::clamp_render_text(value, col_width)
+                })
+                .collect::<Vec<String>>(),
+            )
+            .bottom_margin(row_bottom_margin)
+          });
           let buf_table = Table::new(value_rows, column_widths.clone())
             .header(header_row)
             .style(Style::default())
@@ -479,7 +531,7 @@ impl Component for Data<'_> {
           format!(" 󰆼 results <alt+3> (row {} of {})", y.saturating_add(1), rows.len())
         },
         Some(SelectionMode::Cell) => {
-          let cell = row.get(x).cloned().unwrap_or_default();
+          let cell = row.get(x).map(|c| Self::preview_text(c, TITLE_CELL_PREVIEW_MAX_CHARS)).unwrap_or_default();
           format!(" 󰆼 results <alt+3> (row {} of {}) - {} ", y.saturating_add(1), rows.len(), cell)
         },
         Some(SelectionMode::Copied) => {
