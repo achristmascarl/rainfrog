@@ -48,6 +48,9 @@ pub struct Cli {
 
   #[arg(long = "driver", value_name = "DRIVER", help = "Driver for database connection (ex. postgres)")]
   pub driver: Option<Driver>,
+
+  #[arg(skip)]
+  pub connection_name: Option<String>,
 }
 
 #[derive(Parser, Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -105,6 +108,55 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
   } else {
     Err(eyre::Report::msg("Invalid connection URL format"))
   }
+}
+
+pub fn extract_port_and_database_from_url(url: &str) -> Option<(u16, String)> {
+  let mut url = url.trim();
+  if let Some(jdbc_url) = url.strip_prefix("jdbc:") {
+    url = jdbc_url;
+  }
+
+  if let Some((_, rest)) = url.split_once("://") {
+    if let Some((authority, path)) = rest.split_once('/') {
+      let host_port = authority.rsplit_once('@').map_or(authority, |(_, host_port)| host_port).trim_start_matches('/');
+      let port = if host_port.starts_with('[') { host_port.split_once("]:")?.1 } else { host_port.rsplit_once(':')?.1 }
+        .parse()
+        .ok()?;
+
+      let database = path.split('?').next()?.split('#').next()?.trim_start_matches('/');
+      if database.is_empty() {
+        return None;
+      }
+
+      return Some((port, database.to_string()));
+    }
+  }
+
+  let (_, rest) = url.rsplit_once('@')?;
+  let rest = rest.trim_start_matches('/');
+
+  if let Some((host_port, database)) = rest.split_once('/') {
+    let port = if host_port.starts_with('[') { host_port.split_once("]:")?.1 } else { host_port.rsplit_once(':')?.1 }
+      .parse()
+      .ok()?;
+
+    if database.is_empty() {
+      return None;
+    }
+
+    return Some((port, database.to_string()));
+  }
+
+  let parts: Vec<&str> = rest.split(':').collect();
+  if parts.len() == 3 {
+    let port = parts[1].parse().ok()?;
+    if parts[2].is_empty() {
+      return None;
+    }
+    return Some((port, parts[2].to_string()));
+  }
+
+  None
 }
 
 pub fn prompt_for_database_selection(config: &Config) -> Result<Option<(DatabaseConnection, String)>> {
@@ -243,6 +295,32 @@ mod tests {
     for url in ["localhost:5432/db", "postgresql:/localhost/db", "oracle//prod-host:1521/service"] {
       let err = extract_driver_from_url(url).unwrap_err();
       assert!(err.to_string().contains("Invalid connection URL format"), "Unexpected error for {url}: {err}");
+    }
+  }
+
+  #[test]
+  fn extracts_port_and_database_from_standard_urls() {
+    let cases = [
+      ("postgres://username:password@localhost:5432/dbname", Some((5432, "dbname".to_string()))),
+      ("mysql://reader:secret@db.example.com:3307/app?charset=utf8mb4", Some((3307, "app".to_string()))),
+      ("oracle://scott:tiger@//prod-db.example.com:1521/ORCLPDB1", Some((1521, "ORCLPDB1".to_string()))),
+      ("sqlite:///tmp/data.sqlite", None),
+    ];
+
+    for (url, expected) in cases {
+      assert_eq!(extract_port_and_database_from_url(url), expected, "url: {url}");
+    }
+  }
+
+  #[test]
+  fn extracts_port_and_database_from_jdbc_oracle_urls() {
+    let cases = [
+      ("jdbc:oracle:thin:user/password@//localhost:1521/XE", Some((1521, "XE".to_string()))),
+      ("jdbc:oracle:thin:user/password@localhost:1521:XE", Some((1521, "XE".to_string()))),
+    ];
+
+    for (url, expected) in cases {
+      assert_eq!(extract_port_and_database_from_url(url), expected, "url: {url}");
     }
   }
 }
