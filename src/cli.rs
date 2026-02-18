@@ -48,6 +48,9 @@ pub struct Cli {
 
   #[arg(long = "driver", value_name = "DRIVER", help = "Driver for database connection (ex. postgres)")]
   pub driver: Option<Driver>,
+
+  #[arg(skip)]
+  pub connection_name: Option<String>,
 }
 
 #[derive(Parser, Debug, Clone, Copy, Deserialize, PartialEq, Eq)]

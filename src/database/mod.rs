@@ -87,8 +87,9 @@ pub trait Database {
   /// Initialize the database connection. Should handle create
   /// a pool or connection that's reused for other operations.
   /// Must be called to actually connect to the database (just
-  /// calling `new()` does not connect).
-  async fn init(&mut self, args: Cli) -> Result<()>;
+  /// calling `new()` does not connect). Returns the default title
+  /// for the terminal tab.
+  async fn init(&mut self, args: Cli) -> Result<String>;
 
   /// Spawns a tokio task that runs the query. The task should
   /// expect to be polled via the `get_query_results()` method.

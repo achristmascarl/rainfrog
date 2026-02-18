@@ -35,15 +35,15 @@ impl OracleDriver {
 
 #[async_trait(?Send)]
 impl Database for OracleDriver {
-  async fn init(&mut self, args: crate::cli::Cli) -> Result<()> {
+  async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let connection_opts = OracleConnectOptions::build_connection_opts(args)?;
 
-    let (user, password, connection_string) =
+    let (user, password, connection_string, port, db_name) =
       connection_opts.get_connection_options().map_err(|e| color_eyre::eyre::eyre!(e))?;
     let pool = Arc::new(oracle::pool::PoolBuilder::new(user, password, connection_string).max_connections(3).build()?);
     self.pool = Some(pool);
 
-    Ok(())
+    Ok(format!("{}/{}", port, db_name))
   }
 
   async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()> {

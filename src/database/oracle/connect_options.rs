@@ -21,11 +21,20 @@ impl OracleConnectOptions {
     let port = self.port.unwrap_or(1521u16);
     format!("//{}:{}/{}", self.host, port, self.database)
   }
-  pub fn get_connection_options(&self) -> std::result::Result<(String, String, String), String> {
+  pub fn get_connection_options(&self) -> std::result::Result<(String, String, String, String, String), String> {
     let user = self.user.clone().ok_or("User is required for Oracle connection".to_string())?;
     let password = self.password.clone().ok_or("Password is required for Oracle connection".to_string())?;
     let connection_string = self.get_connection_string();
-    Ok((user, password, connection_string))
+    Ok((
+      user,
+      password,
+      connection_string,
+      match self.port {
+        Some(p) => p.to_string(),
+        None => "NONE".to_string(),
+      },
+      self.database.clone(),
+    ))
   }
 
   pub fn build_connection_opts(args: crate::cli::Cli) -> Result<OracleConnectOptions> {

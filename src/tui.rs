@@ -10,6 +10,7 @@ use crossterm::{
     DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event as CrosstermEvent,
     KeyEvent, KeyEventKind, MouseEvent,
   },
+  terminal::SetTitle,
   terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::{FutureExt, StreamExt};
@@ -53,6 +54,7 @@ pub struct Tui {
   pub tick_rate: f64,
   pub mouse: bool,
   pub paste: bool,
+  pub title: Option<String>,
 }
 
 impl Tui {
@@ -65,7 +67,18 @@ impl Tui {
     let task = tokio::spawn(async {});
     let mouse = true;
     let paste = true;
-    Ok(Self { terminal, task, cancellation_token, event_rx, event_tx, frame_rate, tick_rate, mouse, paste })
+    Ok(Self {
+      terminal,
+      task,
+      cancellation_token,
+      event_rx,
+      event_tx,
+      frame_rate,
+      tick_rate,
+      mouse,
+      paste,
+      title: None,
+    })
   }
 
   pub fn tick_rate(mut self, tick_rate: Option<f64>) -> Self {
@@ -91,6 +104,11 @@ impl Tui {
 
   pub fn paste(mut self, paste: bool) -> Self {
     self.paste = paste;
+    self
+  }
+
+  pub fn title(mut self, title: Option<String>) -> Self {
+    self.title = title;
     self
   }
 
@@ -180,6 +198,9 @@ impl Tui {
 
   pub fn enter(&mut self) -> Result<()> {
     crossterm::terminal::enable_raw_mode()?;
+    if let Some(title) = &self.title {
+      crossterm::execute!(io(), SetTitle(title))?;
+    }
     crossterm::execute!(io(), EnterAlternateScreen, cursor::Hide)?;
     if self.mouse {
       crossterm::execute!(io(), EnableMouseCapture)?;

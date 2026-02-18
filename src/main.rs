@@ -58,6 +58,8 @@ fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
     || args.port.is_some()
     || args.database.is_some();
 
+  args.connection_name = None;
+
   let (driver, url) = match (url, has_cli_input) {
     (Some(u), _) => {
       if let Some(driver) = args.driver.take() { Ok(driver) } else { extract_driver_from_url(&u) }.map(|d| (d, Some(u)))
@@ -71,6 +73,7 @@ fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
     },
     (None, false) => Ok(match prompt_for_database_selection(config)? {
       Some((conn, name)) => {
+        args.connection_name = Some(name.clone());
         let url = match conn.connection {
           ConnectionString::Raw { connection_string } => Ok(connection_string),
           ConnectionString::Structured { details } => {
