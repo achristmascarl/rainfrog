@@ -214,7 +214,11 @@ installation instructions: [ODPI-C Client Library Loading](https://odpi-c.readth
 ## usage
 
 ```sh
-Usage: rainfrog [OPTIONS]
+Usage: rainfrog [OPTIONS] [COMMAND]
+
+Commands:
+  edit  Edit the config file (create it first if missing)
+  help  Print this message or the help of the given subcommand(s)
 
 Options:
   -M, --mouse <MOUSE_MODE>   Whether to enable mouse event support. If enabled, the default mouse event handling for your terminal
