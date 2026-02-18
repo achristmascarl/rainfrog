@@ -15,6 +15,9 @@ use crate::{
 #[derive(Parser, Debug, Clone)]
 #[command(author, version = version(), about)]
 pub struct Cli {
+  #[command(subcommand)]
+  pub command: Option<CliCommand>,
+
   #[arg(
     short = 'M',
     long = "mouse",
@@ -48,6 +51,12 @@ pub struct Cli {
 
   #[arg(long = "driver", value_name = "DRIVER", help = "Driver for database connection (ex. postgres)")]
   pub driver: Option<Driver>,
+}
+
+#[derive(clap::Subcommand, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CliCommand {
+  /// Edit the config file (create it first if missing)
+  Edit,
 }
 
 #[derive(Parser, Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -244,5 +253,11 @@ mod tests {
       let err = extract_driver_from_url(url).unwrap_err();
       assert!(err.to_string().contains("Invalid connection URL format"), "Unexpected error for {url}: {err}");
     }
+  }
+
+  #[test]
+  fn parses_edit_subcommand() {
+    let cli = Cli::parse_from(["rainfrog", "edit"]);
+    assert_eq!(cli.command, Some(CliCommand::Edit));
   }
 }

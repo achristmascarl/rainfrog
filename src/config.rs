@@ -42,6 +42,14 @@ const FRAGMENT: &AsciiSet = &CONTROLS
   .add(b'/');
 
 const CONFIG: &str = include_str!("../.config/rainfrog_config.toml");
+const CONFIG_FILE_CANDIDATES: [(&str, config::FileFormat); 5] = [
+  ("rainfrog_config.json5", config::FileFormat::Json5),
+  ("rainfrog_config.json", config::FileFormat::Json),
+  ("rainfrog_config.yaml", config::FileFormat::Yaml),
+  ("rainfrog_config.toml", config::FileFormat::Toml),
+  ("rainfrog_config.ini", config::FileFormat::Ini),
+];
+const PREFERRED_CONFIG_FILENAME: &str = "rainfrog_config.toml";
 
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct AppConfig {
@@ -128,15 +136,8 @@ impl Config {
       .set_default("_config_dir", config_dir.to_str().unwrap())?
       .set_default("_favorites_dir", favorites_dir.to_str().unwrap())?;
 
-    let config_files = [
-      ("rainfrog_config.json5", config::FileFormat::Json5),
-      ("rainfrog_config.json", config::FileFormat::Json),
-      ("rainfrog_config.yaml", config::FileFormat::Yaml),
-      ("rainfrog_config.toml", config::FileFormat::Toml),
-      ("rainfrog_config.ini", config::FileFormat::Ini),
-    ];
     let mut found_config = false;
-    for (file, format) in &config_files {
+    for (file, format) in &CONFIG_FILE_CANDIDATES {
       builder = builder.add_source(config::File::from(config_dir.join(file)).format(*format).required(false));
       if config_dir.join(file).exists() {
         found_config = true
@@ -181,6 +182,19 @@ impl Config {
 
     Ok(cfg)
   }
+}
+
+pub fn preferred_config_path() -> PathBuf {
+  crate::utils::get_config_dir().join(PREFERRED_CONFIG_FILENAME)
+}
+
+pub fn existing_config_path() -> Option<PathBuf> {
+  let config_dir = crate::utils::get_config_dir();
+  CONFIG_FILE_CANDIDATES.iter().map(|(name, _)| config_dir.join(name)).find(|path| path.exists())
+}
+
+pub fn default_config_contents() -> &'static str {
+  CONFIG
 }
 
 #[derive(Clone, Debug, Default, Deref, DerefMut)]
