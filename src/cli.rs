@@ -110,55 +110,6 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
   }
 }
 
-pub fn extract_port_and_database_from_url(url: &str) -> Option<(u16, String)> {
-  let mut url = url.trim();
-  if let Some(jdbc_url) = url.strip_prefix("jdbc:") {
-    url = jdbc_url;
-  }
-
-  if let Some((_, rest)) = url.split_once("://")
-    && let Some((authority, path)) = rest.split_once('/')
-  {
-    let host_port = authority.rsplit_once('@').map_or(authority, |(_, host_port)| host_port).trim_start_matches('/');
-    let port = if host_port.starts_with('[') { host_port.split_once("]:")?.1 } else { host_port.rsplit_once(':')?.1 }
-      .parse()
-      .ok()?;
-
-    let database = path.split('?').next()?.split('#').next()?.trim_start_matches('/');
-    if database.is_empty() {
-      return None;
-    }
-
-    return Some((port, database.to_string()));
-  }
-
-  let (_, rest) = url.rsplit_once('@')?;
-  let rest = rest.trim_start_matches('/');
-
-  if let Some((host_port, database)) = rest.split_once('/') {
-    let port = if host_port.starts_with('[') { host_port.split_once("]:")?.1 } else { host_port.rsplit_once(':')?.1 }
-      .parse()
-      .ok()?;
-
-    if database.is_empty() {
-      return None;
-    }
-
-    return Some((port, database.to_string()));
-  }
-
-  let parts: Vec<&str> = rest.split(':').collect();
-  if parts.len() == 3 {
-    let port = parts[1].parse().ok()?;
-    if parts[2].is_empty() {
-      return None;
-    }
-    return Some((port, parts[2].to_string()));
-  }
-
-  None
-}
-
 pub fn prompt_for_database_selection(config: &Config) -> Result<Option<(DatabaseConnection, String)>> {
   match config.db.len() {
     0 => Ok(None),
