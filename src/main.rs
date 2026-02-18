@@ -17,14 +17,16 @@ pub mod utils;
 pub mod vim;
 
 use std::{
-  env,
+  env, fs,
   io::{self, Write},
+  path::Path,
+  process::Command,
 };
 
 use clap::Parser;
-use cli::{Cli, Driver, extract_driver_from_url, prompt_for_database_selection};
+use cli::{Cli, CliCommand, Driver, extract_driver_from_url, prompt_for_database_selection};
 use color_eyre::eyre::Result;
-use config::{Config, ConnectionString};
+use config::{Config, ConnectionString, default_config_contents, existing_config_path, preferred_config_path};
 use dotenvy::dotenv;
 use keyring::get_password;
 
@@ -93,13 +95,51 @@ fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
   Ok(driver)
 }
 
+fn ensure_config_file(path: &Path) -> Result<()> {
+  if path.exists() {
+    return Ok(());
+  }
+
+  if let Some(parent) = path.parent() {
+    fs::create_dir_all(parent)?;
+  }
+  fs::write(path, default_config_contents())?;
+  Ok(())
+}
+
+fn open_editor(path: &Path) -> Result<()> {
+  let editor = env::var("VISUAL")
+    .ok()
+    .filter(|value| !value.trim().is_empty())
+    .or_else(|| env::var("EDITOR").ok().filter(|value| !value.trim().is_empty()))
+    .unwrap_or_else(|| "vi".to_string());
+
+  let mut parts = editor.split_whitespace();
+  let program = parts.next().ok_or_else(|| color_eyre::eyre::eyre!("Could not parse editor command"))?;
+  let status = Command::new(program).args(parts).arg(path).status()?;
+  if !status.success() {
+    color_eyre::eyre::bail!("Editor exited with status code {:?}", status.code());
+  }
+  Ok(())
+}
+
+fn edit_config_file() -> Result<()> {
+  let config_path = existing_config_path().unwrap_or_else(preferred_config_path);
+  ensure_config_file(&config_path)?;
+  open_editor(&config_path)
+}
+
 async fn tokio_main() -> Result<()> {
+  let mut args = Cli::parse();
+  dotenv().ok();
+  if args.command == Some(CliCommand::Edit) {
+    return edit_config_file();
+  }
+
   initialize_logging()?;
 
   initialize_panic_handler()?;
 
-  let mut args = Cli::parse();
-  dotenv().ok();
   let config = Config::new()?;
   let driver = resolve_driver(&mut args, &config)?;
 

@@ -3,6 +3,10 @@ mouse_mode = true
 data_compact_columns = true
 data_row_spacer = false
 
+[db]
+# you can add frequently used database connections here. example:
+# dev-postgres = { host = "localhost", driver = "postgres", port = 5499, database = "rainfrog", username = "root" }
+
 [keybindings.Menu]
 "<Ctrl-c>" = "Quit"
 "q" = "AbortQuery"
