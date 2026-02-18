@@ -41,11 +41,11 @@ pub struct PostgresDriver<'a> {
 
 #[async_trait(?Send)]
 impl Database for PostgresDriver<'_> {
-  async fn init(&mut self, args: crate::cli::Cli) -> Result<()> {
+  async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let opts = super::postgresql::PostgresDriver::<'_>::build_connection_opts(args)?;
-    let pool = Arc::new(PgPoolOptions::new().max_connections(3).connect_with(opts).await?);
+    let pool = Arc::new(PgPoolOptions::new().max_connections(3).connect_with(opts.clone()).await?);
     self.pool = Some(pool);
-    Ok(())
+    Ok(format!("{}/{}", opts.get_port(), opts.get_database().unwrap_or("postgres")))
   }
 
   // since it's possible for raw_sql to execute multiple queries in a single string,

@@ -22,7 +22,7 @@ use std::{
 };
 
 use clap::Parser;
-use cli::{Cli, Driver, extract_driver_from_url, extract_port_and_database_from_url, prompt_for_database_selection};
+use cli::{Cli, Driver, extract_driver_from_url, prompt_for_database_selection};
 use color_eyre::eyre::Result;
 use config::{Config, ConnectionString};
 use dotenvy::dotenv;
@@ -89,16 +89,6 @@ fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
   }?;
 
   args.connection_url = url;
-  if args.connection_name.is_none() {
-    let extracted = args.connection_url.as_deref().and_then(extract_port_and_database_from_url);
-    let extracted_port = extracted.as_ref().map(|(port, _)| *port);
-    let extracted_database = extracted.as_ref().map(|(_, database)| database.clone());
-    let port = args.port.or(extracted_port);
-    let database = args.database.clone().or(extracted_database);
-    if let (Some(port), Some(database)) = (port, database) {
-      args.connection_name = Some(format!("{port}/{database}"));
-    }
-  }
 
   Ok(driver)
 }

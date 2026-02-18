@@ -156,8 +156,6 @@ impl App {
   }
 
   pub async fn run(&mut self, driver: Driver, args: Cli) -> Result<()> {
-    let terminal_title = args.connection_name.clone().map(|name| format!("rainfrog({name})"));
-
     let mut database: Box<dyn Database> = match driver {
       Driver::Postgres => Box::new(database::PostgresDriver::new()),
       Driver::MySql => Box::new(database::MySqlDriver::new()),
@@ -166,12 +164,14 @@ impl App {
       #[cfg(feature = "duckdb")]
       Driver::DuckDb => Box::new(database::DuckDbDriver::new()),
     };
-    database.init(args).await?;
+    let default_title = database.init(args.clone()).await?;
+    let terminal_title = args.connection_name.clone().unwrap_or(default_title);
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
     log::info!("{driver:?}");
 
-    let mut tui =
-      tui::Tui::new()?.mouse(self.mouse_mode_override.or(self.config.settings.mouse_mode)).title(terminal_title);
+    let mut tui = tui::Tui::new()?
+      .mouse(self.mouse_mode_override.or(self.config.settings.mouse_mode))
+      .title(Some(format!("rainfrog({})", terminal_title)));
     tui.enter()?;
 
     #[allow(unused_mut)]

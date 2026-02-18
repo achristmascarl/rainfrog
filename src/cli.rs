@@ -297,30 +297,4 @@ mod tests {
       assert!(err.to_string().contains("Invalid connection URL format"), "Unexpected error for {url}: {err}");
     }
   }
-
-  #[test]
-  fn extracts_port_and_database_from_standard_urls() {
-    let cases = [
-      ("postgres://username:password@localhost:5432/dbname", Some((5432, "dbname".to_string()))),
-      ("mysql://reader:secret@db.example.com:3307/app?charset=utf8mb4", Some((3307, "app".to_string()))),
-      ("oracle://scott:tiger@//prod-db.example.com:1521/ORCLPDB1", Some((1521, "ORCLPDB1".to_string()))),
-      ("sqlite:///tmp/data.sqlite", None),
-    ];
-
-    for (url, expected) in cases {
-      assert_eq!(extract_port_and_database_from_url(url), expected, "url: {url}");
-    }
-  }
-
-  #[test]
-  fn extracts_port_and_database_from_jdbc_oracle_urls() {
-    let cases = [
-      ("jdbc:oracle:thin:user/password@//localhost:1521/XE", Some((1521, "XE".to_string()))),
-      ("jdbc:oracle:thin:user/password@localhost:1521:XE", Some((1521, "XE".to_string()))),
-    ];
-
-    for (url, expected) in cases {
-      assert_eq!(extract_port_and_database_from_url(url), expected, "url: {url}");
-    }
-  }
 }

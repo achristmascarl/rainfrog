@@ -28,11 +28,11 @@ pub struct DuckDbDriver {
 
 #[async_trait(?Send)]
 impl Database for DuckDbDriver {
-  async fn init(&mut self, args: Cli) -> Result<()> {
+  async fn init(&mut self, args: Cli) -> Result<String> {
     let (path, config) = super::DuckDbDriver::build_connection_opts(args)?;
-    let conn = Connection::open_with_flags(path, config)?;
+    let conn = Connection::open_with_flags(path.clone(), config)?;
     self.connection = Some(conn);
-    Ok(())
+    Ok(path)
   }
 
   // since it's possible for raw_sql to execute multiple queries in a single string,
