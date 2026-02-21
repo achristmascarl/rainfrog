@@ -46,10 +46,18 @@ pub struct Cli {
   #[arg(long = "port", value_name = "PORT", help = "Port for database connection (ex. 5432)")]
   pub port: Option<u16>,
 
-  #[arg(long = "database", value_name = "DATABASE", help = "Name of database for connection (ex. postgres)")]
+  #[arg(
+    long = "database",
+    value_name = "DATABASE",
+    help = "Name of database for connection (ex. postgres)"
+  )]
   pub database: Option<String>,
 
-  #[arg(long = "driver", value_name = "DRIVER", help = "Driver for database connection (ex. postgres)")]
+  #[arg(
+    long = "driver",
+    value_name = "DRIVER",
+    help = "Driver for database connection (ex. postgres)"
+  )]
   pub driver: Option<Driver>,
 
   #[arg(skip)]
@@ -119,10 +127,14 @@ pub fn extract_driver_from_url(url: &str) -> Result<Driver> {
   }
 }
 
-pub fn prompt_for_database_selection(config: &Config) -> Result<Option<(DatabaseConnection, String)>> {
+pub fn prompt_for_database_selection(
+  config: &Config,
+) -> Result<Option<(DatabaseConnection, String)>> {
   match config.db.len() {
     0 => Ok(None),
-    1 => Ok(Some(config.db.iter().map(|(name, db)| (db.clone(), name.to_string())).next().unwrap())),
+    1 => {
+      Ok(Some(config.db.iter().map(|(name, db)| (db.clone(), name.to_string())).next().unwrap()))
+    },
     _ => {
       let defaults: Vec<_> = config.db.iter().filter(|(_, d)| d.default).collect();
       match defaults.len() {
@@ -178,7 +190,8 @@ mod tests {
     ];
 
     for (url, expected) in cases {
-      let actual = extract_driver_from_url(url).unwrap_or_else(|err| panic!("url: {url}, err: {err}"));
+      let actual =
+        extract_driver_from_url(url).unwrap_or_else(|err| panic!("url: {url}, err: {err}"));
       assert_eq!(actual, expected, "url: {url}");
     }
   }
@@ -187,7 +200,10 @@ mod tests {
   fn extracts_driver_from_jdbc_urls() {
     let cases = [
       ("jdbc:postgresql://localhost:5432/dbname", Driver::Postgres),
-      ("jdbc:postgresql://readonly@reports.example.com:5432/reporting?sslmode=require", Driver::Postgres),
+      (
+        "jdbc:postgresql://readonly@reports.example.com:5432/reporting?sslmode=require",
+        Driver::Postgres,
+      ),
       ("jdbc:mysql://localhost:3306/dbname", Driver::MySql),
       ("jdbc:mysql:loadbalance://db1.example.com:3306,db2.example.com:3306/app", Driver::MySql),
       ("jdbc:sqlite://localhost/path", Driver::Sqlite),
@@ -199,14 +215,20 @@ mod tests {
     ];
 
     for (url, expected) in cases {
-      let actual = extract_driver_from_url(url).unwrap_or_else(|err| panic!("url: {url}, err: {err}"));
+      let actual =
+        extract_driver_from_url(url).unwrap_or_else(|err| panic!("url: {url}, err: {err}"));
       assert_eq!(actual, expected, "url: {url}");
     }
   }
 
   #[test]
   fn extracts_driver_from_file_extensions() {
-    let sqlite_paths = ["/tmp/app.sqlite", "/tmp/app.sqlite3", "./relative/state.sqlite", r"C:\data\inventory.sqlite3"];
+    let sqlite_paths = [
+      "/tmp/app.sqlite",
+      "/tmp/app.sqlite3",
+      "./relative/state.sqlite",
+      r"C:\data\inventory.sqlite3",
+    ];
     for path in sqlite_paths {
       assert_eq!(
         extract_driver_from_url(path).unwrap_or_else(|err| panic!("url: {path}, err: {err}")),
@@ -245,7 +267,8 @@ mod tests {
     ];
 
     for (url, expected) in cases {
-      let actual = extract_driver_from_url(url).unwrap_or_else(|err| panic!("url: {url:?}, err: {err}"));
+      let actual =
+        extract_driver_from_url(url).unwrap_or_else(|err| panic!("url: {url:?}, err: {err}"));
       assert_eq!(actual, expected, "url: {url:?}");
     }
   }
@@ -254,7 +277,10 @@ mod tests {
   fn errors_on_invalid_format() {
     for url in ["localhost:5432/db", "postgresql:/localhost/db", "oracle//prod-host:1521/service"] {
       let err = extract_driver_from_url(url).unwrap_err();
-      assert!(err.to_string().contains("Invalid connection URL format"), "Unexpected error for {url}: {err}");
+      assert!(
+        err.to_string().contains("Invalid connection URL format"),
+        "Unexpected error for {url}: {err}"
+      );
     }
   }
 

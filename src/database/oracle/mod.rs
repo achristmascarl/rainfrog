@@ -40,7 +40,11 @@ impl Database for OracleDriver {
 
     let (user, password, connection_string, port, db_name) =
       connection_opts.get_connection_options().map_err(|e| color_eyre::eyre::eyre!(e))?;
-    let pool = Arc::new(oracle::pool::PoolBuilder::new(user, password, connection_string).max_connections(3).build()?);
+    let pool = Arc::new(
+      oracle::pool::PoolBuilder::new(user, password, connection_string)
+        .max_connections(3)
+        .build()?,
+    );
     self.pool = Some(pool);
 
     Ok(format!("{}/{}", port, db_name))
@@ -125,7 +129,13 @@ impl Database for OracleDriver {
             QueryResultsWithMetadata { results: Err(e), statement_type } => {
               log::error!("Transaction didn't start: {e:?}");
               self.querying_conn = None;
-              (DbTaskResult::Finished(QueryResultsWithMetadata { results: Err(e), statement_type }), None)
+              (
+                DbTaskResult::Finished(QueryResultsWithMetadata {
+                  results: Err(e),
+                  statement_type,
+                }),
+                None,
+              )
             },
             _ => (
               DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
@@ -134,7 +144,9 @@ impl Database for OracleDriver {
           }
         }
       },
-      Some(OracleTask::TxPending(handle)) => (DbTaskResult::Pending, Some(OracleTask::TxPending(handle))),
+      Some(OracleTask::TxPending(handle)) => {
+        (DbTaskResult::Pending, Some(OracleTask::TxPending(handle)))
+      },
     };
     self.task = next_task;
     Ok(task_result)
@@ -215,7 +227,10 @@ impl Database for OracleDriver {
         view, schema
       );
     }
-    format!("select text as definition from user_views where view_name = '{}' and user = '{}'", view, schema)
+    format!(
+      "select text as definition from user_views where view_name = '{}' and user = '{}'",
+      view, schema
+    )
   }
 
   fn preview_function_definition_query(&self, schema: &str, function: &str) -> String {
@@ -254,7 +269,9 @@ fn query_with_conn(conn: &Connection, query: &str) -> Result<Rows> {
 }
 
 fn execute_with_conn(conn: &Connection, statement: &str) -> Result<Rows> {
-  let result = conn.execute(statement, &[]).map_err(|e| color_eyre::eyre::eyre!("Error executing statement: {}", e))?;
+  let result = conn
+    .execute(statement, &[])
+    .map_err(|e| color_eyre::eyre::eyre!("Error executing statement: {}", e))?;
   Ok(Rows { headers: Vec::new(), rows: Vec::new(), rows_affected: result.row_count().ok() })
 }
 
@@ -283,7 +300,10 @@ mod tests {
 
     let test_cases: Vec<TestCase> = vec![
       // single query
-      ("SELECT * FROM users;", Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      (
+        "SELECT * FROM users;",
+        Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
       // multiple queries
       (
         "SELECT * FROM users; DELETE FROM posts;",
@@ -304,7 +324,10 @@ mod tests {
         Ok(("SELECT * FROM `users`".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
       ),
       // newlines
-      ("select *\nfrom users;", Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      (
+        "select *\nfrom users;",
+        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
       // comment-only
       ("-- select * from users;", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
       // commented line(s)
@@ -323,14 +346,23 @@ mod tests {
       // delete
       (
         "DELETE FROM users WHERE id = 1",
-        Ok(("DELETE FROM users WHERE id = 1".to_owned(), Box::new(|s| matches!(s, Statement::Delete { .. })))),
+        Ok((
+          "DELETE FROM users WHERE id = 1".to_owned(),
+          Box::new(|s| matches!(s, Statement::Delete { .. })),
+        )),
       ),
       // drop
-      ("DROP TABLE users", Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. }))))),
+      (
+        "DROP TABLE users",
+        Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. })))),
+      ),
       // explain
       (
         "EXPLAIN SELECT * FROM users",
-        Ok(("EXPLAIN SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Explain { .. })))),
+        Ok((
+          "EXPLAIN SELECT * FROM users".to_owned(),
+          Box::new(|s| matches!(s, Statement::Explain { .. })),
+        )),
       ),
     ];
 
@@ -344,7 +376,10 @@ mod tests {
         (Err(ParseError::EmptyQuery(msg)), Err(ParseError::EmptyQuery(expected_msg))) => {
           assert_eq!(msg, expected_msg)
         },
-        (Err(ParseError::MoreThanOneStatement(msg)), Err(ParseError::MoreThanOneStatement(expected_msg))) => {
+        (
+          Err(ParseError::MoreThanOneStatement(msg)),
+          Err(ParseError::MoreThanOneStatement(expected_msg)),
+        ) => {
           assert_eq!(msg, expected_msg)
         },
         (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {

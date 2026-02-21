@@ -31,7 +31,11 @@ pub enum PopUpPayload {
 
 pub trait PopUp {
   #[allow(unused_variables)]
-  fn handle_key_events(&mut self, key: KeyEvent, app_state: &mut AppState) -> Result<Option<PopUpPayload>>;
+  fn handle_key_events(
+    &mut self,
+    key: KeyEvent,
+    app_state: &mut AppState,
+  ) -> Result<Option<PopUpPayload>>;
 
   #[allow(unused_variables)]
   fn get_cta_text(&self, app_state: &AppState) -> String {

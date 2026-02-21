@@ -90,9 +90,13 @@ impl<'a> ScrollTable<'a> {
   pub fn scroll(&mut self, direction: ScrollDirection) -> &mut Self {
     match direction {
       ScrollDirection::Left => self.x_offset = self.x_offset.saturating_sub(2),
-      ScrollDirection::Right => self.x_offset = std::cmp::min(self.x_offset.saturating_add(2), self.max_x_offset),
+      ScrollDirection::Right => {
+        self.x_offset = std::cmp::min(self.x_offset.saturating_add(2), self.max_x_offset)
+      },
       ScrollDirection::Up => self.y_offset = self.y_offset.saturating_sub(1),
-      ScrollDirection::Down => self.y_offset = std::cmp::min(self.y_offset.saturating_add(1), self.max_y_offset),
+      ScrollDirection::Down => {
+        self.y_offset = std::cmp::min(self.y_offset.saturating_add(1), self.max_y_offset)
+      },
     }
     self
   }
@@ -261,11 +265,15 @@ impl Component for ScrollTable<'_> {
     let max_x_offset = self.max_x_offset;
     let x_offset = self.x_offset;
     f.render_widget(self.widget(), area);
-    let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight).symbols(scrollbar::VERTICAL);
-    let mut vertical_scrollbar_state = ScrollbarState::new(self.max_y_offset).position(self.y_offset);
-    let horizontal_scrollbar =
-      Scrollbar::new(ScrollbarOrientation::HorizontalBottom).symbols(scrollbar::HORIZONTAL).thumb_symbol("▀");
-    let mut horizontal_scrollbar_state = ScrollbarState::new(max_x_offset as usize).position(x_offset as usize);
+    let vertical_scrollbar =
+      Scrollbar::new(ScrollbarOrientation::VerticalRight).symbols(scrollbar::VERTICAL);
+    let mut vertical_scrollbar_state =
+      ScrollbarState::new(self.max_y_offset).position(self.y_offset);
+    let horizontal_scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
+      .symbols(scrollbar::HORIZONTAL)
+      .thumb_symbol("▀");
+    let mut horizontal_scrollbar_state =
+      ScrollbarState::new(max_x_offset as usize).position(x_offset as usize);
     match (self.max_x_offset, self.max_y_offset) {
       (0, 0) => {},
       (0, y) => {
@@ -334,11 +342,18 @@ impl Widget for Renderer<'_> {
       scrollable.requested_width,
       std::cmp::min(scrollable.max_height, render_area.height),
     ));
-    ratatui::widgets::StatefulWidgetRef::render_ref(table, content_buf.area, &mut content_buf, &mut table_state);
+    ratatui::widgets::StatefulWidgetRef::render_ref(
+      table,
+      content_buf.area,
+      &mut content_buf,
+      &mut table_state,
+    );
     let content_width = content_buf.area.width;
     let content_height = content_buf.area.height;
-    let max_x = std::cmp::min(area.x.saturating_add(area.width), area.x.saturating_add(content_width));
-    let max_y = std::cmp::min(area.y.saturating_add(area.height), area.y.saturating_add(content_height));
+    let max_x =
+      std::cmp::min(area.x.saturating_add(area.width), area.x.saturating_add(content_width));
+    let max_y =
+      std::cmp::min(area.y.saturating_add(area.height), area.y.saturating_add(content_height));
     for y in area.y..max_y {
       let content_y = y - area.y;
       let row = get_row(&content_buf.content, content_y, content_width);
@@ -349,9 +364,10 @@ impl Widget for Renderer<'_> {
           0 => &default_cell,
           _ => &row[content_x as usize],
         };
-        let should_highlight = matches!(scrollable.selection_mode.as_ref(), Some(SelectionMode::Cell))
-          && content_y == scrollable.data_row_offset
-          && scrollable.is_within_selected_column(content_x);
+        let should_highlight =
+          matches!(scrollable.selection_mode.as_ref(), Some(SelectionMode::Cell))
+            && content_y == scrollable.data_row_offset
+            && scrollable.is_within_selected_column(content_x);
         let style = if should_highlight {
           Style::default().fg(Color::LightBlue).reversed().bold().italic()
         } else {

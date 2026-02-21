@@ -127,7 +127,9 @@ impl FavoriteEntries {
                 });
               },
               Err(e) => {
-                log::error!("failed to read favorite query disk content file_name: '{file_name}' error: {e}");
+                log::error!(
+                  "failed to read favorite query disk content file_name: '{file_name}' error: {e}"
+                );
               },
             };
           }
@@ -180,7 +182,11 @@ impl Component for Favorites {
     Ok(())
   }
 
-  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_mouse_events(
+    &mut self,
+    mouse: MouseEvent,
+    app_state: &AppState,
+  ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Favorites {
       return Ok(None);
     }
@@ -249,19 +255,31 @@ impl Component for Favorites {
       },
       KeyCode::Char('D') => {
         if let Some(i) = current_selected {
-          self.command_tx.as_ref().unwrap().send(Action::DeleteFavorite(filtered[i].name.clone()))?;
+          self
+            .command_tx
+            .as_ref()
+            .unwrap()
+            .send(Action::DeleteFavorite(filtered[i].name.clone()))?;
         }
       },
       KeyCode::Char('y') => {
         if let Some(i) = current_selected {
-          self.command_tx.as_ref().unwrap().send(Action::CopyData(filtered[i].query_lines.join("\n")))?;
+          self
+            .command_tx
+            .as_ref()
+            .unwrap()
+            .send(Action::CopyData(filtered[i].query_lines.join("\n")))?;
           self.copied = true;
         }
       },
       KeyCode::Char('G') => self.list_state.select(Some(filtered.len().saturating_sub(1))),
       KeyCode::Char('I') => {
         if let Some(i) = current_selected {
-          self.command_tx.as_ref().unwrap().send(Action::QueryToEditor(filtered[i].query_lines.clone()))?;
+          self
+            .command_tx
+            .as_ref()
+            .unwrap()
+            .send(Action::QueryToEditor(filtered[i].query_lines.clone()))?;
           self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
         }
       },
@@ -334,7 +352,8 @@ impl Component for Favorites {
     if let Some(search) = &self.search {
       constraints.insert(0, Constraint::Length(1));
     }
-    let layout = Layout::default().constraints(constraints).direction(Direction::Vertical).split(area);
+    let layout =
+      Layout::default().constraints(constraints).direction(Direction::Vertical).split(area);
     if let Some(search) = self.search.as_ref() {
       f.render_widget(
         Text::styled(
@@ -355,8 +374,8 @@ impl Component for Favorites {
     let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
       .symbols(scrollbar::VERTICAL)
       .style(if focused { Style::default().fg(Color::Green) } else { Style::default() });
-    let mut vertical_scrollbar_state =
-      ScrollbarState::new(filtered_count.saturating_sub(1)).position(self.list_state.selected().map_or(0, |x| x));
+    let mut vertical_scrollbar_state = ScrollbarState::new(filtered_count.saturating_sub(1))
+      .position(self.list_state.selected().map_or(0, |x| x));
     f.render_stateful_widget(vertical_scrollbar, scrollbar_margin, &mut vertical_scrollbar_state);
 
     Ok(())

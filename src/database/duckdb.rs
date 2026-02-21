@@ -45,8 +45,12 @@ impl Database for DuckDbDriver {
     self.task = Some(DuckDbTask::Query(tokio::spawn(async move {
       let results = run_query(connection, first_query).await;
       match results {
-        Ok(rows) => QueryResultsWithMetadata { results: Ok(rows), statement_type: Some(statement_type) },
-        Err(e) => QueryResultsWithMetadata { results: Err(e), statement_type: Some(statement_type) },
+        Ok(rows) => {
+          QueryResultsWithMetadata { results: Ok(rows), statement_type: Some(statement_type) }
+        },
+        Err(e) => {
+          QueryResultsWithMetadata { results: Err(e), statement_type: Some(statement_type) }
+        },
       }
     })));
     Ok(())
@@ -130,7 +134,10 @@ impl Database for DuckDbDriver {
   }
 
   fn preview_indexes_query(&self, schema: &str, table: &str) -> String {
-    format!("select indexname, indexdef, * from pg_indexes where schemaname = '{}' and tablename = '{}'", schema, table)
+    format!(
+      "select indexname, indexdef, * from pg_indexes where schemaname = '{}' and tablename = '{}'",
+      schema, table
+    )
   }
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
@@ -236,7 +243,8 @@ fn format_timestamp(unit: TimeUnit, raw: i64) -> String {
 }
 
 fn format_timestamp_from_parts(secs: i64, nanos: u32) -> String {
-  DateTime::from_timestamp(secs, nanos).map_or_else(|| format!("{secs}.{nanos:09}"), |dt| dt.to_string())
+  DateTime::from_timestamp(secs, nanos)
+    .map_or_else(|| format!("{secs}.{nanos:09}"), |dt| dt.to_string())
 }
 
 fn format_date(days_since_epoch: i32) -> String {
@@ -278,8 +286,10 @@ fn format_struct(map: &OrderedMap<String, DuckValue>) -> String {
 }
 
 fn format_map(map: &OrderedMap<DuckValue, DuckValue>) -> String {
-  let formatted: Vec<String> =
-    map.iter().map(|(key, value)| format!("{}: {}", duck_value_to_string(key), duck_value_to_string(value))).collect();
+  let formatted: Vec<String> = map
+    .iter()
+    .map(|(key, value)| format!("{}: {}", duck_value_to_string(key), duck_value_to_string(value)))
+    .collect();
   format!("{{{}}}", formatted.join(", "))
 }
 
@@ -337,7 +347,10 @@ mod tests {
 
     let test_cases: Vec<TestCase> = vec![
       // single query
-      ("SELECT * FROM users;", Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      (
+        "SELECT * FROM users;",
+        Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
       // multiple queries
       (
         "SELECT * FROM users; DELETE FROM posts;",
@@ -358,7 +371,10 @@ mod tests {
         Ok(("SELECT * FROM `users`".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
       ),
       // newlines
-      ("select *\nfrom users;", Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      (
+        "select *\nfrom users;",
+        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
       // comment-only
       ("-- select * from users;", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
       // commented line(s)
@@ -377,14 +393,23 @@ mod tests {
       // delete
       (
         "DELETE FROM users WHERE id = 1",
-        Ok(("DELETE FROM users WHERE id = 1".to_owned(), Box::new(|s| matches!(s, Statement::Delete { .. })))),
+        Ok((
+          "DELETE FROM users WHERE id = 1".to_owned(),
+          Box::new(|s| matches!(s, Statement::Delete { .. })),
+        )),
       ),
       // drop
-      ("DROP TABLE users", Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. }))))),
+      (
+        "DROP TABLE users",
+        Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. })))),
+      ),
       // explain
       (
         "EXPLAIN SELECT * FROM users",
-        Ok(("EXPLAIN SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Explain { .. })))),
+        Ok((
+          "EXPLAIN SELECT * FROM users".to_owned(),
+          Box::new(|s| matches!(s, Statement::Explain { .. })),
+        )),
       ),
     ];
 
@@ -398,7 +423,10 @@ mod tests {
         (Err(ParseError::EmptyQuery(msg)), Err(ParseError::EmptyQuery(expected_msg))) => {
           assert_eq!(msg, expected_msg)
         },
-        (Err(ParseError::MoreThanOneStatement(msg)), Err(ParseError::MoreThanOneStatement(expected_msg))) => {
+        (
+          Err(ParseError::MoreThanOneStatement(msg)),
+          Err(ParseError::MoreThanOneStatement(expected_msg)),
+        ) => {
           assert_eq!(msg, expected_msg)
         },
         (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {

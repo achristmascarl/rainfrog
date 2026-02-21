@@ -88,20 +88,28 @@ impl Data<'_> {
       if let Some(offsets) = self.explain_scroll.clone() {
         match direction {
           ScrollDirection::Up => {
-            self.explain_scroll =
-              Some(ExplainOffsets { y_offset: offsets.y_offset.saturating_sub(1), x_offset: offsets.x_offset });
+            self.explain_scroll = Some(ExplainOffsets {
+              y_offset: offsets.y_offset.saturating_sub(1),
+              x_offset: offsets.x_offset,
+            });
           },
           ScrollDirection::Down => {
-            self.explain_scroll =
-              Some(ExplainOffsets { y_offset: offsets.y_offset.saturating_add(1), x_offset: offsets.x_offset });
+            self.explain_scroll = Some(ExplainOffsets {
+              y_offset: offsets.y_offset.saturating_add(1),
+              x_offset: offsets.x_offset,
+            });
           },
           ScrollDirection::Left => {
-            self.explain_scroll =
-              Some(ExplainOffsets { y_offset: offsets.y_offset, x_offset: offsets.x_offset.saturating_sub(2) });
+            self.explain_scroll = Some(ExplainOffsets {
+              y_offset: offsets.y_offset,
+              x_offset: offsets.x_offset.saturating_sub(2),
+            });
           },
           ScrollDirection::Right => {
-            self.explain_scroll =
-              Some(ExplainOffsets { y_offset: offsets.y_offset, x_offset: offsets.x_offset.saturating_add(2) });
+            self.explain_scroll = Some(ExplainOffsets {
+              y_offset: offsets.y_offset,
+              x_offset: offsets.x_offset.saturating_add(2),
+            });
           },
         };
       }
@@ -129,10 +137,12 @@ impl Data<'_> {
     if let DataState::Explain(_) = self.data_state {
       match self.explain_scroll {
         Some(ExplainOffsets { x_offset, .. }) => {
-          self.explain_scroll = Some(ExplainOffsets { y_offset: self.explain_max_y_offset, x_offset });
+          self.explain_scroll =
+            Some(ExplainOffsets { y_offset: self.explain_max_y_offset, x_offset });
         },
         _ => {
-          self.explain_scroll = Some(ExplainOffsets { y_offset: self.explain_max_y_offset, x_offset: 0 });
+          self.explain_scroll =
+            Some(ExplainOffsets { y_offset: self.explain_max_y_offset, x_offset: 0 });
         },
       }
     } else if let DataState::HasResults(_) = self.data_state {
@@ -159,10 +169,12 @@ impl Data<'_> {
     if let DataState::Explain(_) = self.data_state {
       match self.explain_scroll {
         Some(ExplainOffsets { y_offset, .. }) => {
-          self.explain_scroll = Some(ExplainOffsets { y_offset, x_offset: self.explain_max_x_offset });
+          self.explain_scroll =
+            Some(ExplainOffsets { y_offset, x_offset: self.explain_max_x_offset });
         },
         _ => {
-          self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset: self.explain_max_x_offset });
+          self.explain_scroll =
+            Some(ExplainOffsets { y_offset: 0, x_offset: self.explain_max_x_offset });
         },
       }
     } else if let DataState::HasResults(_) = self.data_state {
@@ -185,7 +197,8 @@ impl Data<'_> {
     }
     let mut widths = vec![0_usize; column_count];
     for (index, header) in rows.headers.iter().enumerate() {
-      widths[index] = Self::cell_display_width(&header.name).max(Self::cell_display_width(&header.type_name));
+      widths[index] =
+        Self::cell_display_width(&header.name).max(Self::cell_display_width(&header.type_name));
     }
     for row in &rows.rows {
       for (index, value) in row.iter().enumerate().take(column_count) {
@@ -257,10 +270,12 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
         } else if rows.rows.is_empty() {
           self.data_state = DataState::NoResults;
         } else if matches!(statement_type, Some(Statement::Explain { .. })) {
-          self.explain_width = rows.rows.iter().fold(0_u16, |acc, r| acc.max(r.join(" ").len() as u16));
+          self.explain_width =
+            rows.rows.iter().fold(0_u16, |acc, r| acc.max(r.join(" ").len() as u16));
           self.explain_height = rows.rows.len() as u16;
           self.explain_scroll = Some(ExplainOffsets { y_offset: 0, x_offset: 0 });
-          self.data_state = DataState::Explain(Text::from_iter(rows.rows.iter().map(|r| r.join(" "))));
+          self.data_state =
+            DataState::Explain(Text::from_iter(rows.rows.iter().map(|r| r.join(" "))));
         } else {
           let row_spacing_enabled = self.config.settings.data_row_spacer.unwrap_or(false);
           let row_bottom_margin: u16 = if row_spacing_enabled { 1 } else { 0 };
@@ -273,7 +288,8 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
               .iter()
               .enumerate()
               .map(|(index, h)| {
-                let col_width = column_widths.get(index).copied().unwrap_or(MAX_COLUMN_WIDTH) as usize;
+                let col_width =
+                  column_widths.get(index).copied().unwrap_or(MAX_COLUMN_WIDTH) as usize;
                 let header_name = Self::clamp_render_text(&h.name, col_width);
                 let header_type = Self::clamp_render_text(&h.type_name, col_width);
                 Cell::from(format!("{header_name}\n{header_type}"))
@@ -287,7 +303,8 @@ impl<'a> SettableDataTable<'a> for Data<'a> {
               r.iter()
                 .enumerate()
                 .map(|(index, value)| {
-                  let col_width = column_widths.get(index).copied().unwrap_or(MAX_COLUMN_WIDTH) as usize;
+                  let col_width =
+                    column_widths.get(index).copied().unwrap_or(MAX_COLUMN_WIDTH) as usize;
                   Self::clamp_render_text(value, col_width)
                 })
                 .collect::<Vec<String>>(),
@@ -366,7 +383,11 @@ impl Component for Data<'_> {
     match input {
       Input { key: Key::Char('P'), .. } => {
         if let DataState::HasResults(rows) = &self.data_state {
-          self.command_tx.clone().unwrap().send(Action::RequestExportData(rows.rows.len() as i64))?;
+          self
+            .command_tx
+            .clone()
+            .unwrap()
+            .send(Action::RequestExportData(rows.rows.len() as i64))?;
         }
       },
       Input { key: Key::Right, .. } | Input { key: Key::Char('l'), .. } => {
@@ -439,7 +460,8 @@ impl Component for Data<'_> {
       },
       Input { key: Key::Char('y'), .. } => {
         if let DataState::HasResults(Rows { rows, .. }) = &self.data_state {
-          let should_render_as_paragraph = rows.len() == 1 && rows.first().is_some_and(|row| row.len() == 1);
+          let should_render_as_paragraph =
+            rows.len() == 1 && rows.first().is_some_and(|row| row.len() == 1);
           if should_render_as_paragraph {
             let cell = rows.first().and_then(|row| row.first()).cloned().unwrap_or_default();
             self.command_tx.clone().unwrap().send(Action::CopyData(cell))?;
@@ -491,7 +513,8 @@ impl Component for Data<'_> {
         self.command_tx.clone().unwrap().send(Action::ExportDataFinished)?;
         return Ok(None);
       };
-      let name = format!("rainfrog_export_{}_rows_{}.csv", rows.rows.len(), chrono::Utc::now().timestamp());
+      let name =
+        format!("rainfrog_export_{}_rows_{}.csv", rows.rows.len(), chrono::Utc::now().timestamp());
       let mut writer = Writer::from_path(get_export_dir().join(name))?;
       writer.write_record(header_to_vec(&rows.headers))?;
       for row in &rows.rows {
@@ -538,7 +561,10 @@ impl Component for Data<'_> {
           format!(" 󰆼 results <alt+3> (row {} of {})", y.saturating_add(1), rows.len())
         },
         Some(SelectionMode::Cell) => {
-          let cell = row.get(x).map(|c| Self::preview_text(c, TITLE_CELL_PREVIEW_MAX_CHARS)).unwrap_or_default();
+          let cell = row
+            .get(x)
+            .map(|c| Self::preview_text(c, TITLE_CELL_PREVIEW_MAX_CHARS))
+            .unwrap_or_default();
           format!(" 󰆼 results <alt+3> (row {} of {}) - {} ", y.saturating_add(1), rows.len(), cell)
         },
         Some(SelectionMode::Copied) => {
@@ -561,9 +587,12 @@ impl Component for Data<'_> {
       },
       DataState::StatementCompleted(statement) => {
         f.render_widget(
-          Paragraph::new(format!("{} statement completed", statement_type_string(Some(statement.clone()))))
-            .wrap(Wrap { trim: false })
-            .block(block),
+          Paragraph::new(format!(
+            "{} statement completed",
+            statement_type_string(Some(statement.clone()))
+          ))
+          .wrap(Wrap { trim: false })
+          .block(block),
           area,
         );
       },
@@ -583,13 +612,17 @@ impl Component for Data<'_> {
         if let Some(offsets) = self.explain_scroll.clone() {
           paragraph = paragraph.scroll((offsets.y_offset, offsets.x_offset));
           f.render_widget(paragraph, area);
-          let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight).symbols(scrollbar::VERTICAL);
+          let vertical_scrollbar =
+            Scrollbar::new(ScrollbarOrientation::VerticalRight).symbols(scrollbar::VERTICAL);
           let mut vertical_scrollbar_state =
-            ScrollbarState::new(self.explain_max_y_offset as usize).position(offsets.y_offset as usize);
-          let horizontal_scrollbar =
-            Scrollbar::new(ScrollbarOrientation::HorizontalBottom).symbols(scrollbar::HORIZONTAL).thumb_symbol("▀");
+            ScrollbarState::new(self.explain_max_y_offset as usize)
+              .position(offsets.y_offset as usize);
+          let horizontal_scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
+            .symbols(scrollbar::HORIZONTAL)
+            .thumb_symbol("▀");
           let mut horizontal_scrollbar_state =
-            ScrollbarState::new(self.explain_max_x_offset as usize).position(offsets.x_offset as usize);
+            ScrollbarState::new(self.explain_max_x_offset as usize)
+              .position(offsets.x_offset as usize);
           match (self.explain_max_x_offset, self.explain_max_y_offset) {
             (0, 0) => {},
             (0, y) => {
@@ -622,15 +655,20 @@ impl Component for Data<'_> {
         }
       },
       DataState::HasResults(rows) => {
-        let should_render_as_paragraph =
-          rows.headers.len() == 1 && rows.rows.len() == 1 && rows.rows.first().is_some_and(|row| row.len() == 1);
+        let should_render_as_paragraph = rows.headers.len() == 1
+          && rows.rows.len() == 1
+          && rows.rows.first().is_some_and(|row| row.len() == 1);
         if should_render_as_paragraph {
           let header = rows.headers.first();
           let column_name = header.map(|h| h.name.clone()).unwrap_or_else(|| "column".to_owned());
-          let column_type = header.map(|h| h.type_name.clone()).unwrap_or_else(|| "unknown".to_owned());
+          let column_type =
+            header.map(|h| h.type_name.clone()).unwrap_or_else(|| "unknown".to_owned());
           let value = rows.rows.first().and_then(|row| row.first()).cloned().unwrap_or_default();
           let paragraph_text = format!("{column_name}\n{column_type}\n\n{value}");
-          f.render_widget(Paragraph::new(paragraph_text).wrap(Wrap { trim: false }).block(block), area);
+          f.render_widget(
+            Paragraph::new(paragraph_text).wrap(Wrap { trim: false }).block(block),
+            area,
+          );
         } else {
           self.scrollable.block(block);
           self.scrollable.draw(f, area, app_state)?;
@@ -638,19 +676,26 @@ impl Component for Data<'_> {
       },
       DataState::Error(e) => {
         f.render_widget(
-          Paragraph::new(e.to_string()).style(Style::default().fg(Color::Red)).wrap(Wrap { trim: true }).block(block),
+          Paragraph::new(e.to_string())
+            .style(Style::default().fg(Color::Red))
+            .wrap(Wrap { trim: true })
+            .block(block),
           area,
         );
       },
       DataState::Loading => {
         f.render_widget(
-          Paragraph::new(Text::from("loading...").fg(Color::Green)).wrap(Wrap { trim: false }).block(block),
+          Paragraph::new(Text::from("loading...").fg(Color::Green))
+            .wrap(Wrap { trim: false })
+            .block(block),
           area,
         );
       },
       DataState::Cancelled => {
         f.render_widget(
-          Paragraph::new(Text::from("query cancelled.").fg(Color::Yellow)).wrap(Wrap { trim: false }).block(block),
+          Paragraph::new(Text::from("query cancelled.").fg(Color::Yellow))
+            .wrap(Wrap { trim: false })
+            .block(block),
           area,
         );
       },
@@ -667,7 +712,12 @@ struct TableForYank {
 
 impl TableForYank {
   fn new(rows: &Rows, app_state: &AppState) -> Self {
-    let sql = app_state.history.first().expect("expected the last SQL query in history").query_lines.clone();
+    let sql = app_state
+      .history
+      .first()
+      .expect("expected the last SQL query in history")
+      .query_lines
+      .clone();
 
     let headers: &Vec<String> = &rows.headers.iter().map(|h| h.name.clone()).collect();
     let rows = &rows.rows;
@@ -679,7 +729,11 @@ impl TableForYank {
 
   fn yank(&mut self) -> String {
     let last_index = self.table.len() - 1;
-    self.table.iter_mut().enumerate().for_each(|(index, col)| Self::format_column(col, index, last_index));
+    self
+      .table
+      .iter_mut()
+      .enumerate()
+      .for_each(|(index, col)| Self::format_column(col, index, last_index));
 
     let mut buff = String::new();
 
@@ -711,14 +765,16 @@ impl TableForYank {
 
     let format_cell = |s: &str| {
       let prefix = if index == 0 { " " } else { "| " };
-      let padding = if index == last_index { " ".repeat(0) } else { " ".repeat(width.saturating_sub(s.len())) };
+      let padding =
+        if index == last_index { " ".repeat(0) } else { " ".repeat(width.saturating_sub(s.len())) };
       format!("{prefix}{s}{padding}")
     };
 
     col.iter_mut().for_each(|s| *s = format_cell(s));
 
     if let Some(header) = col.pop_front() {
-      let div = if index == 0 { "-".repeat(width + 1) } else { format!("+{}", "-".repeat(width + 1)) };
+      let div =
+        if index == 0 { "-".repeat(width + 1) } else { format!("+{}", "-".repeat(width + 1)) };
       col.push_front(div);
       col.push_front(header);
     }
@@ -757,8 +813,18 @@ mod yank {
 
     let expected = vec![
       VecDeque::from(["id".to_string(), "id1".to_string(), "id2".to_string(), "id3".to_string()]),
-      VecDeque::from(["name".to_string(), "name1".to_string(), "name2".to_string(), "name3".to_string()]),
-      VecDeque::from(["age".to_string(), "age1".to_string(), "age2".to_string(), "age3".to_string()]),
+      VecDeque::from([
+        "name".to_string(),
+        "name1".to_string(),
+        "name2".to_string(),
+        "name3".to_string(),
+      ]),
+      VecDeque::from([
+        "age".to_string(),
+        "age1".to_string(),
+        "age2".to_string(),
+        "age3".to_string(),
+      ]),
     ];
 
     assert_eq!(expected, result)

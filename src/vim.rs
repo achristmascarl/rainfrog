@@ -31,7 +31,10 @@ pub enum SelectionDirection {
   Neutral,
 }
 
-fn get_selection_direction(range: ((usize, usize), (usize, usize)), cursor: (usize, usize)) -> SelectionDirection {
+fn get_selection_direction(
+  range: ((usize, usize), (usize, usize)),
+  cursor: (usize, usize),
+) -> SelectionDirection {
   let (start, end) = range;
   if cursor == start && cursor == end {
     SelectionDirection::Neutral
@@ -58,9 +61,13 @@ impl Mode {
   pub fn cursor_style(&self) -> Style {
     match self {
       Self::Normal => Style::default().fg(Color::Reset).add_modifier(Modifier::REVERSED),
-      Self::Insert => Style::default().fg(Color::LightBlue).add_modifier(Modifier::SLOW_BLINK | Modifier::REVERSED),
+      Self::Insert => Style::default()
+        .fg(Color::LightBlue)
+        .add_modifier(Modifier::SLOW_BLINK | Modifier::REVERSED),
       Self::Visual => Style::default().fg(Color::LightYellow).add_modifier(Modifier::REVERSED),
-      Self::Replace => Style::default().fg(Color::LightMagenta).add_modifier(Modifier::UNDERLINED | Modifier::REVERSED),
+      Self::Replace => Style::default()
+        .fg(Color::LightMagenta)
+        .add_modifier(Modifier::UNDERLINED | Modifier::REVERSED),
       Self::Operator(_) => Style::default().fg(Color::LightGreen).add_modifier(Modifier::REVERSED),
     }
   }
@@ -115,18 +122,30 @@ impl Vim {
     match self.mode {
       Mode::Normal | Mode::Visual | Mode::Operator(_) => {
         match input {
-          Input { key: Key::Char('h'), .. } | Input { key: Key::Left, .. } => textarea.move_cursor(CursorMove::Back),
-          Input { key: Key::Char('j'), .. } | Input { key: Key::Down, .. } => textarea.move_cursor(CursorMove::Down),
-          Input { key: Key::Char('k'), .. } | Input { key: Key::Up, .. } => textarea.move_cursor(CursorMove::Up),
+          Input { key: Key::Char('h'), .. } | Input { key: Key::Left, .. } => {
+            textarea.move_cursor(CursorMove::Back)
+          },
+          Input { key: Key::Char('j'), .. } | Input { key: Key::Down, .. } => {
+            textarea.move_cursor(CursorMove::Down)
+          },
+          Input { key: Key::Char('k'), .. } | Input { key: Key::Up, .. } => {
+            textarea.move_cursor(CursorMove::Up)
+          },
           Input { key: Key::Char('l'), .. } | Input { key: Key::Right, .. } => {
             textarea.move_cursor(CursorMove::Forward)
           },
           Input { key: Key::Char('w'), .. } => textarea.move_cursor(CursorMove::WordForward),
-          Input { key: Key::Char('e'), ctrl: false, .. } if matches!(self.mode, Mode::Operator(_)) => {
+          Input { key: Key::Char('e'), ctrl: false, .. }
+            if matches!(self.mode, Mode::Operator(_)) =>
+          {
             textarea.move_cursor(CursorMove::WordForward) // `e` behaves like `w` in operator-pending mode
           },
-          Input { key: Key::Char('e'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordEnd),
-          Input { key: Key::Char('b'), ctrl: false, .. } => textarea.move_cursor(CursorMove::WordBack),
+          Input { key: Key::Char('e'), ctrl: false, .. } => {
+            textarea.move_cursor(CursorMove::WordEnd)
+          },
+          Input { key: Key::Char('b'), ctrl: false, .. } => {
+            textarea.move_cursor(CursorMove::WordBack)
+          },
           Input { key: Key::Char('^'), .. } => textarea.move_cursor(CursorMove::Head),
           Input { key: Key::Char('0'), .. } => textarea.move_cursor(CursorMove::Head),
           Input { key: Key::Char('$'), .. } => textarea.move_cursor(CursorMove::End),
@@ -145,7 +164,9 @@ impl Vim {
               Clipboard::new().map_or_else(
                 |e| log::error!("{e:?}"),
                 |mut clipboard| {
-                  clipboard.get_text().map_or_else(|e| log::error!("{e:?}"), |text| textarea.set_yank_text(text))
+                  clipboard
+                    .get_text()
+                    .map_or_else(|e| log::error!("{e:?}"), |text| textarea.set_yank_text(text))
                 },
               );
             }
@@ -198,7 +219,8 @@ impl Vim {
             return Transition::Mode(Mode::Insert);
           },
           Input { key: Key::Char('a'), ctrl: false, .. }
-            if matches!(self.mode, Mode::Operator('d')) || matches!(self.mode, Mode::Operator('y')) =>
+            if matches!(self.mode, Mode::Operator('d'))
+              || matches!(self.mode, Mode::Operator('y')) =>
           {
             textarea.cancel_selection();
             textarea.move_cursor(CursorMove::Forward);
@@ -265,7 +287,9 @@ impl Vim {
           {
             textarea.move_cursor(CursorMove::Top)
           },
-          Input { key: Key::Char('G'), ctrl: false, .. } => textarea.move_cursor(CursorMove::Bottom),
+          Input { key: Key::Char('G'), ctrl: false, .. } => {
+            textarea.move_cursor(CursorMove::Bottom)
+          },
           Input { key: Key::Char(c), ctrl: false, .. } if self.mode == Mode::Operator(c) => {
             // Handle yy, dd, cc. (This is not strictly the same behavior as Vim)
             textarea.move_cursor(CursorMove::Head);
@@ -276,7 +300,9 @@ impl Vim {
               textarea.move_cursor(CursorMove::End); // At the last line, move to end of the line instead
             }
           },
-          Input { key: Key::Char(op @ ('y' | 'd' | 'c')), ctrl: false, .. } if self.mode == Mode::Normal => {
+          Input { key: Key::Char(op @ ('y' | 'd' | 'c')), ctrl: false, .. }
+            if self.mode == Mode::Normal =>
+          {
             textarea.start_selection();
             return Transition::Mode(Mode::Operator(op));
           },
@@ -357,7 +383,9 @@ impl Vim {
       },
       Mode::Insert => {
         match input {
-          Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
+          Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => {
+            Transition::Mode(Mode::Normal)
+          },
           input => {
             textarea.input(input); // Use default key mappings in insert mode
             Transition::Mode(Mode::Insert)
@@ -365,7 +393,9 @@ impl Vim {
         }
       },
       Mode::Replace => match input {
-        Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => Transition::Mode(Mode::Normal),
+        Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => {
+          Transition::Mode(Mode::Normal)
+        },
         input => {
           textarea.delete_str(1);
           textarea.input(input);

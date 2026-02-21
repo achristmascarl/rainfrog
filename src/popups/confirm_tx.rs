@@ -33,7 +33,9 @@ impl PopUp for ConfirmTx {
     let rows_affected = self.rows_affected.unwrap_or_default();
     match self.statement_type.clone() {
       None => {
-        format!("Are you sure you want to commit a transaction that will affect {rows_affected} rows?")
+        format!(
+          "Are you sure you want to commit a transaction that will affect {rows_affected} rows?"
+        )
       },
       Some(Statement::Delete(_)) | Some(Statement::Insert(_)) | Some(Statement::Update { .. }) => {
         format!(
