@@ -17,7 +17,9 @@ use sqlx::{
 };
 use tokio::{sync::Mutex, task::JoinHandle};
 
-use super::{Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value};
+use super::{
+  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+};
 
 type MySqlTransaction<'a> = sqlx::Transaction<'a, MySql>;
 type TransactionTask<'a> = JoinHandle<(QueryResultsWithMetadata, MySqlTransaction<'a>)>;
@@ -39,7 +41,8 @@ pub struct MySqlDriver<'a> {
 impl Database for MySqlDriver<'_> {
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let opts = super::mysql::MySqlDriver::<'_>::build_connection_opts(args)?;
-    let pool = Arc::new(MySqlPoolOptions::new().max_connections(3).connect_with(opts.clone()).await?);
+    let pool =
+      Arc::new(MySqlPoolOptions::new().max_connections(3).connect_with(opts.clone()).await?);
     self.pool = Some(pool);
     Ok(format!("{}/{}", opts.get_port(), opts.get_database().unwrap_or("mysql")))
   }
@@ -58,7 +61,8 @@ impl Database for MySqlDriver<'_> {
     self.querying_conn = Some(Arc::new(Mutex::new(pool.acquire().await?)));
     let conn = self.querying_conn.clone().unwrap();
     let conn_for_task = conn.clone();
-    let pid_row = sqlx::raw_sql("SELECT CONNECTION_ID()").fetch_one(conn.lock().await.as_mut()).await?;
+    let pid_row =
+      sqlx::raw_sql("SELECT CONNECTION_ID()").fetch_one(conn.lock().await.as_mut()).await?;
     let pid = pid_row.try_get::<u64, _>(0).unwrap_or_else(|_| pid_row.get::<i64, _>(0) as u64);
     log::info!("Starting query with PID {}", pid.clone());
     self.querying_pid = Some(pid.to_string());
@@ -86,7 +90,8 @@ impl Database for MySqlDriver<'_> {
           _ => {},
         };
         if let Some(pid) = self.querying_pid.take() {
-          let result = sqlx::raw_sql(&format!("KILL {pid}")).execute(&*self.pool.clone().unwrap()).await;
+          let result =
+            sqlx::raw_sql(&format!("KILL {pid}")).execute(&*self.pool.clone().unwrap()).await;
           let msg = match result {
             Ok(_) => "Successfully killed".to_string(),
             Err(e) => format!("Failed to kill: {e:?}"),
@@ -132,7 +137,13 @@ impl Database for MySqlDriver<'_> {
               log::error!("Transaction didn't start: {e:?}");
               self.querying_conn = None;
               self.querying_pid = None;
-              (DbTaskResult::Finished(QueryResultsWithMetadata { results: Err(e), statement_type }), None)
+              (
+                DbTaskResult::Finished(QueryResultsWithMetadata {
+                  results: Err(e),
+                  statement_type,
+                }),
+                None,
+              )
             },
             _ => (
               DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
@@ -160,7 +171,11 @@ impl Database for MySqlDriver<'_> {
           log::info!("{rows_affected:?} rows affected");
           (
             QueryResultsWithMetadata {
-              results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+              results: Ok(Rows {
+                headers: vec![],
+                rows: vec![],
+                rows_affected: Some(rows_affected),
+              }),
               statement_type: Some(statement_type),
             },
             tx,
@@ -323,7 +338,9 @@ impl MySqlDriver<'_> {
         if let Some(password) = args.password {
           opts = opts.password(&password);
         } else {
-          let password = rpassword::prompt_password(format!("password for user {}: ", opts.get_username())).unwrap();
+          let password =
+            rpassword::prompt_password(format!("password for user {}: ", opts.get_username()))
+              .unwrap();
           let password = password.trim();
           if !password.is_empty() {
             opts = opts.password(password);
@@ -419,7 +436,8 @@ async fn query_with_tx<'a>(
 ) -> (Result<Either<u64, Rows>>, MySqlTransaction<'static>)
 where
   for<'c> <sqlx::MySql as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, sqlx::MySql>,
-  for<'c> &'c mut <sqlx::MySql as sqlx::Database>::Connection: sqlx::Executor<'c, Database = sqlx::MySql>,
+  for<'c> &'c mut <sqlx::MySql as sqlx::Database>::Connection:
+    sqlx::Executor<'c, Database = sqlx::MySql>,
 {
   let first_query = super::get_first_query(query.to_string(), Driver::MySql);
   match first_query {
@@ -456,7 +474,10 @@ fn row_to_vec(row: &<sqlx::MySql as sqlx::Database>::Row) -> Vec<String> {
 }
 
 // parsed based on https://docs.rs/sqlx/latest/sqlx/mysql/types/index.html
-fn parse_value(row: &<MySql as sqlx::Database>::Row, col: &<MySql as sqlx::Database>::Column) -> Option<Value> {
+fn parse_value(
+  row: &<MySql as sqlx::Database>::Row,
+  col: &<MySql as sqlx::Database>::Column,
+) -> Option<Value> {
   let col_type = col.type_info().to_string();
   if row.try_get_raw(col.ordinal()).is_ok_and(|v| v.is_null()) {
     return Some(Value { parse_error: false, string: "NULL".to_string(), is_null: true });
@@ -506,10 +527,12 @@ fn parse_value(row: &<MySql as sqlx::Database>::Row, col: &<MySql as sqlx::Datab
       Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
       |received| Value { parse_error: false, string: received.to_string(), is_null: false },
     )),
-    "VARCHAR" | "CHAR" | "TEXT" | "BINARY" => Some(row.try_get::<String, usize>(col.ordinal()).map_or(
-      Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-      |received| Value { parse_error: false, string: received.to_string(), is_null: false },
-    )),
+    "VARCHAR" | "CHAR" | "TEXT" | "BINARY" => {
+      Some(row.try_get::<String, usize>(col.ordinal()).map_or(
+        Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+        |received| Value { parse_error: false, string: received.to_string(), is_null: false },
+      ))
+    },
     "VARBINARY" | "BLOB" => Some(row.try_get::<Vec<u8>, usize>(col.ordinal()).map_or(
       Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
       |received| {
@@ -581,7 +604,10 @@ mod tests {
 
     let test_cases: Vec<TestCase> = vec![
       // single query
-      ("SELECT * FROM users;", Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      (
+        "SELECT * FROM users;",
+        Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
       // multiple queries
       (
         "SELECT * FROM users; DELETE FROM posts;",
@@ -602,7 +628,10 @@ mod tests {
         Ok(("SELECT * FROM `users`".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
       ),
       // newlines
-      ("select *\nfrom users;", Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      (
+        "select *\nfrom users;",
+        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
       // comment-only
       ("-- select * from users;", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
       // commented line(s)
@@ -621,14 +650,23 @@ mod tests {
       // delete
       (
         "DELETE FROM users WHERE id = 1",
-        Ok(("DELETE FROM users WHERE id = 1".to_owned(), Box::new(|s| matches!(s, Statement::Delete { .. })))),
+        Ok((
+          "DELETE FROM users WHERE id = 1".to_owned(),
+          Box::new(|s| matches!(s, Statement::Delete { .. })),
+        )),
       ),
       // drop
-      ("DROP TABLE users", Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. }))))),
+      (
+        "DROP TABLE users",
+        Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. })))),
+      ),
       // explain
       (
         "EXPLAIN SELECT * FROM users",
-        Ok(("EXPLAIN SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Explain { .. })))),
+        Ok((
+          "EXPLAIN SELECT * FROM users".to_owned(),
+          Box::new(|s| matches!(s, Statement::Explain { .. })),
+        )),
       ),
     ];
 
@@ -644,7 +682,10 @@ mod tests {
         (Err(ParseError::EmptyQuery(msg)), Err(ParseError::EmptyQuery(expected_msg))) => {
           assert_eq!(msg, expected_msg)
         },
-        (Err(ParseError::MoreThanOneStatement(msg)), Err(ParseError::MoreThanOneStatement(expected_msg))) => {
+        (
+          Err(ParseError::MoreThanOneStatement(msg)),
+          Err(ParseError::MoreThanOneStatement(expected_msg)),
+        ) => {
           assert_eq!(msg, expected_msg)
         },
         (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {

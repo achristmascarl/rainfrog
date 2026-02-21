@@ -24,7 +24,10 @@ impl PopUp for NameFavorite {
     match key.code {
       KeyCode::Char(c) => {
         // ignore invalid characters
-        if c.is_whitespace() || c.is_ascii_whitespace() || (c.is_ascii_punctuation() && c != '_' && c != '-') {
+        if c.is_whitespace()
+          || c.is_ascii_whitespace()
+          || (c.is_ascii_punctuation() && c != '_' && c != '-')
+        {
           return Ok(None);
         }
         self.name.push(c);
@@ -33,7 +36,10 @@ impl PopUp for NameFavorite {
       KeyCode::Enter => {
         let favorite_name = self.name.trim();
         if !favorite_name.is_empty() {
-          return Ok(Some(PopUpPayload::NamedFavorite(favorite_name.to_string(), self.query_lines.clone())));
+          return Ok(Some(PopUpPayload::NamedFavorite(
+            favorite_name.to_string(),
+            self.query_lines.clone(),
+          )));
         }
         Ok(None)
       },

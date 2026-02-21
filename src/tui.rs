@@ -7,8 +7,8 @@ use color_eyre::eyre::Result;
 use crossterm::{
   cursor,
   event::{
-    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event as CrosstermEvent,
-    KeyEvent, KeyEventKind, MouseEvent,
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event as CrosstermEvent, KeyEvent, KeyEventKind, MouseEvent,
   },
   terminal::SetTitle,
   terminal::{EnterAlternateScreen, LeaveAlternateScreen},

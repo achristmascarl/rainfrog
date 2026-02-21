@@ -26,7 +26,9 @@ use std::{
 use clap::Parser;
 use cli::{Cli, CliCommand, Driver, extract_driver_from_url, prompt_for_database_selection};
 use color_eyre::eyre::Result;
-use config::{Config, ConnectionString, default_config_contents, existing_config_path, preferred_config_path};
+use config::{
+  Config, ConnectionString, default_config_contents, existing_config_path, preferred_config_path,
+};
 use dotenvy::dotenv;
 use keyring::get_password;
 
@@ -64,7 +66,8 @@ fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
 
   let (driver, url) = match (url, has_cli_input) {
     (Some(u), _) => {
-      if let Some(driver) = args.driver.take() { Ok(driver) } else { extract_driver_from_url(&u) }.map(|d| (d, Some(u)))
+      if let Some(driver) = args.driver.take() { Ok(driver) } else { extract_driver_from_url(&u) }
+        .map(|d| (d, Some(u)))
     },
     (None, true) => {
       if let Some(driver) = args.driver.take() {
@@ -115,7 +118,8 @@ fn open_editor(path: &Path) -> Result<()> {
     .unwrap_or_else(|| "vi".to_string());
 
   let mut parts = editor.split_whitespace();
-  let program = parts.next().ok_or_else(|| color_eyre::eyre::eyre!("Could not parse editor command"))?;
+  let program =
+    parts.next().ok_or_else(|| color_eyre::eyre::eyre!("Could not parse editor command"))?;
   let status = Command::new(program).args(parts).arg(path).status()?;
   if !status.success() {
     color_eyre::eyre::bail!("Editor exited with status code {:?}", status.code());

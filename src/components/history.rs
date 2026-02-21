@@ -36,7 +36,9 @@ impl History {
   pub fn scroll_down(&mut self, item_count: usize) {
     let current_selected = self.list_state.selected();
     if let Some(i) = current_selected {
-      self.list_state.select(Some(std::cmp::min(i.saturating_add(1), item_count.saturating_sub(1))));
+      self
+        .list_state
+        .select(Some(std::cmp::min(i.saturating_add(1), item_count.saturating_sub(1))));
     }
   }
 }
@@ -52,7 +54,11 @@ impl Component for History {
     Ok(())
   }
 
-  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_mouse_events(
+    &mut self,
+    mouse: MouseEvent,
+    app_state: &AppState,
+  ) -> Result<Option<Action>> {
     if app_state.focus != Focus::History {
       return Ok(None);
     }
@@ -86,13 +92,23 @@ impl Component for History {
         KeyCode::Char('g') => {
           self.list_state.select(Some(0));
         },
-        KeyCode::Char('G') => self.list_state.select(Some(app_state.history.len().saturating_sub(1))),
+        KeyCode::Char('G') => {
+          self.list_state.select(Some(app_state.history.len().saturating_sub(1)))
+        },
         KeyCode::Char('I') => {
-          self.command_tx.as_ref().unwrap().send(Action::QueryToEditor(app_state.history[i].query_lines.clone()))?;
+          self
+            .command_tx
+            .as_ref()
+            .unwrap()
+            .send(Action::QueryToEditor(app_state.history[i].query_lines.clone()))?;
           self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
         },
         KeyCode::Char('y') => {
-          self.command_tx.as_ref().unwrap().send(Action::CopyData(app_state.history[i].query_lines.join("\n")))?;
+          self
+            .command_tx
+            .as_ref()
+            .unwrap()
+            .send(Action::CopyData(app_state.history[i].query_lines.join("\n")))?;
           self.copied = true;
         },
         KeyCode::Char('D') => {
@@ -119,7 +135,8 @@ impl Component for History {
 
     let duration_string = self.last_query_duration.map_or("".to_string(), |d| {
       let seconds: f64 = (d.num_milliseconds()
-        % std::cmp::max(1, d.num_minutes()).saturating_mul(60).saturating_mul(1000)) as f64
+        % std::cmp::max(1, d.num_minutes()).saturating_mul(60).saturating_mul(1000))
+        as f64
         / 1000_f64;
       format!(
         " {}{}:{}{:.3}s ",
@@ -185,8 +202,9 @@ impl Component for History {
     let vertical_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
       .symbols(scrollbar::VERTICAL)
       .style(if focused { Style::default().fg(Color::Green) } else { Style::default() });
-    let mut vertical_scrollbar_state = ScrollbarState::new(app_state.history.len().saturating_sub(1))
-      .position(self.list_state.selected().map_or(0, |x| x));
+    let mut vertical_scrollbar_state =
+      ScrollbarState::new(app_state.history.len().saturating_sub(1))
+        .position(self.list_state.selected().map_or(0, |x| x));
     f.render_stateful_widget(vertical_scrollbar, scrollbar_margin, &mut vertical_scrollbar_state);
     Ok(())
   }

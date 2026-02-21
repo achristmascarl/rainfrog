@@ -208,7 +208,8 @@ fn get_default_execution_type(statement: Statement, confirmed: bool) -> Executio
       ExecutionType::Confirm
     },
     Statement::Explain { statement, analyze, .. }
-      if analyze && matches!(statement.as_ref(), Statement::Delete(_) | Statement::Update { .. }) =>
+      if analyze
+        && matches!(statement.as_ref(), Statement::Delete(_) | Statement::Update { .. }) =>
     {
       ExecutionType::Transaction
     },
@@ -219,11 +220,13 @@ fn get_default_execution_type(statement: Statement, confirmed: bool) -> Executio
 
 pub fn statement_type_string(statement: Option<Statement>) -> String {
   match statement {
-    Some(stmt) => format!("{stmt:?}").split('(').collect::<Vec<&str>>()[0].split('{').collect::<Vec<&str>>()[0]
-      .split('[')
-      .collect::<Vec<&str>>()[0]
-      .trim()
-      .to_string(),
+    Some(stmt) => {
+      format!("{stmt:?}").split('(').collect::<Vec<&str>>()[0].split('{').collect::<Vec<&str>>()[0]
+        .split('[')
+        .collect::<Vec<&str>>()[0]
+        .trim()
+        .to_string()
+    },
     None => "UNKNOWN".to_string(),
   }
 }

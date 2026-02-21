@@ -27,7 +27,10 @@ impl PopUp for ConfirmYank {
   }
 
   fn get_cta_text(&self, app_state: &crate::app::AppState) -> String {
-    format!("Are you sure you want to yank {} rows? Copying too many rows may cause the app to hang.", self.row_count,)
+    format!(
+      "Are you sure you want to yank {} rows? Copying too many rows may cause the app to hang.",
+      self.row_count,
+    )
   }
 
   fn get_actions_text(&self, app_state: &crate::app::AppState) -> String {

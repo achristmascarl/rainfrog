@@ -39,6 +39,12 @@ enum MenuEntry {
   Item(MenuItem),
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum CopiedMenuTarget {
+  Schema(String),
+  Item { schema: String, name: String, kind: MenuItemKind },
+}
+
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub enum MenuFocus {
   #[default]
@@ -64,6 +70,7 @@ pub struct Menu {
   menu_focus: MenuFocus,
   search: Option<String>,
   search_focused: bool,
+  copied_target: Option<CopiedMenuTarget>,
 }
 
 impl Menu {
@@ -77,6 +84,7 @@ impl Menu {
       menu_focus: MenuFocus::default(),
       search: None,
       search_focused: false,
+      copied_target: None,
     }
   }
 
@@ -88,7 +96,8 @@ impl Menu {
         },
         MenuFocus::Tables => {
           let entries = self.filtered_entries();
-          self.list_state = ListState::default().with_selected(Self::first_selectable_index(&entries));
+          self.list_state =
+            ListState::default().with_selected(Self::first_selectable_index(&entries));
         },
       }
       self.menu_focus = new_focus;
@@ -104,13 +113,17 @@ impl Menu {
           return;
         }
         let next = match self.list_state.selected() {
-          Some(i) => Self::next_selectable_index(&entries, i).or_else(|| Self::first_selectable_index(&entries)),
+          Some(i) => Self::next_selectable_index(&entries, i)
+            .or_else(|| Self::first_selectable_index(&entries)),
           None => Self::first_selectable_index(&entries),
         };
         self.list_state = ListState::default().with_selected(next);
       },
       MenuFocus::Schema => {
-        self.schema_index = self.schema_index.saturating_add(1).clamp(0, self.table_map.keys().len().saturating_sub(1))
+        self.schema_index = self
+          .schema_index
+          .saturating_add(1)
+          .clamp(0, self.table_map.keys().len().saturating_sub(1))
       },
     }
   }
@@ -124,7 +137,8 @@ impl Menu {
           return;
         }
         let prev = match self.list_state.selected() {
-          Some(i) => Self::previous_selectable_index(&entries, i).or_else(|| Self::last_selectable_index(&entries)),
+          Some(i) => Self::previous_selectable_index(&entries, i)
+            .or_else(|| Self::last_selectable_index(&entries)),
           None => Self::last_selectable_index(&entries),
         };
         self.list_state = ListState::default().with_selected(prev);
@@ -169,7 +183,11 @@ impl Menu {
       return vec![];
     };
     let matches_search = |name: &str, search: &Option<String>| {
-      if let Some(search) = search.as_ref() { name.to_lowercase().contains(search.to_lowercase().trim()) } else { true }
+      if let Some(search) = search.as_ref() {
+        name.to_lowercase().contains(search.to_lowercase().trim())
+      } else {
+        true
+      }
     };
 
     let tables: Vec<MenuEntry> = items
@@ -185,7 +203,10 @@ impl Menu {
       .iter()
       .filter(|v| matches_search(v.name.as_str(), &self.search))
       .map(|v| {
-        MenuEntry::Item(MenuItem { name: v.name.clone(), kind: MenuItemKind::View { materialized: v.materialized } })
+        MenuEntry::Item(MenuItem {
+          name: v.name.clone(),
+          kind: MenuItemKind::View { materialized: v.materialized },
+        })
       })
       .collect();
 
@@ -222,11 +243,9 @@ impl Menu {
   }
 
   fn next_selectable_index(entries: &[MenuEntry], current: usize) -> Option<usize> {
-    entries
-      .iter()
-      .enumerate()
-      .skip(current + 1)
-      .find_map(|(index, entry)| if matches!(entry, MenuEntry::Item(_)) { Some(index) } else { None })
+    entries.iter().enumerate().skip(current + 1).find_map(|(index, entry)| {
+      if matches!(entry, MenuEntry::Item(_)) { Some(index) } else { None }
+    })
   }
 
   fn previous_selectable_index(entries: &[MenuEntry], current: usize) -> Option<usize> {
@@ -246,6 +265,49 @@ impl Menu {
       _ => None,
     }
   }
+
+  fn clear_copied_target(&mut self) {
+    self.copied_target = None;
+  }
+
+  fn copy_focused_name(&mut self) -> Result<()> {
+    match self.menu_focus {
+      MenuFocus::Schema => {
+        if let Some((schema, _)) = self.table_map.get_index(self.schema_index) {
+          self.command_tx.as_ref().unwrap().send(Action::CopyData(schema.clone()))?;
+          self.copied_target = Some(CopiedMenuTarget::Schema(schema.clone()));
+        }
+      },
+      MenuFocus::Tables => {
+        if let Some(item) = self.selected_item()
+          && let Some((schema, _)) = self.table_map.get_index(self.schema_index)
+        {
+          self.command_tx.as_ref().unwrap().send(Action::CopyData(item.name.clone()))?;
+          self.copied_target = Some(CopiedMenuTarget::Item {
+            schema: schema.clone(),
+            name: item.name,
+            kind: item.kind,
+          });
+        }
+      },
+    }
+    Ok(())
+  }
+
+  fn copied_schema_name(&self, schema: &str) -> bool {
+    matches!(self.copied_target.as_ref(), Some(CopiedMenuTarget::Schema(copied_schema)) if copied_schema == schema)
+  }
+
+  fn copied_item_name(&self, schema: &str, item: &MenuItem) -> bool {
+    matches!(
+      self.copied_target.as_ref(),
+      Some(CopiedMenuTarget::Item {
+        schema: copied_schema,
+        name: copied_name,
+        kind: copied_kind,
+      }) if copied_schema == schema && copied_name == &item.name && copied_kind == &item.kind
+    )
+  }
 }
 
 impl SettableTableList<'_> for Menu {
@@ -257,7 +319,8 @@ impl SettableTableList<'_> for Menu {
         rows.rows.iter().for_each(|row| {
           let schema = row.first().cloned().unwrap_or_default();
           let name = row.get(1).cloned().unwrap_or_default();
-          let kind = row.get(2).map(|value| value.to_lowercase()).unwrap_or_else(|| "table".to_owned());
+          let kind =
+            row.get(2).map(|value| value.to_lowercase()).unwrap_or_else(|| "table".to_owned());
           let entry = self.table_map.entry(schema.clone()).or_default();
           match kind.as_str() {
             "view" => entry.views.push(MenuViewItem { name, materialized: false }),
@@ -271,7 +334,8 @@ impl SettableTableList<'_> for Menu {
         if self.table_map.keys().len() == 1 {
           self.menu_focus = MenuFocus::Tables;
           let entries = self.filtered_entries();
-          self.list_state = ListState::default().with_selected(Self::first_selectable_index(&entries));
+          self.list_state =
+            ListState::default().with_selected(Self::first_selectable_index(&entries));
         } else {
           self.menu_focus = MenuFocus::Schema;
           self.list_state = ListState::default();
@@ -304,6 +368,7 @@ impl Component for Menu {
     if app_state.focus != Focus::Menu {
       return Ok(None);
     }
+    self.clear_copied_target();
     match mouse.kind {
       MouseEventKind::ScrollDown => self.scroll_down(),
       MouseEventKind::ScrollUp => self.scroll_up(),
@@ -316,6 +381,7 @@ impl Component for Menu {
     if app_state.focus != Focus::Menu {
       return Ok(None);
     }
+    self.clear_copied_target();
     match key.code {
       KeyCode::Right => self.change_focus(MenuFocus::Tables),
       KeyCode::Left => self.change_focus(MenuFocus::Schema),
@@ -326,7 +392,8 @@ impl Component for Menu {
           if let Some(search) = self.search.as_mut() {
             search.push(c);
             let entries = self.filtered_entries();
-            self.list_state = ListState::default().with_selected(Self::first_selectable_index(&entries));
+            self.list_state =
+              ListState::default().with_selected(Self::first_selectable_index(&entries));
           }
         } else {
           match key.code {
@@ -343,14 +410,14 @@ impl Component for Menu {
             KeyCode::Char('g') => self.scroll_top(),
             KeyCode::Char('G') => self.scroll_bottom(),
             KeyCode::Char('R') => self.command_tx.as_ref().unwrap().send(Action::LoadMenu)?,
+            KeyCode::Char('y') => self.copy_focused_name()?,
             KeyCode::Char('1') | KeyCode::Char('2') | KeyCode::Char('3') | KeyCode::Char('4') => {
               if let Some(item) = self.selected_item()
                 && let Some((schema, _)) = self.table_map.get_index(self.schema_index)
               {
                 let preview = match (key.code, item.kind.clone()) {
-                  (KeyCode::Char('1'), MenuItemKind::Table) | (KeyCode::Char('1'), MenuItemKind::View { .. }) => {
-                    Some(MenuPreview::Columns)
-                  },
+                  (KeyCode::Char('1'), MenuItemKind::Table)
+                  | (KeyCode::Char('1'), MenuItemKind::View { .. }) => Some(MenuPreview::Columns),
                   (KeyCode::Char('2'), MenuItemKind::View { .. }) => Some(MenuPreview::Definition),
                   (KeyCode::Char('2'), MenuItemKind::Table) => Some(MenuPreview::Constraints),
                   (KeyCode::Char('3'), MenuItemKind::Table) => Some(MenuPreview::Indexes),
@@ -360,7 +427,11 @@ impl Component for Menu {
                 if let Some(preview) = preview {
                   self.command_tx.as_ref().unwrap().send(Action::MenuPreview(
                     preview,
-                    MenuTarget { schema: schema.clone(), name: item.name.clone(), kind: item.kind.clone() },
+                    MenuTarget {
+                      schema: schema.clone(),
+                      name: item.name.clone(),
+                      kind: item.kind.clone(),
+                    },
                   ))?;
                 }
               }
@@ -394,7 +465,8 @@ impl Component for Menu {
             if !search.is_empty() {
               search.pop();
               let entries = self.filtered_entries();
-              self.list_state = ListState::default().with_selected(Self::first_selectable_index(&entries));
+              self.list_state =
+                ListState::default().with_selected(Self::first_selectable_index(&entries));
             } else {
               self.reset_search();
             }
@@ -423,8 +495,10 @@ impl Component for Menu {
     if let Some(search) = self.search.as_ref() {
       constraints.insert(0, Constraint::Length(1));
     }
-    let layout =
-      Layout::default().constraints(constraints).direction(Direction::Vertical).split(parent_block.inner(area));
+    let layout = Layout::default()
+      .constraints(constraints)
+      .direction(Direction::Vertical)
+      .split(parent_block.inner(area));
     if let Some(search) = self.search.as_ref() {
       f.render_widget(
         Text::styled(
@@ -442,10 +516,12 @@ impl Component for Menu {
     }
     schema_keys.iter().enumerate().for_each(|(i, k)| {
       let layout_index = if self.search.is_some() { i + 1 } else { i };
+      let schema_label =
+        if self.copied_schema_name(k) { format!("  {k}") } else { k.to_owned() };
       match i {
         x if x == self.schema_index => {
           let block = Block::default()
-            .title(format!(" 󰦄  {k} <alt+1> (schema) "))
+            .title(format!(" 󰦄  {schema_label} <alt+1> (schema) "))
             .borders(Borders::ALL)
             .border_style(if focused && self.menu_focus == MenuFocus::Schema {
               Style::default().fg(Color::Green)
@@ -464,27 +540,48 @@ impl Component for Menu {
             .iter()
             .enumerate()
             .map(|(i, entry)| match entry {
-              MenuEntry::Header(title) => {
-                ListItem::new(Text::styled(format!("─ {title}"), Style::default().fg(Color::DarkGray)))
-              },
+              MenuEntry::Header(title) => ListItem::new(Text::styled(
+                format!("─ {title}"),
+                Style::default().fg(Color::DarkGray),
+              )),
               MenuEntry::Item(item) => {
+                let is_copied = self.copied_item_name(k, item);
+                let item_label = match &item.kind {
+                  MenuItemKind::View { materialized: true } => {
+                    format!("{} (materialized)", item.name)
+                  },
+                  _ => item.name.clone(),
+                };
                 let display_name = match &item.kind {
-                  MenuItemKind::View { materialized: true } => format!(" {} (materialized)", item.name),
-                  _ => " ".to_owned() + &item.name.clone(),
+                  MenuItemKind::View { .. } | MenuItemKind::Table | MenuItemKind::Function => {
+                    format!("{}{}", if is_copied { "   " } else { " " }, item_label)
+                  },
                 };
                 let is_selected = selected_index == Some(i);
                 if is_selected && focused && !self.search_focused {
                   match &item.kind {
                     MenuItemKind::Table => ListItem::new(Text::from(vec![
                       Line::from(display_name),
-                      Line::from(if app_state.query_task_running { " ├[...] rows" } else { " ├[<enter>] rows" }),
-                      Line::from(if app_state.query_task_running { " ├[...] columns" } else { " ├[1] columns" }),
+                      Line::from(if app_state.query_task_running {
+                        " ├[...] rows"
+                      } else {
+                        " ├[<enter>] rows"
+                      }),
+                      Line::from(if app_state.query_task_running {
+                        " ├[...] columns"
+                      } else {
+                        " ├[1] columns"
+                      }),
                       Line::from(if app_state.query_task_running {
                         " ├[...] constraints"
                       } else {
                         " ├[2] constraints"
                       }),
-                      Line::from(if app_state.query_task_running { " ├[...] indexes" } else { " ├[3] indexes" }),
+                      Line::from(if app_state.query_task_running {
+                        " ├[...] indexes"
+                      } else {
+                        " ├[3] indexes"
+                      }),
                       Line::from(if app_state.query_task_running {
                         " └[...] rls policies"
                       } else {
@@ -493,8 +590,16 @@ impl Component for Menu {
                     ])),
                     MenuItemKind::View { .. } => ListItem::new(Text::from(vec![
                       Line::from(display_name),
-                      Line::from(if app_state.query_task_running { " ├[...] rows" } else { " ├[<enter>] rows" }),
-                      Line::from(if app_state.query_task_running { " ├[...] columns" } else { " ├[1] columns" }),
+                      Line::from(if app_state.query_task_running {
+                        " ├[...] rows"
+                      } else {
+                        " ├[<enter>] rows"
+                      }),
+                      Line::from(if app_state.query_task_running {
+                        " ├[...] columns"
+                      } else {
+                        " ├[1] columns"
+                      }),
                       Line::from(if app_state.query_task_running {
                         " └[...] schema definition"
                       } else {
@@ -534,13 +639,14 @@ impl Component for Menu {
               Style::default()
             });
           let mut vertical_scrollbar_state =
-            ScrollbarState::new(entry_length.saturating_sub(available_height)).position(self.list_state.offset());
+            ScrollbarState::new(entry_length.saturating_sub(available_height))
+              .position(self.list_state.offset());
           f.render_stateful_widget(vertical_scrollbar, block_margin, &mut vertical_scrollbar_state);
         },
         x if x == self.table_map.keys().len().saturating_sub(1) => {
           f.render_widget(
             Text::styled(
-              "└ ".to_owned() + k.to_owned().as_str(),
+              format!("└ {schema_label}"),
               if focused { Style::default() } else { Style::new().dim() },
             ),
             layout[layout_index],
@@ -549,7 +655,7 @@ impl Component for Menu {
         0 => {
           f.render_widget(
             Text::styled(
-              "┌ ".to_owned() + k.to_owned().as_str(),
+              format!("┌ {schema_label}"),
               if focused { Style::default() } else { Style::new().dim() },
             ),
             layout[layout_index],
@@ -557,7 +663,7 @@ impl Component for Menu {
         },
         _ => f.render_widget(
           Text::styled(
-            "├ ".to_owned() + k.to_owned().as_str(),
+            format!("├ {schema_label}"),
             if focused { Style::default() } else { Style::new().dim() },
           ),
           layout[layout_index],

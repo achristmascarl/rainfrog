@@ -14,16 +14,25 @@ pub struct OracleConnectOptions {
 }
 impl OracleConnectOptions {
   fn new() -> Self {
-    Self { user: None, password: None, host: "localhost".to_string(), port: Some(1521), database: "XE".to_string() }
+    Self {
+      user: None,
+      password: None,
+      host: "localhost".to_string(),
+      port: Some(1521),
+      database: "XE".to_string(),
+    }
   }
 
   fn get_connection_string(&self) -> String {
     let port = self.port.unwrap_or(1521u16);
     format!("//{}:{}/{}", self.host, port, self.database)
   }
-  pub fn get_connection_options(&self) -> std::result::Result<(String, String, String, String, String), String> {
+  pub fn get_connection_options(
+    &self,
+  ) -> std::result::Result<(String, String, String, String, String), String> {
     let user = self.user.clone().ok_or("User is required for Oracle connection".to_string())?;
-    let password = self.password.clone().ok_or("Password is required for Oracle connection".to_string())?;
+    let password =
+      self.password.clone().ok_or("Password is required for Oracle connection".to_string())?;
     let connection_string = self.get_connection_string();
     Ok((
       user,
@@ -40,7 +49,8 @@ impl OracleConnectOptions {
   pub fn build_connection_opts(args: crate::cli::Cli) -> Result<OracleConnectOptions> {
     match args.connection_url {
       Some(url) => {
-        let mut opts = OracleConnectOptions::from_str(&url).map_err(|e| color_eyre::eyre::eyre!(e))?;
+        let mut opts =
+          OracleConnectOptions::from_str(&url).map_err(|e| color_eyre::eyre::eyre!(e))?;
 
         // Username
         if opts.user.is_none() {
@@ -98,9 +108,11 @@ impl OracleConnectOptions {
         if let Some(password) = args.password {
           opts.password = Some(password);
         } else {
-          let password =
-            rpassword::prompt_password(format!("password for user {}: ", opts.user.clone().unwrap_or("".to_string())))
-              .unwrap();
+          let password = rpassword::prompt_password(format!(
+            "password for user {}: ",
+            opts.user.clone().unwrap_or("".to_string())
+          ))
+          .unwrap();
           let password = password.trim();
           if !password.is_empty() {
             opts.password = Some(password.to_string());
@@ -161,7 +173,11 @@ impl FromStr for OracleConnectOptions {
   fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
     let s = s.trim().trim_start_matches("jdbc:oracle:thin:").trim_start_matches("jdbc:");
     let (is_easy_connect, (auth_part, host_part)) = if s.contains("@//") {
-      (true, s.split_once("@//").ok_or("Invalid Oracle Easy Connect connection string format".to_string())?)
+      (
+        true,
+        s.split_once("@//")
+          .ok_or("Invalid Oracle Easy Connect connection string format".to_string())?,
+      )
     } else if s.contains("@") {
       (false, s.split_once('@').ok_or("Invalid Oracle SID connection string format".to_string())?)
     } else {
@@ -169,7 +185,8 @@ impl FromStr for OracleConnectOptions {
     };
 
     let (user, password) = if auth_part.contains('/') {
-      let (user, password) = auth_part.split_once('/').ok_or("Invalid Oracle connection string format".to_string())?;
+      let (user, password) =
+        auth_part.split_once('/').ok_or("Invalid Oracle connection string format".to_string())?;
       (Some(user.to_string()), Some(password.to_string()))
     } else if !auth_part.is_empty() {
       (Some(auth_part.to_string()), None)
@@ -178,12 +195,14 @@ impl FromStr for OracleConnectOptions {
     };
 
     let (host, port, database) = if is_easy_connect {
-      let (host_port, database) =
-        host_part.split_once('/').ok_or("Invalid Oracle Easy Connect connection string format".to_string())?;
+      let (host_port, database) = host_part
+        .split_once('/')
+        .ok_or("Invalid Oracle Easy Connect connection string format".to_string())?;
 
       let (host, port) = if host_port.contains(':') {
-        let (host, port) =
-          host_port.split_once(':').ok_or("Invalid Oracle Easy Connect connection string format".to_string())?;
+        let (host, port) = host_port
+          .split_once(':')
+          .ok_or("Invalid Oracle Easy Connect connection string format".to_string())?;
         let port = port.parse().map_err(|_| "Invalid port")?;
         (host.to_string(), Some(port))
       } else {
@@ -212,7 +231,8 @@ mod tests {
   use super::*;
   #[test]
   fn test_oracle_connect_options_from_easy_connect_string() {
-    let opts = OracleConnectOptions::from_str("jdbc:oracle:thin:user/password@//localhost:1521/XE").unwrap();
+    let opts =
+      OracleConnectOptions::from_str("jdbc:oracle:thin:user/password@//localhost:1521/XE").unwrap();
     assert_eq!(opts.user, Some("user".to_string()));
     assert_eq!(opts.password, Some("password".to_string()));
     assert_eq!(opts.host, "localhost");
@@ -222,7 +242,8 @@ mod tests {
 
   #[test]
   fn test_oracle_connect_options_from_sid_string() {
-    let opts = OracleConnectOptions::from_str("jdbc:oracle:thin:user/password@localhost:1521:XE").unwrap();
+    let opts =
+      OracleConnectOptions::from_str("jdbc:oracle:thin:user/password@localhost:1521:XE").unwrap();
     assert_eq!(opts.user, Some("user".to_string()));
     assert_eq!(opts.password, Some("password".to_string()));
     assert_eq!(opts.host, "localhost");

@@ -29,8 +29,9 @@ use crate::{
   database::{self, Database, DbTaskResult, ExecutionType, Rows},
   focus::Focus,
   popups::{
-    PopUp, PopUpPayload, confirm_bypass::ConfirmBypass, confirm_export::ConfirmExport, confirm_query::ConfirmQuery,
-    confirm_tx::ConfirmTx, confirm_yank::ConfirmYank, exporting::Exporting, name_favorite::NameFavorite,
+    PopUp, PopUpPayload, confirm_bypass::ConfirmBypass, confirm_export::ConfirmExport,
+    confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, confirm_yank::ConfirmYank,
+    exporting::Exporting, name_favorite::NameFavorite,
   },
   tui,
   ui::center,
@@ -278,7 +279,10 @@ impl App {
                     let response = database.commit_tx().await?;
                     self.state.last_query_end = Some(chrono::Utc::now());
                     if let Some(results) = response {
-                      self.components.data.set_data_state(Some(results.results), results.statement_type);
+                      self
+                        .components
+                        .data
+                        .set_data_state(Some(results.results), results.statement_type);
                       self.set_focus(Focus::Editor);
                     }
                   },
@@ -313,20 +317,26 @@ impl App {
         if !event_consumed {
           for i in ComponentImpls::iter() {
             let action = match i {
-              ComponentImpls::Menu => {
-                self.components.menu.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
-              },
-              ComponentImpls::Editor => {
-                self.components.editor.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
-              },
+              ComponentImpls::Menu => self.components.menu.handle_events(
+                Some(e.clone()),
+                self.last_tick_key_events.clone(),
+                &self.state,
+              )?,
+              ComponentImpls::Editor => self.components.editor.handle_events(
+                Some(e.clone()),
+                self.last_tick_key_events.clone(),
+                &self.state,
+              )?,
               ComponentImpls::History => self.components.history.handle_events(
                 Some(e.clone()),
                 self.last_tick_key_events.clone(),
                 &self.state,
               )?,
-              ComponentImpls::Data => {
-                self.components.data.handle_events(Some(e.clone()), self.last_tick_key_events.clone(), &self.state)?
-              },
+              ComponentImpls::Data => self.components.data.handle_events(
+                Some(e.clone()),
+                self.last_tick_key_events.clone(),
+                &self.state,
+              )?,
               ComponentImpls::Favorites => self.components.favorites.handle_events(
                 Some(e.clone()),
                 self.last_tick_key_events.clone(),
@@ -419,7 +429,10 @@ impl App {
                 self.state.last_query_end = None;
               },
               Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
-              _ => self.components.data.set_data_state(Some(Err(eyre!("Missing statement type but not bypass"))), None),
+              _ => self
+                .components
+                .data
+                .set_data_state(Some(Err(eyre!("Missing statement type but not bypass"))), None),
             }
           },
           Action::AbortQuery => match database.abort_query().await {
@@ -435,27 +448,39 @@ impl App {
           Action::MenuPreview(preview_type, target) => {
             let preview_query = match preview_type {
               MenuPreview::Rows => match target.kind {
-                MenuItemKind::Function => "select 'Row preview is not available for functions' as message".to_owned(),
+                MenuItemKind::Function => {
+                  "select 'Row preview is not available for functions' as message".to_owned()
+                },
                 _ => database.preview_rows_query(target.schema.as_str(), target.name.as_str()),
               },
-              MenuPreview::Columns => database.preview_columns_query(target.schema.as_str(), target.name.as_str()),
+              MenuPreview::Columns => {
+                database.preview_columns_query(target.schema.as_str(), target.name.as_str())
+              },
               MenuPreview::Constraints => {
                 database.preview_constraints_query(target.schema.as_str(), target.name.as_str())
               },
-              MenuPreview::Indexes => database.preview_indexes_query(target.schema.as_str(), target.name.as_str()),
-              MenuPreview::Policies => database.preview_policies_query(target.schema.as_str(), target.name.as_str()),
+              MenuPreview::Indexes => {
+                database.preview_indexes_query(target.schema.as_str(), target.name.as_str())
+              },
+              MenuPreview::Policies => {
+                database.preview_policies_query(target.schema.as_str(), target.name.as_str())
+              },
               MenuPreview::Definition => match target.kind {
-                MenuItemKind::View { materialized } => {
-                  database.preview_view_definition_query(target.schema.as_str(), target.name.as_str(), materialized)
+                MenuItemKind::View { materialized } => database.preview_view_definition_query(
+                  target.schema.as_str(),
+                  target.name.as_str(),
+                  materialized,
+                ),
+                MenuItemKind::Function => database
+                  .preview_function_definition_query(target.schema.as_str(), target.name.as_str()),
+                MenuItemKind::Table => {
+                  "select 'Definition preview is only available for views' as message".to_owned()
                 },
-                MenuItemKind::Function => {
-                  database.preview_function_definition_query(target.schema.as_str(), target.name.as_str())
-                },
-                MenuItemKind::Table => "select 'Definition preview is only available for views' as message".to_owned(),
               },
             };
-            action_tx
-              .send(Action::QueryToEditor(preview_query.clone().split('\n').map(|s| s.trim().to_string()).collect()))?;
+            action_tx.send(Action::QueryToEditor(
+              preview_query.clone().split('\n').map(|s| s.trim().to_string()).collect(),
+            ))?;
             action_tx.send(Action::FocusEditor)?;
             action_tx.send(Action::FocusMenu)?;
             action_tx.send(Action::Query(vec![preview_query.clone()], false, false))?;
@@ -504,10 +529,16 @@ impl App {
           for i in ComponentImpls::iter() {
             let action = match i {
               ComponentImpls::Menu => self.components.menu.update(action.clone(), &self.state)?,
-              ComponentImpls::Editor => self.components.editor.update(action.clone(), &self.state)?,
-              ComponentImpls::History => self.components.history.update(action.clone(), &self.state)?,
+              ComponentImpls::Editor => {
+                self.components.editor.update(action.clone(), &self.state)?
+              },
+              ComponentImpls::History => {
+                self.components.history.update(action.clone(), &self.state)?
+              },
               ComponentImpls::Data => self.components.data.update(action.clone(), &self.state)?,
-              ComponentImpls::Favorites => self.components.favorites.update(action.clone(), &self.state)?,
+              ComponentImpls::Favorites => {
+                self.components.favorites.update(action.clone(), &self.state)?
+              },
             };
             if let Some(action) = action {
               log::info!("{action:?}");
@@ -640,7 +671,7 @@ impl App {
       },
       match self.state.focus {
         Focus::Menu =>
-          "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
+          "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [y] copy name [/] search [g] top [G] bottom",
         Focus::Editor if !self.state.query_task_running =>
           "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
         Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
@@ -652,7 +683,8 @@ impl App {
         _ => "",
       }
     );
-    let paragraph = Paragraph::new(Line::from(help_text).centered()).block(block).wrap(Wrap { trim: true });
+    let paragraph =
+      Paragraph::new(Line::from(help_text).centered()).block(block).wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
   }
 
@@ -668,11 +700,15 @@ impl App {
       .direction(Direction::Vertical)
       .split(block.inner(area));
 
-    let popup_cta = Paragraph::new(Line::from(popup.get_cta_text(&self.state)).centered()).wrap(Wrap { trim: false });
+    let popup_cta = Paragraph::new(Line::from(popup.get_cta_text(&self.state)).centered())
+      .wrap(Wrap { trim: false });
     let popup_actions = Paragraph::new(Line::from(popup.get_actions_text(&self.state)).centered());
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
     frame.render_widget(popup_cta, layout[0]);
-    frame.render_widget(popup_actions, center(layout[1], Constraint::Fill(1), Constraint::Percentage(50)));
+    frame.render_widget(
+      popup_actions,
+      center(layout[1], Constraint::Fill(1), Constraint::Percentage(50)),
+    );
   }
 }

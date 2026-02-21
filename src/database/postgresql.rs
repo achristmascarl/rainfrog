@@ -20,7 +20,8 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use super::{
-  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value, vec_to_string,
+  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows,
+  Value, vec_to_string,
 };
 
 type PostgresTransaction<'a> = sqlx::Transaction<'a, Postgres>;
@@ -62,7 +63,10 @@ impl Database for PostgresDriver<'_> {
     self.querying_conn = Some(Arc::new(Mutex::new(pool.acquire().await?)));
     let conn = self.querying_conn.clone().unwrap();
     let conn_for_task = conn.clone();
-    let pid = sqlx::raw_sql("SELECT pg_backend_pid()").fetch_one(conn.lock().await.as_mut()).await?.get::<i32, _>(0);
+    let pid = sqlx::raw_sql("SELECT pg_backend_pid()")
+      .fetch_one(conn.lock().await.as_mut())
+      .await?
+      .get::<i32, _>(0);
     log::info!("Starting query with PID {}", pid.clone());
     self.querying_pid = Some(pid.to_string().clone());
     self.task = Some(PostgresTask::Query(tokio::spawn(async move {
@@ -89,16 +93,18 @@ impl Database for PostgresDriver<'_> {
           _ => {},
         };
         if let Some(pid) = self.querying_pid.take() {
-          let result =
-            sqlx::raw_sql(&format!("SELECT pg_cancel_backend({pid})")).fetch_one(&*self.pool.clone().unwrap()).await;
+          let result = sqlx::raw_sql(&format!("SELECT pg_cancel_backend({pid})"))
+            .fetch_one(&*self.pool.clone().unwrap())
+            .await;
           let msg = match &result {
             Ok(_) => "Successfully killed".to_string(),
             Err(e) => format!("Failed to kill: {e:?}"),
           };
 
           let success = result.as_ref().is_ok_and(|r| r.try_get::<bool, _>(0).unwrap_or(false));
-          let status_string =
-            result.map_or("ERROR".to_string(), |r| r.try_get_unchecked::<String, _>(0).unwrap_or("ERROR".to_string()));
+          let status_string = result.map_or("ERROR".to_string(), |r| {
+            r.try_get_unchecked::<String, _>(0).unwrap_or("ERROR".to_string())
+          });
 
           if !success {
             log::warn!("Unexpected response when cancelling backend process with PID {pid}: {msg}");
@@ -147,7 +153,13 @@ impl Database for PostgresDriver<'_> {
               log::error!("Transaction didn't start: {e:?}");
               self.querying_conn = None;
               self.querying_pid = None;
-              (DbTaskResult::Finished(QueryResultsWithMetadata { results: Err(e), statement_type }), None)
+              (
+                DbTaskResult::Finished(QueryResultsWithMetadata {
+                  results: Err(e),
+                  statement_type,
+                }),
+                None,
+              )
             },
             _ => (
               DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
@@ -175,7 +187,11 @@ impl Database for PostgresDriver<'_> {
           log::info!("{rows_affected:?} rows affected");
           (
             QueryResultsWithMetadata {
-              results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+              results: Ok(Rows {
+                headers: vec![],
+                rows: vec![],
+                rows_affected: Some(rows_affected),
+              }),
               statement_type: Some(statement_type),
             },
             tx,
@@ -269,7 +285,9 @@ impl Database for PostgresDriver<'_> {
   }
 
   fn preview_indexes_query(&self, schema: &str, table: &str) -> String {
-    format!("select indexname, indexdef, * from pg_indexes where schemaname = '{schema}' and tablename = '{table}'")
+    format!(
+      "select indexname, indexdef, * from pg_indexes where schemaname = '{schema}' and tablename = '{table}'"
+    )
   }
 
   fn preview_policies_query(&self, schema: &str, table: &str) -> String {
@@ -330,7 +348,8 @@ impl PostgresDriver<'_> {
           opts = opts.password(&password);
         } else {
           let mut password =
-            rpassword::prompt_password(format!("password for user {}: ", opts.get_username())).unwrap();
+            rpassword::prompt_password(format!("password for user {}: ", opts.get_username()))
+              .unwrap();
           password = password.trim().to_string();
           if !password.is_empty() {
             opts = opts.password(&password);
@@ -422,8 +441,10 @@ async fn query_with_tx<'a>(
   query: &str,
 ) -> (Result<Either<u64, Rows>>, PostgresTransaction<'static>)
 where
-  for<'c> <sqlx::Postgres as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, sqlx::Postgres>,
-  for<'c> &'c mut <sqlx::Postgres as sqlx::Database>::Connection: sqlx::Executor<'c, Database = sqlx::Postgres>,
+  for<'c> <sqlx::Postgres as sqlx::Database>::Arguments<'c>:
+    sqlx::IntoArguments<'c, sqlx::Postgres>,
+  for<'c> &'c mut <sqlx::Postgres as sqlx::Database>::Connection:
+    sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
   let first_query = super::get_first_query(query.to_string(), Driver::Postgres);
   match first_query {
@@ -460,16 +481,21 @@ fn row_to_vec(row: &<sqlx::Postgres as sqlx::Database>::Row) -> Vec<String> {
 }
 
 // parsed based on https://docs.rs/sqlx/latest/sqlx/postgres/types/index.html
-fn parse_value(row: &<Postgres as sqlx::Database>::Row, col: &<Postgres as sqlx::Database>::Column) -> Option<Value> {
+fn parse_value(
+  row: &<Postgres as sqlx::Database>::Row,
+  col: &<Postgres as sqlx::Database>::Column,
+) -> Option<Value> {
   let col_type = col.type_info().to_string();
   if row.try_get_raw(col.ordinal()).is_ok_and(|v| v.is_null()) {
     return Some(Value { parse_error: false, string: "NULL".to_string(), is_null: true });
   }
   match col_type.to_uppercase().as_str() {
-    "TIMESTAMPTZ" => Some(row.try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal()).map_or(
-      Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-      |received| Value { parse_error: false, string: received.to_string(), is_null: false },
-    )),
+    "TIMESTAMPTZ" => {
+      Some(row.try_get::<chrono::DateTime<chrono::Utc>, usize>(col.ordinal()).map_or(
+        Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+        |received| Value { parse_error: false, string: received.to_string(), is_null: false },
+      ))
+    },
     "TIMESTAMP" => Some(row.try_get::<chrono::NaiveDateTime, usize>(col.ordinal()).map_or(
       Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
       |received| Value { parse_error: false, string: received.to_string(), is_null: false },
@@ -539,14 +565,26 @@ fn parse_value(row: &<Postgres as sqlx::Database>::Row, col: &<Postgres as sqlx:
     _ if col_type.to_uppercase().ends_with("[]") => {
       let array_type = col_type.to_uppercase().replace("[]", "");
       match array_type.as_str() {
-        "TIMESTAMPTZ" => Some(row.try_get::<Vec<chrono::DateTime<chrono::Utc>>, usize>(col.ordinal()).map_or(
-          Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-          |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
-        )),
-        "TIMESTAMP" => Some(row.try_get::<Vec<chrono::NaiveDateTime>, usize>(col.ordinal()).map_or(
-          Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-          |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
-        )),
+        "TIMESTAMPTZ" => {
+          Some(row.try_get::<Vec<chrono::DateTime<chrono::Utc>>, usize>(col.ordinal()).map_or(
+            Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+            |received| Value {
+              parse_error: false,
+              string: vec_to_string(received),
+              is_null: false,
+            },
+          ))
+        },
+        "TIMESTAMP" => {
+          Some(row.try_get::<Vec<chrono::NaiveDateTime>, usize>(col.ordinal()).map_or(
+            Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+            |received| Value {
+              parse_error: false,
+              string: vec_to_string(received),
+              is_null: false,
+            },
+          ))
+        },
         "DATE" => Some(row.try_get::<Vec<chrono::NaiveDate>, usize>(col.ordinal()).map_or(
           Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
           |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
@@ -563,38 +601,66 @@ fn parse_value(row: &<Postgres as sqlx::Database>::Row, col: &<Postgres as sqlx:
           Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
           |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
         )),
-        "JSON" | "JSONB" => Some(row.try_get::<Vec<serde_json::Value>, usize>(col.ordinal()).map_or(
-          Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-          |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
-        )),
+        "JSON" | "JSONB" => {
+          Some(row.try_get::<Vec<serde_json::Value>, usize>(col.ordinal()).map_or(
+            Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+            |received| Value {
+              parse_error: false,
+              string: vec_to_string(received),
+              is_null: false,
+            },
+          ))
+        },
         "BOOL" => Some(row.try_get::<Vec<bool>, usize>(col.ordinal()).map_or(
           Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
           |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
         )),
-        "SMALLINT" | "SMALLSERIAL" | "INT2" => Some(row.try_get::<Vec<i16>, usize>(col.ordinal()).map_or(
-          Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-          |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
-        )),
+        "SMALLINT" | "SMALLSERIAL" | "INT2" => {
+          Some(row.try_get::<Vec<i16>, usize>(col.ordinal()).map_or(
+            Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+            |received| Value {
+              parse_error: false,
+              string: vec_to_string(received),
+              is_null: false,
+            },
+          ))
+        },
         "INT" | "SERIAL" | "INT4" => Some(row.try_get::<Vec<i32>, usize>(col.ordinal()).map_or(
           Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
           |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
         )),
-        "BIGINT" | "BIGSERIAL" | "INT8" => Some(row.try_get::<Vec<i64>, usize>(col.ordinal()).map_or(
-          Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-          |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
-        )),
+        "BIGINT" | "BIGSERIAL" | "INT8" => {
+          Some(row.try_get::<Vec<i64>, usize>(col.ordinal()).map_or(
+            Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+            |received| Value {
+              parse_error: false,
+              string: vec_to_string(received),
+              is_null: false,
+            },
+          ))
+        },
         "REAL" | "FLOAT4" => Some(row.try_get::<Vec<f32>, usize>(col.ordinal()).map_or(
           Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
           |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
         )),
-        "DOUBLE PRECISION" | "FLOAT8" => Some(row.try_get::<Vec<f64>, usize>(col.ordinal()).map_or(
-          Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-          |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
-        )),
+        "DOUBLE PRECISION" | "FLOAT8" => {
+          Some(row.try_get::<Vec<f64>, usize>(col.ordinal()).map_or(
+            Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+            |received| Value {
+              parse_error: false,
+              string: vec_to_string(received),
+              is_null: false,
+            },
+          ))
+        },
         "TEXT" | "VARCHAR" | "NAME" | "CITEXT" | "BPCHAR" | "CHAR" => {
           Some(row.try_get::<Vec<String>, usize>(col.ordinal()).map_or(
             Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-            |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
+            |received| Value {
+              parse_error: false,
+              string: vec_to_string(received),
+              is_null: false,
+            },
           ))
         },
         "BYTEA" => Some(row.try_get::<Vec<u8>, usize>(col.ordinal()).map_or(
@@ -612,7 +678,11 @@ fn parse_value(row: &<Postgres as sqlx::Database>::Row, col: &<Postgres as sqlx:
           // try to cast custom or other types to strings
           Some(row.try_get_unchecked::<Vec<String>, usize>(col.ordinal()).map_or(
             Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-            |received| Value { parse_error: false, string: vec_to_string(received), is_null: false },
+            |received| Value {
+              parse_error: false,
+              string: vec_to_string(received),
+              is_null: false,
+            },
           ))
         },
       }
@@ -640,7 +710,10 @@ mod tests {
 
     let test_cases: Vec<TestCase> = vec![
       // single query
-      ("SELECT * FROM users;", Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      (
+        "SELECT * FROM users;",
+        Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
       // multiple queries
       (
         "SELECT * FROM users; DELETE FROM posts;",
@@ -658,10 +731,16 @@ mod tests {
       // lowercase
       (
         "select * from \"public\".\"users\"",
-        Ok(("SELECT * FROM \"public\".\"users\"".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
+        Ok((
+          "SELECT * FROM \"public\".\"users\"".to_owned(),
+          Box::new(|s| matches!(s, Statement::Query(_))),
+        )),
       ),
       // newlines
-      ("select *\nfrom users;", Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      (
+        "select *\nfrom users;",
+        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
       // comment-only
       ("-- select * from users;", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
       // commented line(s)
@@ -684,14 +763,23 @@ mod tests {
       // delete
       (
         "DELETE FROM users WHERE id = 1",
-        Ok(("DELETE FROM users WHERE id = 1".to_owned(), Box::new(|s| matches!(s, Statement::Delete(_))))),
+        Ok((
+          "DELETE FROM users WHERE id = 1".to_owned(),
+          Box::new(|s| matches!(s, Statement::Delete(_))),
+        )),
       ),
       // drop
-      ("DROP TABLE users", Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. }))))),
+      (
+        "DROP TABLE users",
+        Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. })))),
+      ),
       // explain
       (
         "EXPLAIN SELECT * FROM users",
-        Ok(("EXPLAIN SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Explain { .. })))),
+        Ok((
+          "EXPLAIN SELECT * FROM users".to_owned(),
+          Box::new(|s| matches!(s, Statement::Explain { .. })),
+        )),
       ),
     ];
 
@@ -707,7 +795,10 @@ mod tests {
         (Err(ParseError::EmptyQuery(msg)), Err(ParseError::EmptyQuery(expected_msg))) => {
           assert_eq!(msg, expected_msg)
         },
-        (Err(ParseError::MoreThanOneStatement(msg)), Err(ParseError::MoreThanOneStatement(expected_msg))) => {
+        (
+          Err(ParseError::MoreThanOneStatement(msg)),
+          Err(ParseError::MoreThanOneStatement(expected_msg)),
+        ) => {
           assert_eq!(msg, expected_msg)
         },
         (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {

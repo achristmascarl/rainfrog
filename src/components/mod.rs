@@ -110,7 +110,11 @@ pub trait Component {
   ///
   /// * `Result<Option<Action>>` - An action to be processed or none.
   #[allow(unused_variables)]
-  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_mouse_events(
+    &mut self,
+    mouse: MouseEvent,
+    app_state: &AppState,
+  ) -> Result<Option<Action>> {
     Ok(None)
   }
   /// Update the state of the component based on a received action. (REQUIRED)

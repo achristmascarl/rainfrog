@@ -5,10 +5,18 @@ use directories::{ProjectDirs, UserDirs};
 use lazy_static::lazy_static;
 use tracing::error;
 use tracing_error::ErrorLayer;
-use tracing_subscriber::{self, Layer, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+  self, Layer, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt,
+};
 
-const VERSION_MESSAGE: &str =
-  concat!(env!("CARGO_PKG_VERSION"), "-", env!("VERGEN_GIT_DESCRIBE"), " (", env!("VERGEN_BUILD_DATE"), ")");
+const VERSION_MESSAGE: &str = concat!(
+  env!("CARGO_PKG_VERSION"),
+  "-",
+  env!("VERGEN_GIT_DESCRIBE"),
+  " (",
+  env!("VERGEN_BUILD_DATE"),
+  ")"
+);
 
 lazy_static! {
   pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase().to_string();
@@ -34,7 +42,10 @@ fn user_directory() -> Option<UserDirs> {
 
 pub fn initialize_panic_handler() -> Result<()> {
   let (panic_hook, eyre_hook) = color_eyre::config::HookBuilder::default()
-    .panic_section(format!("This is a bug. Consider reporting it at {}", env!("CARGO_PKG_REPOSITORY")))
+    .panic_section(format!(
+      "This is a bug. Consider reporting it at {}",
+      env!("CARGO_PKG_REPOSITORY")
+    ))
     .capture_span_trace_by_default(false)
     .display_location_section(false)
     .display_env_section(false)

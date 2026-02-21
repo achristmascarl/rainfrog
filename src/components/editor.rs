@@ -70,7 +70,9 @@ impl Editor<'_> {
           sender.send(Action::RequestSaveFavorite(self.textarea.lines().to_vec()))?;
         }
       },
-      Input { key: Key::Char('c'), ctrl: true, .. } if matches!(self.vim_state.mode, Mode::Normal) => {
+      Input { key: Key::Char('c'), ctrl: true, .. }
+        if matches!(self.vim_state.mode, Mode::Normal) =>
+      {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::Quit)?;
         }
@@ -109,7 +111,11 @@ impl Component for Editor<'_> {
     Ok(())
   }
 
-  fn handle_mouse_events(&mut self, mouse: MouseEvent, app_state: &AppState) -> Result<Option<Action>> {
+  fn handle_mouse_events(
+    &mut self,
+    mouse: MouseEvent,
+    app_state: &AppState,
+  ) -> Result<Option<Action>> {
     if app_state.focus != Focus::Editor {
       return Ok(None);
     }
@@ -121,10 +127,16 @@ impl Component for Editor<'_> {
         self.textarea.scroll((-1, 0));
       },
       MouseEventKind::ScrollLeft => {
-        self.transition_vim_state(Input { key: Key::Char('h'), ctrl: false, alt: false, shift: false }, app_state)?;
+        self.transition_vim_state(
+          Input { key: Key::Char('h'), ctrl: false, alt: false, shift: false },
+          app_state,
+        )?;
       },
       MouseEventKind::ScrollRight => {
-        self.transition_vim_state(Input { key: Key::Char('j'), ctrl: false, alt: false, shift: false }, app_state)?;
+        self.transition_vim_state(
+          Input { key: Key::Char('j'), ctrl: false, alt: false, shift: false },
+          app_state,
+        )?;
       },
       _ => {},
     };
@@ -187,7 +199,8 @@ impl Component for Editor<'_> {
 
     let duration_string = self.last_query_duration.map_or("".to_string(), |d| {
       let seconds: f64 = (d.num_milliseconds()
-        % std::cmp::max(1, d.num_minutes()).saturating_mul(60).saturating_mul(1000)) as f64
+        % std::cmp::max(1, d.num_minutes()).saturating_mul(60).saturating_mul(1000))
+        as f64
         / 1000_f64;
       format!(
         " {}{}:{}{:.3}s ",
@@ -206,7 +219,11 @@ impl Component for Editor<'_> {
 
     self.textarea.set_cursor_style(self.cursor_style);
     self.textarea.set_block(block);
-    self.textarea.set_line_number_style(if focused { Style::default().fg(Color::Yellow) } else { Style::new().dim() });
+    self.textarea.set_line_number_style(if focused {
+      Style::default().fg(Color::Yellow)
+    } else {
+      Style::new().dim()
+    });
     self.textarea.set_cursor_line_style(Style::default().not_underlined());
     self.textarea.set_hard_tab_indent(false);
     self.textarea.set_tab_length(2);

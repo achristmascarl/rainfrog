@@ -16,10 +16,13 @@ use sqlx::{
   types::uuid,
 };
 
-use super::{Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value};
+use super::{
+  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+};
 
 type SqliteTransaction<'a> = sqlx::Transaction<'a, Sqlite>;
-type TransactionTask<'a> = tokio::task::JoinHandle<(QueryResultsWithMetadata, SqliteTransaction<'a>)>;
+type TransactionTask<'a> =
+  tokio::task::JoinHandle<(QueryResultsWithMetadata, SqliteTransaction<'a>)>;
 enum SqliteTask<'a> {
   Query(QueryTask),
   TxStart(TransactionTask<'a>),
@@ -36,7 +39,8 @@ pub struct SqliteDriver<'a> {
 impl Database for SqliteDriver<'_> {
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let opts = super::sqlite::SqliteDriver::<'_>::build_connection_opts(args)?;
-    let pool = Arc::new(SqlitePoolOptions::new().max_connections(3).connect_with(opts.clone()).await?);
+    let pool =
+      Arc::new(SqlitePoolOptions::new().max_connections(3).connect_with(opts.clone()).await?);
     self.pool = Some(pool);
     Ok(opts.get_filename().to_string_lossy().to_string())
   }
@@ -105,7 +109,13 @@ impl Database for SqliteDriver<'_> {
             // if tx failed to start, return the error immediately
             QueryResultsWithMetadata { results: Err(e), statement_type } => {
               log::error!("Transaction didn't start: {e:?}");
-              (DbTaskResult::Finished(QueryResultsWithMetadata { results: Err(e), statement_type }), None)
+              (
+                DbTaskResult::Finished(QueryResultsWithMetadata {
+                  results: Err(e),
+                  statement_type,
+                }),
+                None,
+              )
             },
             _ => (
               DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
@@ -130,7 +140,11 @@ impl Database for SqliteDriver<'_> {
           log::info!("{rows_affected:?} rows affected");
           (
             QueryResultsWithMetadata {
-              results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+              results: Ok(Rows {
+                headers: vec![],
+                rows: vec![],
+                rows_affected: Some(rows_affected),
+              }),
               statement_type: Some(statement_type),
             },
             tx,
@@ -286,7 +300,8 @@ async fn query_with_tx<'a>(
 ) -> (Result<Either<u64, Rows>>, SqliteTransaction<'static>)
 where
   for<'c> <sqlx::Sqlite as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, sqlx::Sqlite>,
-  for<'c> &'c mut <sqlx::Sqlite as sqlx::Database>::Connection: sqlx::Executor<'c, Database = sqlx::Sqlite>,
+  for<'c> &'c mut <sqlx::Sqlite as sqlx::Database>::Connection:
+    sqlx::Executor<'c, Database = sqlx::Sqlite>,
 {
   let first_query = super::get_first_query(query.to_string(), Driver::Sqlite);
   match first_query {
@@ -323,7 +338,10 @@ fn row_to_vec(row: &<sqlx::Sqlite as sqlx::Database>::Row) -> Vec<String> {
 }
 
 // parsed based on https://docs.rs/sqlx/latest/sqlx/sqlite/types/index.html
-fn parse_value(row: &<Sqlite as sqlx::Database>::Row, col: &<Sqlite as sqlx::Database>::Column) -> Option<Value> {
+fn parse_value(
+  row: &<Sqlite as sqlx::Database>::Row,
+  col: &<Sqlite as sqlx::Database>::Column,
+) -> Option<Value> {
   let col_type = col.type_info().to_string();
   if row.try_get_raw(col.ordinal()).is_ok_and(|v| v.is_null()) {
     return Some(Value { parse_error: false, string: "NULL".to_string(), is_null: true });
@@ -333,10 +351,12 @@ fn parse_value(row: &<Sqlite as sqlx::Database>::Row, col: &<Sqlite as sqlx::Dat
       Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
       |received| Value { parse_error: false, string: received.to_string(), is_null: false },
     )),
-    "INTEGER" | "INT4" | "INT8" | "BIGINT" => Some(row.try_get::<i64, usize>(col.ordinal()).map_or(
-      Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
-      |received| Value { parse_error: false, string: received.to_string(), is_null: false },
-    )),
+    "INTEGER" | "INT4" | "INT8" | "BIGINT" => {
+      Some(row.try_get::<i64, usize>(col.ordinal()).map_or(
+        Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+        |received| Value { parse_error: false, string: received.to_string(), is_null: false },
+      ))
+    },
     "REAL" => Some(row.try_get::<f64, usize>(col.ordinal()).map_or(
       Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
       |received| Value { parse_error: false, string: received.to_string(), is_null: false },
@@ -348,16 +368,28 @@ fn parse_value(row: &<Sqlite as sqlx::Database>::Row, col: &<Sqlite as sqlx::Dat
         _ => match row.try_get::<chrono::DateTime<chrono::Utc>, _>(col.ordinal()) {
           Ok(dt) => Some(Value { parse_error: false, string: dt.to_string(), is_null: false }),
           _ => match row.try_get::<chrono::NaiveDate, _>(col.ordinal()) {
-            Ok(date) => Some(Value { parse_error: false, string: date.to_string(), is_null: false }),
+            Ok(date) => {
+              Some(Value { parse_error: false, string: date.to_string(), is_null: false })
+            },
             _ => match row.try_get::<chrono::NaiveTime, _>(col.ordinal()) {
-              Ok(time) => Some(Value { parse_error: false, string: time.to_string(), is_null: false }),
+              Ok(time) => {
+                Some(Value { parse_error: false, string: time.to_string(), is_null: false })
+              },
               _ => match row.try_get::<uuid::Uuid, _>(col.ordinal()) {
-                Ok(uuid) => Some(Value { parse_error: false, string: uuid.to_string(), is_null: false }),
+                Ok(uuid) => {
+                  Some(Value { parse_error: false, string: uuid.to_string(), is_null: false })
+                },
                 _ => match row.try_get::<serde_json::Value, _>(col.ordinal()) {
-                  Ok(json) => Some(Value { parse_error: false, string: json.to_string(), is_null: false }),
+                  Ok(json) => {
+                    Some(Value { parse_error: false, string: json.to_string(), is_null: false })
+                  },
                   _ => match row.try_get::<String, _>(col.ordinal()) {
                     Ok(string) => Some(Value { parse_error: false, string, is_null: false }),
-                    _ => Some(Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false }),
+                    _ => Some(Value {
+                      parse_error: true,
+                      string: "_ERROR_".to_string(),
+                      is_null: false,
+                    }),
                   },
                 },
               },
@@ -439,7 +471,10 @@ mod tests {
 
     let test_cases: Vec<TestCase> = vec![
       // single query
-      ("SELECT * FROM users;", Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      (
+        "SELECT * FROM users;",
+        Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
       // multiple queries
       (
         "SELECT * FROM users; DELETE FROM posts;",
@@ -460,7 +495,10 @@ mod tests {
         Ok(("SELECT * FROM `users`".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
       ),
       // newlines
-      ("select *\nfrom users;", Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_)))))),
+      (
+        "select *\nfrom users;",
+        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
+      ),
       // comment-only
       ("-- select * from users;", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
       // commented line(s)
@@ -479,14 +517,23 @@ mod tests {
       // delete
       (
         "DELETE FROM users WHERE id = 1",
-        Ok(("DELETE FROM users WHERE id = 1".to_owned(), Box::new(|s| matches!(s, Statement::Delete { .. })))),
+        Ok((
+          "DELETE FROM users WHERE id = 1".to_owned(),
+          Box::new(|s| matches!(s, Statement::Delete { .. })),
+        )),
       ),
       // drop
-      ("DROP TABLE users", Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. }))))),
+      (
+        "DROP TABLE users",
+        Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. })))),
+      ),
       // explain
       (
         "EXPLAIN SELECT * FROM users",
-        Ok(("EXPLAIN SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Explain { .. })))),
+        Ok((
+          "EXPLAIN SELECT * FROM users".to_owned(),
+          Box::new(|s| matches!(s, Statement::Explain { .. })),
+        )),
       ),
     ];
 
@@ -502,7 +549,10 @@ mod tests {
         (Err(ParseError::EmptyQuery(msg)), Err(ParseError::EmptyQuery(expected_msg))) => {
           assert_eq!(msg, expected_msg)
         },
-        (Err(ParseError::MoreThanOneStatement(msg)), Err(ParseError::MoreThanOneStatement(expected_msg))) => {
+        (
+          Err(ParseError::MoreThanOneStatement(msg)),
+          Err(ParseError::MoreThanOneStatement(expected_msg)),
+        ) => {
           assert_eq!(msg, expected_msg)
         },
         (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {
