@@ -207,16 +207,26 @@ impl Database for MySqlDriver<'_> {
   async fn load_menu(&self) -> Result<Rows> {
     query_with_pool(
       self.pool.clone().unwrap(),
-      "select table_schema as table_schema,
-        table_name as table_name,
-        case
-          when table_type = 'BASE TABLE' then 'table'
-          when table_type = 'VIEW' then 'view'
-          else 'table'
-        end as object_kind
-      from information_schema.tables
-      where table_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
-      order by table_schema, object_kind, table_name asc"
+      "select menu_items.table_schema, menu_items.object_name, menu_items.object_kind
+      from (
+        select table_schema as table_schema,
+          table_name as object_name,
+          case
+            when table_type = 'BASE TABLE' then 'table'
+            when table_type = 'VIEW' then 'view'
+            else 'table'
+          end as object_kind
+        from information_schema.tables
+        where table_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
+        union all
+        select routine_schema as table_schema,
+          routine_name as object_name,
+          'function' as object_kind
+        from information_schema.routines
+        where routine_type = 'FUNCTION'
+          and routine_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
+      ) menu_items
+      order by menu_items.table_schema, menu_items.object_kind, menu_items.object_name asc"
         .to_owned(),
     )
     .await
@@ -268,6 +278,16 @@ impl Database for MySqlDriver<'_> {
       "select view_definition
         from information_schema.views
         where table_schema = '{schema}' and table_name = '{view}'"
+    )
+  }
+
+  fn preview_function_definition_query(&self, schema: &str, function: &str) -> String {
+    format!(
+      "select routine_definition
+        from information_schema.routines
+        where routine_type = 'FUNCTION'
+          and routine_schema = '{schema}'
+          and routine_name = '{function}'"
     )
   }
 }

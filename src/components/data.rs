@@ -439,21 +439,28 @@ impl Component for Data<'_> {
       },
       Input { key: Key::Char('y'), .. } => {
         if let DataState::HasResults(Rows { rows, .. }) = &self.data_state {
-          let (x, y) = self.scrollable.get_cell_offsets();
-          let row = &rows[y];
-          match self.scrollable.get_selection_mode() {
-            Some(SelectionMode::Row) => {
-              let row_string = row.join(", ");
-              self.command_tx.clone().unwrap().send(Action::CopyData(row_string))?;
-              self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
-            },
-            Some(SelectionMode::Cell) => {
-              if let Some(cell) = row.get(x) {
-                self.command_tx.clone().unwrap().send(Action::CopyData(cell.clone()))?;
+          let should_render_as_paragraph = rows.len() == 1 && rows.first().is_some_and(|row| row.len() == 1);
+          if should_render_as_paragraph {
+            let cell = rows.first().and_then(|row| row.first()).cloned().unwrap_or_default();
+            self.command_tx.clone().unwrap().send(Action::CopyData(cell))?;
+            self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
+          } else {
+            let (x, y) = self.scrollable.get_cell_offsets();
+            let row = &rows[y];
+            match self.scrollable.get_selection_mode() {
+              Some(SelectionMode::Row) => {
+                let row_string = row.join(", ");
+                self.command_tx.clone().unwrap().send(Action::CopyData(row_string))?;
                 self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
-              }
-            },
-            _ => {},
+              },
+              Some(SelectionMode::Cell) => {
+                if let Some(cell) = row.get(x) {
+                  self.command_tx.clone().unwrap().send(Action::CopyData(cell.clone()))?;
+                  self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
+                }
+              },
+              _ => {},
+            }
           }
         } else if let DataState::Explain(text) = &self.data_state {
           self.command_tx.clone().unwrap().send(Action::CopyData(text.to_string()))?;
@@ -614,9 +621,20 @@ impl Component for Data<'_> {
           };
         }
       },
-      DataState::HasResults(_) => {
-        self.scrollable.block(block);
-        self.scrollable.draw(f, area, app_state)?;
+      DataState::HasResults(rows) => {
+        let should_render_as_paragraph =
+          rows.headers.len() == 1 && rows.rows.len() == 1 && rows.rows.first().is_some_and(|row| row.len() == 1);
+        if should_render_as_paragraph {
+          let header = rows.headers.first();
+          let column_name = header.map(|h| h.name.clone()).unwrap_or_else(|| "column".to_owned());
+          let column_type = header.map(|h| h.type_name.clone()).unwrap_or_else(|| "unknown".to_owned());
+          let value = rows.rows.first().and_then(|row| row.first()).cloned().unwrap_or_default();
+          let paragraph_text = format!("{column_name}\n{column_type}\n\n{value}");
+          f.render_widget(Paragraph::new(paragraph_text).wrap(Wrap { trim: false }).block(block), area);
+        } else {
+          self.scrollable.block(block);
+          self.scrollable.draw(f, area, app_state)?;
+        }
       },
       DataState::Error(e) => {
         f.render_widget(

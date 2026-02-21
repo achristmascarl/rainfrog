@@ -24,6 +24,7 @@ struct MenuViewItem {
 struct MenuSchemaItems {
   tables: Vec<String>,
   views: Vec<MenuViewItem>,
+  functions: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -188,6 +189,14 @@ impl Menu {
       })
       .collect();
 
+    let functions: Vec<MenuEntry> = items
+      .functions
+      .iter()
+      .filter(|f| matches_search(f.as_str(), &self.search))
+      .cloned()
+      .map(|name| MenuEntry::Item(MenuItem { name, kind: MenuItemKind::Function }))
+      .collect();
+
     let mut entries = Vec::new();
     if !tables.is_empty() {
       entries.push(MenuEntry::Header("Tables".to_owned()));
@@ -196,6 +205,10 @@ impl Menu {
     if !views.is_empty() {
       entries.push(MenuEntry::Header("Views".to_owned()));
       entries.extend(views);
+    }
+    if !functions.is_empty() {
+      entries.push(MenuEntry::Header("Functions".to_owned()));
+      entries.extend(functions);
     }
     entries
   }
@@ -251,6 +264,7 @@ impl SettableTableList<'_> for Menu {
             "materialized_view" | "materialized view" | "mview" => {
               entry.views.push(MenuViewItem { name, materialized: true })
             },
+            "function" => entry.functions.push(name),
             _ => entry.tables.push(name),
           }
         });
@@ -334,7 +348,9 @@ impl Component for Menu {
                 && let Some((schema, _)) = self.table_map.get_index(self.schema_index)
               {
                 let preview = match (key.code, item.kind.clone()) {
-                  (KeyCode::Char('1'), _) => Some(MenuPreview::Columns),
+                  (KeyCode::Char('1'), MenuItemKind::Table) | (KeyCode::Char('1'), MenuItemKind::View { .. }) => {
+                    Some(MenuPreview::Columns)
+                  },
                   (KeyCode::Char('2'), MenuItemKind::View { .. }) => Some(MenuPreview::Definition),
                   (KeyCode::Char('2'), MenuItemKind::Table) => Some(MenuPreview::Constraints),
                   (KeyCode::Char('3'), MenuItemKind::Table) => Some(MenuPreview::Indexes),
@@ -361,8 +377,12 @@ impl Component for Menu {
         } else if let Some(item) = self.selected_item()
           && let Some((schema, _)) = self.table_map.get_index(self.schema_index)
         {
+          let preview = match item.kind.clone() {
+            MenuItemKind::Function => MenuPreview::Definition,
+            _ => MenuPreview::Rows,
+          };
           self.command_tx.as_ref().unwrap().send(Action::MenuPreview(
-            MenuPreview::Rows,
+            preview,
             MenuTarget { schema: schema.clone(), name: item.name.clone(), kind: item.kind.clone() },
           ))?;
         }
@@ -448,13 +468,13 @@ impl Component for Menu {
                 ListItem::new(Text::styled(format!("─ {title}"), Style::default().fg(Color::DarkGray)))
               },
               MenuEntry::Item(item) => {
-                let display_name = match item.kind {
+                let display_name = match &item.kind {
                   MenuItemKind::View { materialized: true } => format!(" {} (materialized)", item.name),
                   _ => " ".to_owned() + &item.name.clone(),
                 };
                 let is_selected = selected_index == Some(i);
                 if is_selected && focused && !self.search_focused {
-                  match item.kind {
+                  match &item.kind {
                     MenuItemKind::Table => ListItem::new(Text::from(vec![
                       Line::from(display_name),
                       Line::from(if app_state.query_task_running { " ├[...] rows" } else { " ├[<enter>] rows" }),
@@ -479,6 +499,14 @@ impl Component for Menu {
                         " └[...] schema definition"
                       } else {
                         " └[2] schema definition"
+                      }),
+                    ])),
+                    MenuItemKind::Function => ListItem::new(Text::from(vec![
+                      Line::from(display_name),
+                      Line::from(if app_state.query_task_running {
+                        " └[...] schema definition"
+                      } else {
+                        " └[<enter>] schema definition"
                       }),
                     ])),
                   }

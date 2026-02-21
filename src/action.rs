@@ -15,6 +15,7 @@ pub enum MenuPreview {
 pub enum MenuItemKind {
   Table,
   View { materialized: bool },
+  Function,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

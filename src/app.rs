@@ -434,7 +434,10 @@ impl App {
           },
           Action::MenuPreview(preview_type, target) => {
             let preview_query = match preview_type {
-              MenuPreview::Rows => database.preview_rows_query(target.schema.as_str(), target.name.as_str()),
+              MenuPreview::Rows => match target.kind {
+                MenuItemKind::Function => "select 'Row preview is not available for functions' as message".to_owned(),
+                _ => database.preview_rows_query(target.schema.as_str(), target.name.as_str()),
+              },
               MenuPreview::Columns => database.preview_columns_query(target.schema.as_str(), target.name.as_str()),
               MenuPreview::Constraints => {
                 database.preview_constraints_query(target.schema.as_str(), target.name.as_str())
@@ -445,10 +448,14 @@ impl App {
                 MenuItemKind::View { materialized } => {
                   database.preview_view_definition_query(target.schema.as_str(), target.name.as_str(), materialized)
                 },
+                MenuItemKind::Function => {
+                  database.preview_function_definition_query(target.schema.as_str(), target.name.as_str())
+                },
                 MenuItemKind::Table => "select 'Definition preview is only available for views' as message".to_owned(),
               },
             };
-            action_tx.send(Action::QueryToEditor(vec![preview_query.clone()]))?;
+            action_tx
+              .send(Action::QueryToEditor(preview_query.clone().split('\n').map(|s| s.trim().to_string()).collect()))?;
             action_tx.send(Action::FocusEditor)?;
             action_tx.send(Action::FocusMenu)?;
             action_tx.send(Action::Query(vec![preview_query.clone()], false, false))?;
