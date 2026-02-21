@@ -640,7 +640,7 @@ impl App {
       },
       match self.state.focus {
         Focus::Menu =>
-          "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [/] search [g] top [G] bottom",
+          "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [y] copy name [/] search [g] top [G] bottom",
         Focus::Editor if !self.state.query_task_running =>
           "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
         Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",

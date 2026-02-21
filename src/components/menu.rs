@@ -39,6 +39,12 @@ enum MenuEntry {
   Item(MenuItem),
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum CopiedMenuTarget {
+  Schema(String),
+  Item { schema: String, name: String, kind: MenuItemKind },
+}
+
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub enum MenuFocus {
   #[default]
@@ -64,6 +70,7 @@ pub struct Menu {
   menu_focus: MenuFocus,
   search: Option<String>,
   search_focused: bool,
+  copied_target: Option<CopiedMenuTarget>,
 }
 
 impl Menu {
@@ -77,6 +84,7 @@ impl Menu {
       menu_focus: MenuFocus::default(),
       search: None,
       search_focused: false,
+      copied_target: None,
     }
   }
 
@@ -246,6 +254,46 @@ impl Menu {
       _ => None,
     }
   }
+
+  fn clear_copied_target(&mut self) {
+    self.copied_target = None;
+  }
+
+  fn copy_focused_name(&mut self) -> Result<()> {
+    match self.menu_focus {
+      MenuFocus::Schema => {
+        if let Some((schema, _)) = self.table_map.get_index(self.schema_index) {
+          self.command_tx.as_ref().unwrap().send(Action::CopyData(schema.clone()))?;
+          self.copied_target = Some(CopiedMenuTarget::Schema(schema.clone()));
+        }
+      },
+      MenuFocus::Tables => {
+        if let Some(item) = self.selected_item()
+          && let Some((schema, _)) = self.table_map.get_index(self.schema_index)
+        {
+          self.command_tx.as_ref().unwrap().send(Action::CopyData(item.name.clone()))?;
+          self.copied_target =
+            Some(CopiedMenuTarget::Item { schema: schema.clone(), name: item.name, kind: item.kind });
+        }
+      },
+    }
+    Ok(())
+  }
+
+  fn copied_schema_name(&self, schema: &str) -> bool {
+    matches!(self.copied_target.as_ref(), Some(CopiedMenuTarget::Schema(copied_schema)) if copied_schema == schema)
+  }
+
+  fn copied_item_name(&self, schema: &str, item: &MenuItem) -> bool {
+    matches!(
+      self.copied_target.as_ref(),
+      Some(CopiedMenuTarget::Item {
+        schema: copied_schema,
+        name: copied_name,
+        kind: copied_kind,
+      }) if copied_schema == schema && copied_name == &item.name && copied_kind == &item.kind
+    )
+  }
 }
 
 impl SettableTableList<'_> for Menu {
@@ -304,6 +352,7 @@ impl Component for Menu {
     if app_state.focus != Focus::Menu {
       return Ok(None);
     }
+    self.clear_copied_target();
     match mouse.kind {
       MouseEventKind::ScrollDown => self.scroll_down(),
       MouseEventKind::ScrollUp => self.scroll_up(),
@@ -316,6 +365,7 @@ impl Component for Menu {
     if app_state.focus != Focus::Menu {
       return Ok(None);
     }
+    self.clear_copied_target();
     match key.code {
       KeyCode::Right => self.change_focus(MenuFocus::Tables),
       KeyCode::Left => self.change_focus(MenuFocus::Schema),
@@ -343,6 +393,7 @@ impl Component for Menu {
             KeyCode::Char('g') => self.scroll_top(),
             KeyCode::Char('G') => self.scroll_bottom(),
             KeyCode::Char('R') => self.command_tx.as_ref().unwrap().send(Action::LoadMenu)?,
+            KeyCode::Char('y') => self.copy_focused_name()?,
             KeyCode::Char('1') | KeyCode::Char('2') | KeyCode::Char('3') | KeyCode::Char('4') => {
               if let Some(item) = self.selected_item()
                 && let Some((schema, _)) = self.table_map.get_index(self.schema_index)
@@ -442,10 +493,11 @@ impl Component for Menu {
     }
     schema_keys.iter().enumerate().for_each(|(i, k)| {
       let layout_index = if self.search.is_some() { i + 1 } else { i };
+      let schema_label = if self.copied_schema_name(k) { format!("  {k}") } else { k.to_owned() };
       match i {
         x if x == self.schema_index => {
           let block = Block::default()
-            .title(format!(" 󰦄  {k} <alt+1> (schema) "))
+            .title(format!(" 󰦄  {schema_label} <alt+1> (schema) "))
             .borders(Borders::ALL)
             .border_style(if focused && self.menu_focus == MenuFocus::Schema {
               Style::default().fg(Color::Green)
@@ -468,9 +520,15 @@ impl Component for Menu {
                 ListItem::new(Text::styled(format!("─ {title}"), Style::default().fg(Color::DarkGray)))
               },
               MenuEntry::Item(item) => {
+                let is_copied = self.copied_item_name(k, item);
+                let item_label = match &item.kind {
+                  MenuItemKind::View { materialized: true } => format!("{} (materialized)", item.name),
+                  _ => item.name.clone(),
+                };
                 let display_name = match &item.kind {
-                  MenuItemKind::View { materialized: true } => format!(" {} (materialized)", item.name),
-                  _ => " ".to_owned() + &item.name.clone(),
+                  MenuItemKind::View { .. } | MenuItemKind::Table | MenuItemKind::Function => {
+                    format!("{}{}", if is_copied { "   " } else { " " }, item_label)
+                  },
                 };
                 let is_selected = selected_index == Some(i);
                 if is_selected && focused && !self.search_focused {
@@ -539,27 +597,18 @@ impl Component for Menu {
         },
         x if x == self.table_map.keys().len().saturating_sub(1) => {
           f.render_widget(
-            Text::styled(
-              "└ ".to_owned() + k.to_owned().as_str(),
-              if focused { Style::default() } else { Style::new().dim() },
-            ),
+            Text::styled(format!("└ {schema_label}"), if focused { Style::default() } else { Style::new().dim() }),
             layout[layout_index],
           );
         },
         0 => {
           f.render_widget(
-            Text::styled(
-              "┌ ".to_owned() + k.to_owned().as_str(),
-              if focused { Style::default() } else { Style::new().dim() },
-            ),
+            Text::styled(format!("┌ {schema_label}"), if focused { Style::default() } else { Style::new().dim() }),
             layout[layout_index],
           );
         },
         _ => f.render_widget(
-          Text::styled(
-            "├ ".to_owned() + k.to_owned().as_str(),
-            if focused { Style::default() } else { Style::new().dim() },
-          ),
+          Text::styled(format!("├ {schema_label}"), if focused { Style::default() } else { Style::new().dim() }),
           layout[layout_index],
         ),
       };
