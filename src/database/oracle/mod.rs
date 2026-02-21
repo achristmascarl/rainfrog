@@ -220,12 +220,11 @@ impl Database for OracleDriver {
 
   fn preview_function_definition_query(&self, schema: &str, function: &str) -> String {
     format!(
-      "select text
+      "select listagg(text) within group (order by line) as definition
         from user_source
         where type = 'FUNCTION'
           and name = '{}'
-          and user = '{}'
-        order by line",
+          and user = '{}'",
       function, schema
     )
   }

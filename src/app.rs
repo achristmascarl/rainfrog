@@ -454,7 +454,8 @@ impl App {
                 MenuItemKind::Table => "select 'Definition preview is only available for views' as message".to_owned(),
               },
             };
-            action_tx.send(Action::QueryToEditor(vec![preview_query.clone()]))?;
+            action_tx
+              .send(Action::QueryToEditor(preview_query.clone().split('\n').map(|s| s.trim().to_string()).collect()))?;
             action_tx.send(Action::FocusEditor)?;
             action_tx.send(Action::FocusMenu)?;
             action_tx.send(Action::Query(vec![preview_query.clone()], false, false))?;
