@@ -140,6 +140,11 @@ pub trait Database {
 
   /// Returns a query that can be used to preview the definition of a view.
   fn preview_view_definition_query(&self, schema: &str, view: &str, materialized: bool) -> String;
+
+  /// Returns a query that can be used to preview the definition of a function.
+  fn preview_function_definition_query(&self, _schema: &str, _function: &str) -> String {
+    "select 'Function definition preview is not available for this driver' as message".to_owned()
+  }
 }
 
 fn get_first_query(query: String, driver: Driver) -> Result<(String, Statement), ParseError> {

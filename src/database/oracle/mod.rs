@@ -180,6 +180,10 @@ impl Database for OracleDriver {
       union all
       select user, mview_name, 'materialized_view' as object_kind
         from user_mviews
+      union all
+      select user, object_name, 'function' as object_kind
+        from user_objects
+        where object_type = 'FUNCTION'
       order by 1, 3, 2",
     )
   }
@@ -212,6 +216,18 @@ impl Database for OracleDriver {
       );
     }
     format!("select text as definition from user_views where view_name = '{}' and user = '{}'", view, schema)
+  }
+
+  fn preview_function_definition_query(&self, schema: &str, function: &str) -> String {
+    format!(
+      "select text
+        from user_source
+        where type = 'FUNCTION'
+          and name = '{}'
+          and user = '{}'
+        order by line",
+      function, schema
+    )
   }
 }
 

@@ -222,19 +222,31 @@ impl Database for PostgresDriver<'_> {
   async fn load_menu(&self) -> Result<Rows> {
     query_with_pool(
       self.pool.clone().unwrap(),
-      "select n.nspname as table_schema,
-        c.relname as table_name,
-        case
-          when c.relkind in ('r', 'p', 'f') then 'table'
-          when c.relkind = 'v' then 'view'
-          when c.relkind = 'm' then 'materialized_view'
-        end as object_kind
-      from pg_class c
-      join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname != 'pg_catalog'
-        and n.nspname != 'information_schema'
-        and c.relkind in ('r', 'p', 'f', 'v', 'm')
-      order by n.nspname, object_kind, c.relname asc"
+      "select menu_items.table_schema, menu_items.object_name, menu_items.object_kind
+      from (
+        select n.nspname as table_schema,
+          c.relname as object_name,
+          case
+            when c.relkind in ('r', 'p', 'f') then 'table'
+            when c.relkind = 'v' then 'view'
+            when c.relkind = 'm' then 'materialized_view'
+          end as object_kind
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname != 'pg_catalog'
+          and n.nspname != 'information_schema'
+          and c.relkind in ('r', 'p', 'f', 'v', 'm')
+        union all
+        select n.nspname as table_schema,
+          format('%s(%s)', p.proname, pg_get_function_identity_arguments(p.oid)) as object_name,
+          'function' as object_kind
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname != 'pg_catalog'
+          and n.nspname != 'information_schema'
+          and p.prokind = 'f'
+      ) menu_items
+      order by menu_items.table_schema, menu_items.object_kind, menu_items.object_name asc"
         .to_owned(),
     )
     .await
@@ -273,6 +285,17 @@ impl Database for PostgresDriver<'_> {
         where n.nspname = '{schema}'
           and c.relname = '{view}'
           and c.relkind = '{relkind}'"
+    )
+  }
+
+  fn preview_function_definition_query(&self, schema: &str, function: &str) -> String {
+    format!(
+      "select pg_get_functiondef(p.oid) as definition
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = '{schema}'
+          and format('%s(%s)', p.proname, pg_get_function_identity_arguments(p.oid)) = '{function}'
+          and p.prokind = 'f'"
     )
   }
 }

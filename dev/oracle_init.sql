@@ -248,4 +248,26 @@ LEFT JOIN robot_parts rp ON rp.robot_id = r.id
 LEFT JOIN part p ON p.id = rp.part_id
 GROUP BY r.id, r.name;
 
+-- Functions for testing
+CREATE OR REPLACE FUNCTION user_email_domain(p_email IN VARCHAR2)
+RETURN VARCHAR2
+IS
+BEGIN
+  RETURN REGEXP_SUBSTR(p_email, '[^@]+$');
+END;
+/
+
+CREATE OR REPLACE FUNCTION active_user_count
+RETURN NUMBER
+IS
+  v_count NUMBER;
+BEGIN
+  SELECT COUNT(*) INTO v_count
+  FROM "user"
+  WHERE is_active = 1;
+
+  RETURN v_count;
+END;
+/
+
 COMMIT;

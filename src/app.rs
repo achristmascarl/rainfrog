@@ -434,7 +434,10 @@ impl App {
           },
           Action::MenuPreview(preview_type, target) => {
             let preview_query = match preview_type {
-              MenuPreview::Rows => database.preview_rows_query(target.schema.as_str(), target.name.as_str()),
+              MenuPreview::Rows => match target.kind {
+                MenuItemKind::Function => "select 'Row preview is not available for functions' as message".to_owned(),
+                _ => database.preview_rows_query(target.schema.as_str(), target.name.as_str()),
+              },
               MenuPreview::Columns => database.preview_columns_query(target.schema.as_str(), target.name.as_str()),
               MenuPreview::Constraints => {
                 database.preview_constraints_query(target.schema.as_str(), target.name.as_str())
@@ -444,6 +447,9 @@ impl App {
               MenuPreview::Definition => match target.kind {
                 MenuItemKind::View { materialized } => {
                   database.preview_view_definition_query(target.schema.as_str(), target.name.as_str(), materialized)
+                },
+                MenuItemKind::Function => {
+                  database.preview_function_definition_query(target.schema.as_str(), target.name.as_str())
                 },
                 MenuItemKind::Table => "select 'Definition preview is only available for views' as message".to_owned(),
               },

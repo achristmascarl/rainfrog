@@ -223,6 +223,26 @@ LEFT JOIN "robot_parts" rp ON rp."robot_id" = r."id"
 LEFT JOIN "part" p ON p."id" = rp."part_id"
 GROUP BY r."id", r."name";
 
+-- Functions for testing
+CREATE OR REPLACE FUNCTION "public"."user_email_domain"("email" TEXT)
+RETURNS TEXT
+LANGUAGE SQL
+IMMUTABLE
+AS $$
+SELECT split_part("email", '@', 2);
+$$;
+
+CREATE OR REPLACE FUNCTION "public"."robot_total_part_cost"("target_robot_id" INTEGER)
+RETURNS NUMERIC
+LANGUAGE SQL
+STABLE
+AS $$
+SELECT COALESCE(SUM(p."cost" * rp."part_quantity"), 0)
+FROM "robot_parts" rp
+JOIN "part" p ON p."id" = rp."part_id"
+WHERE rp."robot_id" = "target_robot_id";
+$$;
+
 CREATE TABLE "etl"."teams" (
 	"id" INTEGER NOT NULL UNIQUE,
 	"data" VARCHAR,
@@ -264,3 +284,13 @@ CREATE TABLE "etl"."calendar" (
 	"_created" TIMESTAMPTZ,
 	PRIMARY KEY("id")
 );
+
+CREATE OR REPLACE FUNCTION "etl"."source_table_count"()
+RETURNS INTEGER
+LANGUAGE SQL
+STABLE
+AS $$
+SELECT COUNT(*)::INTEGER
+FROM information_schema.tables
+WHERE table_schema = 'etl';
+$$;

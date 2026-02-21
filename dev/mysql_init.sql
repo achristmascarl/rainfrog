@@ -135,6 +135,22 @@ FROM `robot` r
 LEFT JOIN `robot_parts` rp ON rp.`robot_id` = r.`id`
 GROUP BY r.`id`, r.`name`;
 
+-- Functions for testing
+CREATE FUNCTION `user_email_domain`(`email` VARCHAR(255))
+RETURNS VARCHAR(255)
+DETERMINISTIC
+RETURN SUBSTRING_INDEX(`email`, '@', -1);
+
+CREATE FUNCTION `robot_total_part_cost`(`target_robot_id` INT)
+RETURNS DECIMAL(12,2)
+READS SQL DATA
+RETURN (
+  SELECT COALESCE(SUM(p.`cost` * rp.`part_quantity`), 0)
+  FROM `robot_parts` rp
+  JOIN `part` p ON p.`id` = rp.`part_id`
+  WHERE rp.`robot_id` = `target_robot_id`
+);
+
 -- Additional schema for testing
 CREATE DATABASE `etl`;
 
@@ -228,4 +244,13 @@ CREATE TABLE `calendar` (
 	`id` INT NOT NULL PRIMARY KEY,
 	`data` VARCHAR(255),
 	`_created` TIMESTAMP
+);
+
+CREATE FUNCTION `etl_table_count`()
+RETURNS INT
+READS SQL DATA
+RETURN (
+  SELECT COUNT(*)
+  FROM information_schema.tables
+  WHERE table_schema = DATABASE()
 );
