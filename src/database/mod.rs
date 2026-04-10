@@ -51,6 +51,25 @@ pub struct Rows {
 pub struct QueryResultsWithMetadata {
   pub results: Result<Rows>,
   pub statement_type: Option<Statement>,
+  pub display_statement_type: Option<Statement>,
+}
+
+impl QueryResultsWithMetadata {
+  pub fn new(results: Result<Rows>, statement_type: Option<Statement>) -> Self {
+    Self { results, display_statement_type: statement_type.clone(), statement_type }
+  }
+
+  pub fn with_display_statement_type(
+    results: Result<Rows>,
+    statement_type: Option<Statement>,
+    display_statement_type: Option<Statement>,
+  ) -> Self {
+    Self { results, statement_type, display_statement_type }
+  }
+
+  pub fn data_statement_type(&self) -> Option<Statement> {
+    self.display_statement_type.clone().or_else(|| self.statement_type.clone())
+  }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,7 +96,7 @@ pub type QueryTask = JoinHandle<QueryResultsWithMetadata>;
 
 pub enum DbTaskResult {
   Finished(QueryResultsWithMetadata),
-  ConfirmTx(Option<u64>, Option<Statement>),
+  ConfirmTx(Option<u64>, Option<Statement>, Option<Statement>),
   Pending,
   NoTask,
 }
@@ -173,15 +192,24 @@ pub fn get_execution_type(
   match driver {
     #[cfg(feature = "duckdb")]
     Driver::DuckDb => match default_execution_info.execution_type {
-      ExecutionType::Normal => Ok((ExecutionType::Normal, Some(default_execution_info.statement))),
+      ExecutionType::Normal => {
+        Ok((ExecutionType::Normal, Some(default_execution_info.display_statement)))
+      },
       ExecutionType::Confirm => {
-        Ok((ExecutionType::Confirm, Some(default_execution_info.statement)))
+        Ok((ExecutionType::Confirm, Some(get_confirmation_statement(&default_execution_info))))
       },
       ExecutionType::Transaction => {
-        Ok((ExecutionType::Confirm, Some(default_execution_info.statement)))
+        Ok((ExecutionType::Confirm, Some(get_confirmation_statement(&default_execution_info))))
       }, // don't allow auto-transactions
     },
-    _ => Ok((default_execution_info.execution_type, Some(default_execution_info.statement))),
+    _ => {
+      let statement = match default_execution_info.execution_type {
+        ExecutionType::Normal => default_execution_info.display_statement,
+        ExecutionType::Confirm => get_confirmation_statement(&default_execution_info),
+        ExecutionType::Transaction => default_execution_info.statement,
+      };
+      Ok((default_execution_info.execution_type, Some(statement)))
+    },
   }
 }
 
@@ -189,6 +217,7 @@ pub fn get_execution_type(
 struct ExecutionTypeInfo {
   execution_type: ExecutionType,
   statement: Statement,
+  display_statement: Statement,
 }
 
 fn get_default_execution_info(statement: &Statement, confirmed: bool) -> ExecutionTypeInfo {
@@ -196,6 +225,7 @@ fn get_default_execution_info(statement: &Statement, confirmed: bool) -> Executi
     return ExecutionTypeInfo {
       execution_type: ExecutionType::Normal,
       statement: statement.clone(),
+      display_statement: statement.clone(),
     };
   }
 
@@ -204,6 +234,18 @@ fn get_default_execution_info(statement: &Statement, confirmed: bool) -> Executi
 
 fn get_statement_for_execution_type(statement: &Statement) -> Statement {
   get_statement_execution_type(statement).statement
+}
+
+fn get_display_statement_for_execution_type(statement: &Statement) -> Statement {
+  get_statement_execution_type(statement).display_statement
+}
+
+fn get_confirmation_statement(info: &ExecutionTypeInfo) -> Statement {
+  if matches!(info.display_statement, Statement::Explain { .. }) {
+    info.display_statement.clone()
+  } else {
+    info.statement.clone()
+  }
 }
 
 fn should_stream_tx_results(statement: &Statement) -> bool {
@@ -217,27 +259,45 @@ fn get_statement_execution_type(statement: &Statement) -> ExecutionTypeInfo {
     | Statement::AlterRole { .. }
     | Statement::AlterTable { .. }
     | Statement::Drop { .. }
-    | Statement::Truncate { .. } => {
-      ExecutionTypeInfo { execution_type: ExecutionType::Confirm, statement: statement.clone() }
+    | Statement::Truncate { .. } => ExecutionTypeInfo {
+      execution_type: ExecutionType::Confirm,
+      statement: statement.clone(),
+      display_statement: statement.clone(),
     },
-    Statement::Delete(_) | Statement::Update { .. } => {
-      ExecutionTypeInfo { execution_type: ExecutionType::Transaction, statement: statement.clone() }
+    Statement::Delete(_) | Statement::Update { .. } => ExecutionTypeInfo {
+      execution_type: ExecutionType::Transaction,
+      statement: statement.clone(),
+      display_statement: statement.clone(),
     },
-    Statement::Query(query) => get_query_execution_type(query).unwrap_or_else(|| {
-      ExecutionTypeInfo { execution_type: ExecutionType::Normal, statement: statement.clone() }
-    }),
+    Statement::Query(query) => match get_query_execution_type(query) {
+      Some(mut info) => {
+        info.display_statement = statement.clone();
+        info
+      },
+      None => ExecutionTypeInfo {
+        execution_type: ExecutionType::Normal,
+        statement: statement.clone(),
+        display_statement: statement.clone(),
+      },
+    },
     Statement::Explain { statement: explained_statement, analyze, .. } if *analyze => {
       let info = get_statement_execution_type(explained_statement);
-      if info.execution_type == ExecutionType::Normal {
-        ExecutionTypeInfo { execution_type: ExecutionType::Normal, statement: statement.clone() }
-      } else {
-        info
+      ExecutionTypeInfo {
+        execution_type: info.execution_type,
+        statement: info.statement,
+        display_statement: statement.clone(),
       }
     },
-    Statement::Explain { .. } => {
-      ExecutionTypeInfo { execution_type: ExecutionType::Normal, statement: statement.clone() }
+    Statement::Explain { .. } => ExecutionTypeInfo {
+      execution_type: ExecutionType::Normal,
+      statement: statement.clone(),
+      display_statement: statement.clone(),
     },
-    _ => ExecutionTypeInfo { execution_type: ExecutionType::Normal, statement: statement.clone() },
+    _ => ExecutionTypeInfo {
+      execution_type: ExecutionType::Normal,
+      statement: statement.clone(),
+      display_statement: statement.clone(),
+    },
   }
 }
 
@@ -420,9 +480,30 @@ mod tests {
 
     let (execution_type, statement) =
       get_execution_type(query.to_string(), false, Driver::Postgres).unwrap();
+    let (_, root_statement) = get_first_query(query.to_string(), Driver::Postgres).unwrap();
 
     assert_eq!(execution_type, ExecutionType::Transaction);
     assert!(matches!(statement, Some(Statement::Update { .. })));
+    assert!(matches!(
+      get_display_statement_for_execution_type(&root_statement),
+      Statement::Explain { statement, .. } if matches!(*statement, Statement::Query(_))
+    ));
+  }
+
+  #[test]
+  fn explain_analyze_writes_preserve_explain_display_statement() {
+    let query = "EXPLAIN ANALYZE UPDATE users SET name = 'Jane' WHERE id = 1";
+
+    let (execution_type, statement) =
+      get_execution_type(query.to_string(), false, Driver::Postgres).unwrap();
+    let (_, root_statement) = get_first_query(query.to_string(), Driver::Postgres).unwrap();
+
+    assert_eq!(execution_type, ExecutionType::Transaction);
+    assert!(matches!(statement, Some(Statement::Update { .. })));
+    assert!(matches!(
+      get_display_statement_for_execution_type(&root_statement),
+      Statement::Explain { statement, .. } if matches!(*statement, Statement::Update { .. })
+    ));
   }
 
   #[test]

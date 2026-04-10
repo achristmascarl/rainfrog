@@ -51,12 +51,18 @@ impl Database for OracleDriver {
   }
 
   async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()> {
-    let (first_query, statement_type, routing_statement_type) = if bypass_parser {
-      (query, None, None)
-    } else {
-      let (first, stmt) = super::get_first_query(query, Driver::Oracle)?;
-      (first, Some(super::get_statement_for_execution_type(&stmt)), Some(stmt))
-    };
+    let (first_query, statement_type, display_statement_type, routing_statement_type) =
+      if bypass_parser {
+        (query, None, None, None)
+      } else {
+        let (first, stmt) = super::get_first_query(query, Driver::Oracle)?;
+        (
+          first,
+          Some(super::get_statement_for_execution_type(&stmt)),
+          Some(super::get_display_statement_for_execution_type(&stmt)),
+          Some(stmt),
+        )
+      };
     let pool = self.pool.clone().unwrap();
 
     let conn = Arc::new(pool.get()?);
@@ -65,7 +71,11 @@ impl Database for OracleDriver {
     let task = match routing_statement_type {
       Some(Statement::Query(_)) => OracleTask::Query(tokio::spawn(async move {
         let results = query_with_conn(query_conn.as_ref(), &first_query);
-        QueryResultsWithMetadata { results, statement_type }
+        QueryResultsWithMetadata::with_display_statement_type(
+          results,
+          statement_type,
+          display_statement_type,
+        )
       })),
       _ => OracleTask::TxStart(tokio::spawn(async move {
         let results = execute_with_conn(query_conn.as_ref(), &first_query);
@@ -77,7 +87,11 @@ impl Database for OracleDriver {
             log::error!("{e:?}");
           },
         };
-        Ok(QueryResultsWithMetadata { results, statement_type })
+        Ok(QueryResultsWithMetadata::with_display_statement_type(
+          results,
+          statement_type,
+          display_statement_type,
+        ))
       })),
     };
 
@@ -126,19 +140,28 @@ impl Database for OracleDriver {
           };
           match result {
             // if tx failed to start, return the error immediately
-            QueryResultsWithMetadata { results: Err(e), statement_type } => {
+            QueryResultsWithMetadata {
+              results: Err(e),
+              statement_type,
+              display_statement_type,
+            } => {
               log::error!("Transaction didn't start: {e:?}");
               self.querying_conn = None;
               (
-                DbTaskResult::Finished(QueryResultsWithMetadata {
-                  results: Err(e),
+                DbTaskResult::Finished(QueryResultsWithMetadata::with_display_statement_type(
+                  Err(e),
                   statement_type,
-                }),
+                  display_statement_type,
+                )),
                 None,
               )
             },
             _ => (
-              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+              DbTaskResult::ConfirmTx(
+                rows_affected,
+                result.statement_type.clone(),
+                result.display_statement_type.clone(),
+              ),
               Some(OracleTask::TxPending(Box::new(result))),
             ),
           }

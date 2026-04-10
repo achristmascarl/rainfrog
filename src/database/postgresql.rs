@@ -115,7 +115,7 @@ impl Database for PostgresDriver<'_> {
           log::error!("{e:?}");
         },
       };
-      QueryResultsWithMetadata { results, statement_type: statement_type.clone() }
+      QueryResultsWithMetadata::new(results, statement_type.clone())
     })));
     Ok(())
   }
@@ -185,20 +185,29 @@ impl Database for PostgresDriver<'_> {
           };
           match result {
             // if tx failed to start, return the error immediately
-            QueryResultsWithMetadata { results: Err(e), statement_type } => {
+            QueryResultsWithMetadata {
+              results: Err(e),
+              statement_type,
+              display_statement_type,
+            } => {
               log::error!("Transaction didn't start: {e:?}");
               self.querying_conn = None;
               self.querying_pid = None;
               (
-                DbTaskResult::Finished(QueryResultsWithMetadata {
-                  results: Err(e),
+                DbTaskResult::Finished(QueryResultsWithMetadata::with_display_statement_type(
+                  Err(e),
                   statement_type,
-                }),
+                  display_statement_type,
+                )),
                 None,
               )
             },
             _ => (
-              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+              DbTaskResult::ConfirmTx(
+                rows_affected,
+                result.statement_type.clone(),
+                result.display_statement_type.clone(),
+              ),
               Some(PostgresTask::TxPending(Box::new((tx, result)))),
             ),
           }
@@ -212,6 +221,7 @@ impl Database for PostgresDriver<'_> {
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Postgres)?;
+    let display_statement_type = super::get_display_statement_for_execution_type(&statement_type);
     let statement_type = super::get_statement_for_execution_type(&statement_type);
     let mut tx = self.pool.clone().unwrap().begin().await?;
     let pid = sqlx::raw_sql("SELECT pg_backend_pid()").fetch_one(&mut *tx).await?.get::<i32, _>(0);
@@ -230,17 +240,32 @@ impl Database for PostgresDriver<'_> {
                 rows_affected: Some(rows_affected),
               }),
               statement_type: Some(statement_type),
+              display_statement_type: Some(display_statement_type),
             },
             tx,
           )
         },
         Ok(Either::Right(rows)) => {
           log::info!("{:?} rows affected", rows.rows_affected);
-          (QueryResultsWithMetadata { results: Ok(rows), statement_type: Some(statement_type) }, tx)
+          (
+            QueryResultsWithMetadata::with_display_statement_type(
+              Ok(rows),
+              Some(statement_type),
+              Some(display_statement_type),
+            ),
+            tx,
+          )
         },
         Err(e) => {
           log::error!("{e:?}");
-          (QueryResultsWithMetadata { results: Err(e), statement_type: Some(statement_type) }, tx)
+          (
+            QueryResultsWithMetadata::with_display_statement_type(
+              Err(e),
+              Some(statement_type),
+              Some(display_statement_type),
+            ),
+            tx,
+          )
         },
       }
     })));
