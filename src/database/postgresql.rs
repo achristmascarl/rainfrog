@@ -213,6 +213,7 @@ impl Database for PostgresDriver<'_> {
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Postgres)?;
+    let statement_type = super::get_statement_for_execution_type(&statement_type);
     let mut tx = self.pool.clone().unwrap().begin().await?;
     let pid = sqlx::raw_sql("SELECT pg_backend_pid()").fetch_one(&mut *tx).await?.get::<i32, _>(0);
     log::info!("Starting transaction with PID {}", pid.clone());

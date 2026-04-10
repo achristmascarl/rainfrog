@@ -55,7 +55,7 @@ impl Database for OracleDriver {
       (query, None)
     } else {
       let (first, stmt) = super::get_first_query(query, Driver::Oracle)?;
-      (first, Some(stmt))
+      (first, Some(super::get_statement_for_execution_type(&stmt)))
     };
     let pool = self.pool.clone().unwrap();
 

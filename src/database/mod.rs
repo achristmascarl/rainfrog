@@ -4,7 +4,7 @@ use color_eyre::eyre::Result;
 use sqlparser::dialect::DuckDbDialect;
 
 use sqlparser::{
-  ast::Statement,
+  ast::{Query, SetExpr, Statement},
   dialect::{Dialect, GenericDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
   keywords,
   parser::{Parser, ParserError},
@@ -168,53 +168,122 @@ pub fn get_execution_type(
   driver: Driver,
 ) -> Result<(ExecutionType, Option<Statement>)> {
   let (_, statement) = get_first_query(query, driver)?;
-  let default_execution_type = get_default_execution_type(statement.clone(), confirmed);
+  let default_execution_info = get_default_execution_info(&statement, confirmed);
 
   match driver {
     #[cfg(feature = "duckdb")]
-    Driver::DuckDb => match default_execution_type {
-      ExecutionType::Normal => Ok((ExecutionType::Normal, Some(statement))),
-      ExecutionType::Confirm => Ok((ExecutionType::Confirm, Some(statement))),
-      ExecutionType::Transaction => Ok((ExecutionType::Confirm, Some(statement))), // don't allow auto-transactions
+    Driver::DuckDb => match default_execution_info.execution_type {
+      ExecutionType::Normal => Ok((ExecutionType::Normal, Some(default_execution_info.statement))),
+      ExecutionType::Confirm => {
+        Ok((ExecutionType::Confirm, Some(default_execution_info.statement)))
+      },
+      ExecutionType::Transaction => {
+        Ok((ExecutionType::Confirm, Some(default_execution_info.statement)))
+      }, // don't allow auto-transactions
     },
-    _ => Ok((default_execution_type, Some(statement))),
+    _ => Ok((default_execution_info.execution_type, Some(default_execution_info.statement))),
   }
 }
 
-fn get_default_execution_type(statement: Statement, confirmed: bool) -> ExecutionType {
+#[derive(Debug)]
+struct ExecutionTypeInfo {
+  execution_type: ExecutionType,
+  statement: Statement,
+}
+
+fn get_default_execution_info(statement: &Statement, confirmed: bool) -> ExecutionTypeInfo {
   if confirmed {
-    return ExecutionType::Normal;
+    return ExecutionTypeInfo {
+      execution_type: ExecutionType::Normal,
+      statement: statement.clone(),
+    };
   }
+
+  get_statement_execution_type(statement)
+}
+
+fn get_statement_for_execution_type(statement: &Statement) -> Statement {
+  get_statement_execution_type(statement).statement
+}
+
+fn get_statement_execution_type(statement: &Statement) -> ExecutionTypeInfo {
   match statement {
     Statement::AlterIndex { .. }
     | Statement::AlterView { .. }
     | Statement::AlterRole { .. }
     | Statement::AlterTable { .. }
     | Statement::Drop { .. }
-    | Statement::Truncate { .. } => ExecutionType::Confirm,
-    Statement::Delete(_) | Statement::Update { .. } => ExecutionType::Transaction,
-    Statement::Explain { statement, analyze, .. }
-      if analyze
-        && matches!(
-          statement.as_ref(),
-          Statement::AlterIndex { .. }
-            | Statement::AlterView { .. }
-            | Statement::AlterRole { .. }
-            | Statement::AlterTable { .. }
-            | Statement::Drop { .. }
-            | Statement::Truncate { .. },
-        ) =>
-    {
-      ExecutionType::Confirm
+    | Statement::Truncate { .. } => {
+      ExecutionTypeInfo { execution_type: ExecutionType::Confirm, statement: statement.clone() }
     },
-    Statement::Explain { statement, analyze, .. }
-      if analyze
-        && matches!(statement.as_ref(), Statement::Delete(_) | Statement::Update { .. }) =>
-    {
-      ExecutionType::Transaction
+    Statement::Delete(_) | Statement::Update { .. } => {
+      ExecutionTypeInfo { execution_type: ExecutionType::Transaction, statement: statement.clone() }
     },
-    Statement::Explain { .. } => ExecutionType::Normal,
-    _ => ExecutionType::Normal,
+    Statement::Query(query) => get_query_execution_type(query).unwrap_or_else(|| {
+      ExecutionTypeInfo { execution_type: ExecutionType::Normal, statement: statement.clone() }
+    }),
+    Statement::Explain { statement: explained_statement, analyze, .. } if *analyze => {
+      let info = get_statement_execution_type(explained_statement);
+      if info.execution_type == ExecutionType::Normal {
+        ExecutionTypeInfo { execution_type: ExecutionType::Normal, statement: statement.clone() }
+      } else {
+        info
+      }
+    },
+    Statement::Explain { .. } => {
+      ExecutionTypeInfo { execution_type: ExecutionType::Normal, statement: statement.clone() }
+    },
+    _ => ExecutionTypeInfo { execution_type: ExecutionType::Normal, statement: statement.clone() },
+  }
+}
+
+fn get_query_execution_type(query: &Query) -> Option<ExecutionTypeInfo> {
+  let cte_execution_type = query
+    .with
+    .as_ref()
+    .map(|with| {
+      with
+        .cte_tables
+        .iter()
+        .map(|cte| get_query_execution_type(&cte.query))
+        .fold(None, max_execution_type)
+    })
+    .unwrap_or(None);
+
+  max_execution_type(cte_execution_type, get_set_expr_execution_type(&query.body))
+}
+
+fn get_set_expr_execution_type(set_expr: &SetExpr) -> Option<ExecutionTypeInfo> {
+  match set_expr {
+    SetExpr::Query(query) => get_query_execution_type(query),
+    SetExpr::SetOperation { left, right, .. } => {
+      max_execution_type(get_set_expr_execution_type(left), get_set_expr_execution_type(right))
+    },
+    SetExpr::Insert(statement)
+    | SetExpr::Update(statement)
+    | SetExpr::Delete(statement)
+    | SetExpr::Merge(statement) => Some(get_statement_execution_type(statement)),
+    _ => None,
+  }
+}
+
+fn max_execution_type(
+  left: Option<ExecutionTypeInfo>,
+  right: Option<ExecutionTypeInfo>,
+) -> Option<ExecutionTypeInfo> {
+  match (left, right) {
+    (Some(left), Some(right)) => Some(max_execution_type_info(left, right)),
+    (Some(left), None) => Some(left),
+    (None, Some(right)) => Some(right),
+    (None, None) => None,
+  }
+}
+
+fn max_execution_type_info(left: ExecutionTypeInfo, right: ExecutionTypeInfo) -> ExecutionTypeInfo {
+  match (&left.execution_type, &right.execution_type) {
+    (ExecutionType::Confirm, _) | (_, ExecutionType::Normal) => left,
+    (ExecutionType::Normal, _) | (_, ExecutionType::Confirm) => right,
+    (ExecutionType::Transaction, ExecutionType::Transaction) => left,
   }
 }
 
@@ -263,4 +332,87 @@ pub fn get_dialect(driver: Driver) -> Box<dyn Dialect + Send + Sync> {
 
 pub trait HasRowsAffected {
   fn rows_affected(&self) -> u64;
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn cte_wrapped_writes_use_write_execution_type() {
+    let test_cases = vec![
+      (
+        "WITH rows AS (SELECT id FROM users WHERE id = 1) \
+         UPDATE users SET name = 'Jane' WHERE id IN (SELECT id FROM rows)",
+        ExecutionType::Transaction,
+      ),
+      (
+        "WITH rows AS (SELECT id FROM users WHERE id = 1) \
+         DELETE FROM users WHERE id IN (SELECT id FROM rows)",
+        ExecutionType::Transaction,
+      ),
+      (
+        "WITH rows AS (SELECT id FROM users WHERE id = 1) SELECT * FROM rows",
+        ExecutionType::Normal,
+      ),
+    ];
+
+    for (query, expected) in test_cases {
+      let (execution_type, statement) =
+        get_execution_type(query.to_string(), false, Driver::Postgres).unwrap();
+
+      assert_eq!(execution_type, expected, "Failed for query: {query}");
+
+      match expected {
+        ExecutionType::Transaction => {
+          assert!(
+            matches!(statement, Some(Statement::Update { .. }) | Some(Statement::Delete(_))),
+            "Expected write statement for query: {query}, got {statement:?}"
+          );
+        },
+        ExecutionType::Normal => {
+          assert!(
+            matches!(statement, Some(Statement::Query(_))),
+            "Expected query statement for query: {query}, got {statement:?}"
+          );
+        },
+        ExecutionType::Confirm => {},
+      }
+    }
+  }
+
+  #[test]
+  fn writes_inside_ctes_use_write_execution_type() {
+    let query = "WITH deleted AS (DELETE FROM users WHERE id = 1 RETURNING id) \
+                 SELECT * FROM deleted";
+
+    let (execution_type, statement) =
+      get_execution_type(query.to_string(), false, Driver::Postgres).unwrap();
+
+    assert_eq!(execution_type, ExecutionType::Transaction);
+    assert!(matches!(statement, Some(Statement::Delete(_))));
+  }
+
+  #[test]
+  fn explain_analyze_cte_wrapped_writes_use_write_execution_type() {
+    let query = "EXPLAIN ANALYZE WITH rows AS (SELECT id FROM users WHERE id = 1) \
+                 UPDATE users SET name = 'Jane' WHERE id IN (SELECT id FROM rows)";
+
+    let (execution_type, statement) =
+      get_execution_type(query.to_string(), false, Driver::Postgres).unwrap();
+
+    assert_eq!(execution_type, ExecutionType::Transaction);
+    assert!(matches!(statement, Some(Statement::Update { .. })));
+  }
+
+  #[test]
+  fn explain_without_analyze_cte_wrapped_writes_are_normal() {
+    let query = "EXPLAIN WITH rows AS (SELECT id FROM users WHERE id = 1) \
+                 UPDATE users SET name = 'Jane' WHERE id IN (SELECT id FROM rows)";
+
+    assert_eq!(
+      get_execution_type(query.to_string(), false, Driver::Postgres).unwrap().0,
+      ExecutionType::Normal
+    );
+  }
 }

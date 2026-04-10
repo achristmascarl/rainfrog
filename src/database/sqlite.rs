@@ -132,6 +132,7 @@ impl Database for SqliteDriver<'_> {
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Sqlite)?;
+    let statement_type = super::get_statement_for_execution_type(&statement_type);
     let tx = self.pool.as_mut().unwrap().begin().await?;
     self.task = Some(SqliteTask::TxStart(tokio::spawn(async move {
       let (results, tx) = query_with_tx(tx, &first_query).await;
