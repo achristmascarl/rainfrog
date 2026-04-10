@@ -61,7 +61,8 @@ const MENU_QUERY: &str =
 
 const SIMPLE_MENU_QUERY: &str = "select table_schema, table_name as object_name,
         case
-          when table_type in ('VIEW', 'MATERIALIZED VIEW') then 'view'
+          when table_type = 'MATERIALIZED VIEW' then 'materialized_view'
+          when table_type = 'VIEW' then 'view'
           else 'table'
         end as object_kind
       from information_schema.tables
