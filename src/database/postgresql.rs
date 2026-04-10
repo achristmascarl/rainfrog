@@ -32,6 +32,43 @@ enum PostgresTask<'a> {
   TxPending(Box<(PostgresTransaction<'a>, QueryResultsWithMetadata)>),
 }
 
+const MENU_QUERY: &str =
+  "select menu_items.table_schema, menu_items.object_name, menu_items.object_kind
+      from (
+        select n.nspname as table_schema,
+          c.relname as object_name,
+          case
+            when c.relkind in ('r', 'p', 'f') then 'table'
+            when c.relkind = 'v' then 'view'
+            when c.relkind = 'm' then 'materialized_view'
+          end as object_kind
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname != 'pg_catalog'
+          and n.nspname != 'information_schema'
+          and c.relkind in ('r', 'p', 'f', 'v', 'm')
+        union all
+        select n.nspname as table_schema,
+          format('%s(%s)', p.proname, pg_get_function_identity_arguments(p.oid)) as object_name,
+          'function' as object_kind
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname != 'pg_catalog'
+          and n.nspname != 'information_schema'
+          and p.prokind = 'f'
+      ) menu_items
+      order by menu_items.table_schema, menu_items.object_kind, menu_items.object_name asc";
+
+const SIMPLE_MENU_QUERY: &str = "select table_schema, table_name as object_name,
+        case
+          when table_type = 'MATERIALIZED VIEW' then 'materialized_view'
+          when table_type = 'VIEW' then 'view'
+          else 'table'
+        end as object_kind
+      from information_schema.tables
+      where table_schema not in ('pg_catalog', 'information_schema')
+      order by table_schema, object_kind, object_name asc";
+
 #[derive(Default)]
 pub struct PostgresDriver<'a> {
   pool: Option<Arc<sqlx::Pool<Postgres>>>,
@@ -236,36 +273,14 @@ impl Database for PostgresDriver<'_> {
   }
 
   async fn load_menu(&self) -> Result<Rows> {
-    query_with_pool(
-      self.pool.clone().unwrap(),
-      "select menu_items.table_schema, menu_items.object_name, menu_items.object_kind
-      from (
-        select n.nspname as table_schema,
-          c.relname as object_name,
-          case
-            when c.relkind in ('r', 'p', 'f') then 'table'
-            when c.relkind = 'v' then 'view'
-            when c.relkind = 'm' then 'materialized_view'
-          end as object_kind
-        from pg_class c
-        join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname != 'pg_catalog'
-          and n.nspname != 'information_schema'
-          and c.relkind in ('r', 'p', 'f', 'v', 'm')
-        union all
-        select n.nspname as table_schema,
-          format('%s(%s)', p.proname, pg_get_function_identity_arguments(p.oid)) as object_name,
-          'function' as object_kind
-        from pg_proc p
-        join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname != 'pg_catalog'
-          and n.nspname != 'information_schema'
-          and p.prokind = 'f'
-      ) menu_items
-      order by menu_items.table_schema, menu_items.object_kind, menu_items.object_name asc"
-        .to_owned(),
-    )
-    .await
+    let pool = self.pool.clone().unwrap();
+    match query_with_pool(pool.clone(), MENU_QUERY.to_owned()).await {
+      Ok(rows) => Ok(rows),
+      Err(e) => {
+        log::warn!("Falling back to simple PostgreSQL menu query: {e:?}");
+        query_with_pool(pool, SIMPLE_MENU_QUERY.to_owned()).await
+      },
+    }
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
