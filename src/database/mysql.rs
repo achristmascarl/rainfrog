@@ -316,7 +316,13 @@ impl MySqlDriver<'_> {
     args: crate::cli::Cli,
   ) -> Result<<<sqlx::MySql as sqlx::Database>::Connection as sqlx::Connection>::Options> {
     match args.connection_url {
-      Some(url) => Ok(MySqlConnectOptions::from_str(url.trim().trim_start_matches("jdbc:"))?),
+      Some(url) => {
+        let mut opts = MySqlConnectOptions::from_str(url.trim().trim_start_matches("jdbc:"))?;
+        if args.enable_cleartext_plugin {
+          opts = opts.enable_cleartext_plugin(true);
+        }
+        Ok(opts)
+      },
       None => {
         let mut opts = MySqlConnectOptions::new();
 
@@ -387,6 +393,11 @@ impl MySqlDriver<'_> {
           if !database.is_empty() {
             opts = opts.database(database);
           }
+        }
+
+        // Cleartext plugin
+        if args.enable_cleartext_plugin {
+          opts = opts.enable_cleartext_plugin(true);
         }
 
         Ok(opts)

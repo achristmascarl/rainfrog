@@ -79,6 +79,9 @@ fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
     (None, false) => Ok(match prompt_for_database_selection(config)? {
       Some((conn, name)) => {
         args.connection_name = Some(name.clone());
+        if !args.enable_cleartext_plugin {
+          args.enable_cleartext_plugin = conn.enable_cleartext_plugin.unwrap_or(false);
+        }
         let url = match conn.connection {
           ConnectionString::Raw { connection_string } => Ok(connection_string),
           ConnectionString::Structured { details } => {
@@ -146,6 +149,11 @@ async fn tokio_main() -> Result<()> {
 
   let config = Config::new()?;
   let driver = resolve_driver(&mut args, &config)?;
+  if args.enable_cleartext_plugin && driver != Driver::MySql {
+    eprintln!(
+      "warning: --enable-cleartext-plugin is only supported for mysql connections and will be ignored"
+    );
+  }
 
   run_app(args, config, driver).await
 }

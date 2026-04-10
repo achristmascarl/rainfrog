@@ -60,6 +60,13 @@ pub struct Cli {
   )]
   pub driver: Option<Driver>,
 
+  #[arg(
+    long = "enable-cleartext-plugin",
+    action = clap::ArgAction::SetTrue,
+    help = "Enable MySQL cleartext plugin"
+  )]
+  pub enable_cleartext_plugin: bool,
+
   #[arg(skip)]
   pub connection_name: Option<String>,
 }
@@ -288,5 +295,17 @@ mod tests {
   fn parses_edit_subcommand() {
     let cli = Cli::parse_from(["rainfrog", "edit"]);
     assert_eq!(cli.command, Some(CliCommand::Edit));
+  }
+
+  #[test]
+  fn enable_cleartext_plugin_defaults_to_false() {
+    let cli = Cli::parse_from(["rainfrog"]);
+    assert!(!cli.enable_cleartext_plugin);
+  }
+
+  #[test]
+  fn enable_cleartext_plugin_flag_sets_true() {
+    let cli = Cli::parse_from(["rainfrog", "--enable-cleartext-plugin"]);
+    assert!(cli.enable_cleartext_plugin);
   }
 }
