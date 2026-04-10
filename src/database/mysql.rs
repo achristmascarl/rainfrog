@@ -29,6 +29,37 @@ enum MySqlTask<'a> {
   TxPending(Box<(MySqlTransaction<'a>, QueryResultsWithMetadata)>),
 }
 
+const MENU_QUERY: &str =
+  "select menu_items.table_schema, menu_items.object_name, menu_items.object_kind
+      from (
+        select table_schema as table_schema,
+          table_name as object_name,
+          case
+            when table_type = 'BASE TABLE' then 'table'
+            when table_type = 'VIEW' then 'view'
+            else 'table'
+          end as object_kind
+        from information_schema.tables
+        where table_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
+        union all
+        select routine_schema as table_schema,
+          routine_name as object_name,
+          'function' as object_kind
+        from information_schema.routines
+        where routine_type = 'FUNCTION'
+          and routine_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
+      ) menu_items
+      order by menu_items.table_schema, menu_items.object_kind, menu_items.object_name asc";
+
+const SIMPLE_MENU_QUERY: &str = "select table_schema, table_name as object_name,
+        case
+          when table_type in ('VIEW', 'MATERIALIZED VIEW') then 'view'
+          else 'table'
+        end as object_kind
+      from information_schema.tables
+      where table_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
+      order by table_schema, object_kind, object_name asc";
+
 #[derive(Default)]
 pub struct MySqlDriver<'a> {
   pool: Option<Arc<sqlx::Pool<MySql>>>,
@@ -220,31 +251,14 @@ impl Database for MySqlDriver<'_> {
   }
 
   async fn load_menu(&self) -> Result<Rows> {
-    query_with_pool(
-      self.pool.clone().unwrap(),
-      "select menu_items.table_schema, menu_items.object_name, menu_items.object_kind
-      from (
-        select table_schema as table_schema,
-          table_name as object_name,
-          case
-            when table_type = 'BASE TABLE' then 'table'
-            when table_type = 'VIEW' then 'view'
-            else 'table'
-          end as object_kind
-        from information_schema.tables
-        where table_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
-        union all
-        select routine_schema as table_schema,
-          routine_name as object_name,
-          'function' as object_kind
-        from information_schema.routines
-        where routine_type = 'FUNCTION'
-          and routine_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
-      ) menu_items
-      order by menu_items.table_schema, menu_items.object_kind, menu_items.object_name asc"
-        .to_owned(),
-    )
-    .await
+    let pool = self.pool.clone().unwrap();
+    match query_with_pool(pool.clone(), MENU_QUERY.to_owned()).await {
+      Ok(rows) => Ok(rows),
+      Err(e) => {
+        log::warn!("Falling back to simple MySQL menu query: {e:?}");
+        query_with_pool(pool, SIMPLE_MENU_QUERY.to_owned()).await
+      },
+    }
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
