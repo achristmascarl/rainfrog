@@ -6,6 +6,8 @@ data_row_spacer = false
 [db]
 # you can add frequently used database connections here. example:
 # dev-postgres = { host = "localhost", driver = "postgres", port = 5499, database = "rainfrog", username = "root" }
+# enable_cleartext_plugin is opt-in and only applies to mysql connections
+# dev-mysql = { host = "localhost", driver = "mysql", port = 3306, database = "mydb", username = "user", enable_cleartext_plugin = true }
 
 [keybindings.Menu]
 "<Ctrl-c>" = "Quit"

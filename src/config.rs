@@ -88,6 +88,8 @@ pub struct DatabaseConnection {
   pub connection: ConnectionString,
   #[serde(default)]
   pub default: bool,
+  #[serde(default)]
+  pub enable_cleartext_plugin: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -663,5 +665,46 @@ mod tests {
       parse_key_event("AlT-eNtEr").unwrap(),
       KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT)
     );
+  }
+
+  #[test]
+  fn database_connection_enable_cleartext_plugin_true() {
+    let toml = r#"
+      driver = "mysql"
+      host = "localhost"
+      port = 3306
+      database = "mydb"
+      username = "user"
+      enable_cleartext_plugin = true
+    "#;
+    let conn: DatabaseConnection = toml::from_str(toml).unwrap();
+    assert_eq!(conn.enable_cleartext_plugin, Some(true));
+  }
+
+  #[test]
+  fn database_connection_enable_cleartext_plugin_false() {
+    let toml = r#"
+      driver = "mysql"
+      host = "localhost"
+      port = 3306
+      database = "mydb"
+      username = "user"
+      enable_cleartext_plugin = false
+    "#;
+    let conn: DatabaseConnection = toml::from_str(toml).unwrap();
+    assert_eq!(conn.enable_cleartext_plugin, Some(false));
+  }
+
+  #[test]
+  fn database_connection_enable_cleartext_plugin_omitted() {
+    let toml = r#"
+      driver = "mysql"
+      host = "localhost"
+      port = 3306
+      database = "mydb"
+      username = "user"
+    "#;
+    let conn: DatabaseConnection = toml::from_str(toml).unwrap();
+    assert_eq!(conn.enable_cleartext_plugin, None);
   }
 }
