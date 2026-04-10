@@ -206,6 +206,10 @@ fn get_statement_for_execution_type(statement: &Statement) -> Statement {
   get_statement_execution_type(statement).statement
 }
 
+fn should_stream_tx_results(statement: &Statement) -> bool {
+  matches!(statement, Statement::Explain { .. } | Statement::Query(_))
+}
+
 fn get_statement_execution_type(statement: &Statement) -> ExecutionTypeInfo {
   match statement {
     Statement::AlterIndex { .. }
@@ -385,12 +389,28 @@ mod tests {
   fn writes_inside_ctes_use_write_execution_type() {
     let query = "WITH deleted AS (DELETE FROM users WHERE id = 1 RETURNING id) \
                  SELECT * FROM deleted";
+    let (_, root_statement) = get_first_query(query.to_string(), Driver::Postgres).unwrap();
 
     let (execution_type, statement) =
       get_execution_type(query.to_string(), false, Driver::Postgres).unwrap();
 
+    assert!(matches!(root_statement, Statement::Query(_)));
+    assert!(should_stream_tx_results(&root_statement));
     assert_eq!(execution_type, ExecutionType::Transaction);
     assert!(matches!(statement, Some(Statement::Delete(_))));
+  }
+
+  #[test]
+  fn tx_streaming_uses_root_statement_not_representative_statement() {
+    let query = "WITH deleted AS (DELETE FROM users WHERE id = 1 RETURNING id) \
+                 SELECT * FROM deleted";
+    let (_, root_statement) = get_first_query(query.to_string(), Driver::Postgres).unwrap();
+    let representative_statement = get_statement_for_execution_type(&root_statement);
+
+    assert!(matches!(root_statement, Statement::Query(_)));
+    assert!(matches!(representative_statement, Statement::Delete(_)));
+    assert!(should_stream_tx_results(&root_statement));
+    assert!(!should_stream_tx_results(&representative_statement));
   }
 
   #[test]

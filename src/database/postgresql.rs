@@ -9,7 +9,6 @@ use std::{
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
-use sqlparser::ast::Statement;
 use sqlx::{
   Column, Either, Row, ValueRef,
   pool::PoolConnection,
@@ -465,7 +464,7 @@ where
   let first_query = super::get_first_query(query.to_string(), Driver::Postgres);
   match first_query {
     Ok((first_query, statement_type)) => match statement_type {
-      Statement::Explain { .. } => {
+      statement_type if super::should_stream_tx_results(&statement_type) => {
         let result = query_with_stream(&mut *tx, &first_query).await;
         match result {
           Ok(result) => (Ok(Either::Right(result)), tx),
@@ -715,7 +714,7 @@ fn parse_value(
 
 #[cfg(test)]
 mod tests {
-  use sqlparser::{dialect::PostgreSqlDialect, parser::ParserError};
+  use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::ParserError};
 
   use super::*;
   use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};

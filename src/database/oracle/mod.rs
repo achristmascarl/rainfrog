@@ -51,18 +51,18 @@ impl Database for OracleDriver {
   }
 
   async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()> {
-    let (first_query, statement_type) = if bypass_parser {
-      (query, None)
+    let (first_query, statement_type, routing_statement_type) = if bypass_parser {
+      (query, None, None)
     } else {
       let (first, stmt) = super::get_first_query(query, Driver::Oracle)?;
-      (first, Some(super::get_statement_for_execution_type(&stmt)))
+      (first, Some(super::get_statement_for_execution_type(&stmt)), Some(stmt))
     };
     let pool = self.pool.clone().unwrap();
 
     let conn = Arc::new(pool.get()?);
     let query_conn = conn.clone();
     self.querying_conn = Some(conn);
-    let task = match statement_type {
+    let task = match routing_statement_type {
       Some(Statement::Query(_)) => OracleTask::Query(tokio::spawn(async move {
         let results = query_with_conn(query_conn.as_ref(), &first_query);
         QueryResultsWithMetadata { results, statement_type }
