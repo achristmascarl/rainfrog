@@ -51,51 +51,35 @@ impl Database for OracleDriver {
   }
 
   async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()> {
-    let (first_query, statement_type, display_statement_type, routing_statement_type) =
-      if bypass_parser {
-        (query, None, None, None)
-      } else {
-        let (first, stmt) = super::get_first_query(query, Driver::Oracle)?;
-        (
-          first,
-          Some(super::get_statement_for_execution_type(&stmt)),
-          Some(super::get_display_statement_for_execution_type(&stmt)),
-          Some(stmt),
-        )
-      };
+    let (first_query, statement_type, display_statement_type, use_query_api) = if bypass_parser {
+      (query, None, None, false)
+    } else {
+      let (first, stmt) = super::get_first_query(query, Driver::Oracle)?;
+      let use_query_api = matches!(stmt, Statement::Query(_));
+      (
+        first,
+        Some(super::get_statement_for_execution_type(&stmt)),
+        Some(super::get_display_statement_for_execution_type(&stmt)),
+        use_query_api,
+      )
+    };
     let pool = self.pool.clone().unwrap();
 
     let conn = Arc::new(pool.get()?);
     let query_conn = conn.clone();
     self.querying_conn = Some(conn);
-    let task = match routing_statement_type {
-      Some(Statement::Query(_)) => OracleTask::Query(tokio::spawn(async move {
-        let results = query_with_conn(query_conn.as_ref(), &first_query);
-        QueryResultsWithMetadata::with_display_statement_type(
-          results,
-          statement_type,
-          display_statement_type,
-        )
-      })),
-      _ => OracleTask::TxStart(tokio::spawn(async move {
-        let results = execute_with_conn(query_conn.as_ref(), &first_query);
-        match results {
-          Ok(ref rows) => {
-            log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
-          },
-          Err(ref e) => {
-            log::error!("{e:?}");
-          },
-        };
-        Ok(QueryResultsWithMetadata::with_display_statement_type(
-          results,
-          statement_type,
-          display_statement_type,
-        ))
-      })),
-    };
-
-    self.task = Some(task);
+    self.task = Some(OracleTask::Query(tokio::spawn(async move {
+      let results = if use_query_api {
+        query_with_conn(query_conn.as_ref(), &first_query)
+      } else {
+        execute_with_conn(query_conn.as_ref(), &first_query)
+      };
+      QueryResultsWithMetadata::with_display_statement_type(
+        results,
+        statement_type,
+        display_statement_type,
+      )
+    })));
 
     Ok(())
   }
@@ -176,7 +160,32 @@ impl Database for OracleDriver {
   }
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
-    Self::start_query(self, query, false).await
+    let (first_query, stmt) = super::get_first_query(query, Driver::Oracle)?;
+    let statement_type = Some(super::get_statement_for_execution_type(&stmt));
+    let display_statement_type = Some(super::get_display_statement_for_execution_type(&stmt));
+    let pool = self.pool.clone().unwrap();
+
+    let conn = Arc::new(pool.get()?);
+    let query_conn = conn.clone();
+    self.querying_conn = Some(conn);
+    self.task = Some(OracleTask::TxStart(tokio::spawn(async move {
+      let results = execute_with_conn(query_conn.as_ref(), &first_query);
+      match results {
+        Ok(ref rows) => {
+          log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
+        },
+        Err(ref e) => {
+          log::error!("{e:?}");
+        },
+      };
+      Ok(QueryResultsWithMetadata::with_display_statement_type(
+        results,
+        statement_type,
+        display_statement_type,
+      ))
+    })));
+
+    Ok(())
   }
 
   async fn commit_tx(&mut self) -> Result<Option<QueryResultsWithMetadata>> {
