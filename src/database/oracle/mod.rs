@@ -72,7 +72,12 @@ impl Database for OracleDriver {
       let results = if use_query_api {
         query_with_conn(query_conn.as_ref(), &first_query)
       } else {
-        execute_with_conn(query_conn.as_ref(), &first_query)
+        execute_with_conn(query_conn.as_ref(), &first_query).and_then(|rows| {
+          query_conn
+            .commit()
+            .map_err(|e| color_eyre::eyre::eyre!("Error committing query: {}", e))?;
+          Ok(rows)
+        })
       };
       QueryResultsWithMetadata::with_display_statement_type(
         results,
