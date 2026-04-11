@@ -9,7 +9,6 @@ use std::{
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
-use sqlparser::ast::Statement;
 use sqlx::{
   Column, Either, Row, ValueRef,
   pool::PoolConnection,
@@ -116,7 +115,7 @@ impl Database for PostgresDriver<'_> {
           log::error!("{e:?}");
         },
       };
-      QueryResultsWithMetadata { results, statement_type: statement_type.clone() }
+      QueryResultsWithMetadata::new(results, statement_type.clone())
     })));
     Ok(())
   }
@@ -186,20 +185,29 @@ impl Database for PostgresDriver<'_> {
           };
           match result {
             // if tx failed to start, return the error immediately
-            QueryResultsWithMetadata { results: Err(e), statement_type } => {
+            QueryResultsWithMetadata {
+              results: Err(e),
+              statement_type,
+              display_statement_type,
+            } => {
               log::error!("Transaction didn't start: {e:?}");
               self.querying_conn = None;
               self.querying_pid = None;
               (
-                DbTaskResult::Finished(QueryResultsWithMetadata {
-                  results: Err(e),
+                DbTaskResult::Finished(QueryResultsWithMetadata::with_display_statement_type(
+                  Err(e),
                   statement_type,
-                }),
+                  display_statement_type,
+                )),
                 None,
               )
             },
             _ => (
-              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+              DbTaskResult::ConfirmTx(
+                rows_affected,
+                result.statement_type.clone(),
+                result.display_statement_type.clone(),
+              ),
               Some(PostgresTask::TxPending(Box::new((tx, result)))),
             ),
           }
@@ -213,6 +221,8 @@ impl Database for PostgresDriver<'_> {
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Postgres)?;
+    let display_statement_type = super::get_display_statement_for_execution_type(&statement_type);
+    let statement_type = super::get_statement_for_execution_type(&statement_type);
     let mut tx = self.pool.clone().unwrap().begin().await?;
     let pid = sqlx::raw_sql("SELECT pg_backend_pid()").fetch_one(&mut *tx).await?.get::<i32, _>(0);
     log::info!("Starting transaction with PID {}", pid.clone());
@@ -230,17 +240,32 @@ impl Database for PostgresDriver<'_> {
                 rows_affected: Some(rows_affected),
               }),
               statement_type: Some(statement_type),
+              display_statement_type: Some(display_statement_type),
             },
             tx,
           )
         },
         Ok(Either::Right(rows)) => {
           log::info!("{:?} rows affected", rows.rows_affected);
-          (QueryResultsWithMetadata { results: Ok(rows), statement_type: Some(statement_type) }, tx)
+          (
+            QueryResultsWithMetadata::with_display_statement_type(
+              Ok(rows),
+              Some(statement_type),
+              Some(display_statement_type),
+            ),
+            tx,
+          )
         },
         Err(e) => {
           log::error!("{e:?}");
-          (QueryResultsWithMetadata { results: Err(e), statement_type: Some(statement_type) }, tx)
+          (
+            QueryResultsWithMetadata::with_display_statement_type(
+              Err(e),
+              Some(statement_type),
+              Some(display_statement_type),
+            ),
+            tx,
+          )
         },
       }
     })));
@@ -464,7 +489,7 @@ where
   let first_query = super::get_first_query(query.to_string(), Driver::Postgres);
   match first_query {
     Ok((first_query, statement_type)) => match statement_type {
-      Statement::Explain { .. } => {
+      statement_type if super::should_stream_tx_results(&statement_type) => {
         let result = query_with_stream(&mut *tx, &first_query).await;
         match result {
           Ok(result) => (Ok(Either::Right(result)), tx),
@@ -714,7 +739,7 @@ fn parse_value(
 
 #[cfg(test)]
 mod tests {
-  use sqlparser::{dialect::PostgreSqlDialect, parser::ParserError};
+  use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::ParserError};
 
   use super::*;
   use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};

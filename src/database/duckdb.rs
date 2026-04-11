@@ -45,12 +45,8 @@ impl Database for DuckDbDriver {
     self.task = Some(DuckDbTask::Query(tokio::spawn(async move {
       let results = run_query(connection, first_query).await;
       match results {
-        Ok(rows) => {
-          QueryResultsWithMetadata { results: Ok(rows), statement_type: Some(statement_type) }
-        },
-        Err(e) => {
-          QueryResultsWithMetadata { results: Err(e), statement_type: Some(statement_type) }
-        },
+        Ok(rows) => QueryResultsWithMetadata::new(Ok(rows), Some(statement_type)),
+        Err(e) => QueryResultsWithMetadata::new(Err(e), Some(statement_type)),
       }
     })));
     Ok(())

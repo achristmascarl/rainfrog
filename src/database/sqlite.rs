@@ -9,7 +9,6 @@ use std::{
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
-use sqlparser::ast::Statement;
 use sqlx::{
   Column, Either, Row, ValueRef,
   sqlite::{Sqlite, SqliteConnectOptions, SqlitePoolOptions},
@@ -66,7 +65,7 @@ impl Database for SqliteDriver<'_> {
           log::error!("{e:?}");
         },
       };
-      QueryResultsWithMetadata { results, statement_type: statement_type.clone() }
+      QueryResultsWithMetadata::new(results, statement_type.clone())
     })));
     Ok(())
   }
@@ -107,18 +106,27 @@ impl Database for SqliteDriver<'_> {
           };
           match result {
             // if tx failed to start, return the error immediately
-            QueryResultsWithMetadata { results: Err(e), statement_type } => {
+            QueryResultsWithMetadata {
+              results: Err(e),
+              statement_type,
+              display_statement_type,
+            } => {
               log::error!("Transaction didn't start: {e:?}");
               (
-                DbTaskResult::Finished(QueryResultsWithMetadata {
-                  results: Err(e),
+                DbTaskResult::Finished(QueryResultsWithMetadata::with_display_statement_type(
+                  Err(e),
                   statement_type,
-                }),
+                  display_statement_type,
+                )),
                 None,
               )
             },
             _ => (
-              DbTaskResult::ConfirmTx(rows_affected, result.statement_type.clone()),
+              DbTaskResult::ConfirmTx(
+                rows_affected,
+                result.statement_type.clone(),
+                result.display_statement_type.clone(),
+              ),
               Some(SqliteTask::TxPending(Box::new((tx, result)))),
             ),
           }
@@ -132,6 +140,8 @@ impl Database for SqliteDriver<'_> {
 
   async fn start_tx(&mut self, query: String) -> Result<()> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Sqlite)?;
+    let display_statement_type = super::get_display_statement_for_execution_type(&statement_type);
+    let statement_type = super::get_statement_for_execution_type(&statement_type);
     let tx = self.pool.as_mut().unwrap().begin().await?;
     self.task = Some(SqliteTask::TxStart(tokio::spawn(async move {
       let (results, tx) = query_with_tx(tx, &first_query).await;
@@ -146,17 +156,32 @@ impl Database for SqliteDriver<'_> {
                 rows_affected: Some(rows_affected),
               }),
               statement_type: Some(statement_type),
+              display_statement_type: Some(display_statement_type),
             },
             tx,
           )
         },
         Ok(Either::Right(rows)) => {
           log::info!("{:?} rows affected", rows.rows_affected);
-          (QueryResultsWithMetadata { results: Ok(rows), statement_type: Some(statement_type) }, tx)
+          (
+            QueryResultsWithMetadata::with_display_statement_type(
+              Ok(rows),
+              Some(statement_type),
+              Some(display_statement_type),
+            ),
+            tx,
+          )
         },
         Err(e) => {
           log::error!("{e:?}");
-          (QueryResultsWithMetadata { results: Err(e), statement_type: Some(statement_type) }, tx)
+          (
+            QueryResultsWithMetadata::with_display_statement_type(
+              Err(e),
+              Some(statement_type),
+              Some(display_statement_type),
+            ),
+            tx,
+          )
         },
       }
     })));
@@ -306,7 +331,7 @@ where
   let first_query = super::get_first_query(query.to_string(), Driver::Sqlite);
   match first_query {
     Ok((first_query, statement_type)) => match statement_type {
-      Statement::Explain { .. } => {
+      statement_type if super::should_stream_tx_results(&statement_type) => {
         let result = query_with_stream(&mut *tx, &first_query).await;
         match result {
           Ok(result) => (Ok(Either::Right(result)), tx),
