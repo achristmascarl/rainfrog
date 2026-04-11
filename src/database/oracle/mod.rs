@@ -174,7 +174,11 @@ impl Database for OracleDriver {
     let query_conn = conn.clone();
     self.querying_conn = Some(conn);
     self.task = Some(OracleTask::TxStart(tokio::spawn(async move {
-      let results = execute_with_conn(query_conn.as_ref(), &first_query);
+      let results = if super::should_stream_tx_results(&stmt) {
+        query_with_conn(query_conn.as_ref(), &first_query)
+      } else {
+        execute_with_conn(query_conn.as_ref(), &first_query)
+      };
       match results {
         Ok(ref rows) => {
           log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
