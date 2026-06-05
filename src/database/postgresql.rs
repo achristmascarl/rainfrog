@@ -17,6 +17,7 @@ use sqlx::{
 };
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use tracing::Instrument;
 
 use super::{
   Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows,
@@ -105,18 +106,22 @@ impl Database for PostgresDriver<'_> {
       .get::<i32, _>(0);
     log::info!("Starting query with PID {}", pid.clone());
     self.querying_pid = Some(pid.to_string().clone());
-    self.task = Some(PostgresTask::Query(tokio::spawn(async move {
-      let results = query_with_conn(conn_for_task.lock().await.as_mut(), first_query.clone()).await;
-      match results {
-        Ok(ref rows) => {
-          log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
-        },
-        Err(ref e) => {
-          log::error!("{e:?}");
-        },
-      };
-      QueryResultsWithMetadata::new(results, statement_type.clone())
-    })));
+    self.task = Some(PostgresTask::Query(tokio::spawn(
+      async move {
+        let results =
+          query_with_conn(conn_for_task.lock().await.as_mut(), first_query.clone()).await;
+        match results {
+          Ok(ref rows) => {
+            log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
+          },
+          Err(ref e) => {
+            log::error!("{e:?}");
+          },
+        };
+        QueryResultsWithMetadata::new(results, statement_type.clone())
+      }
+      .in_current_span(),
+    )));
     Ok(())
   }
 
@@ -227,48 +232,51 @@ impl Database for PostgresDriver<'_> {
     let pid = sqlx::raw_sql("SELECT pg_backend_pid()").fetch_one(&mut *tx).await?.get::<i32, _>(0);
     log::info!("Starting transaction with PID {}", pid.clone());
     self.querying_pid = Some(pid.to_string().clone());
-    self.task = Some(PostgresTask::TxStart(tokio::spawn(async move {
-      let (results, tx) = query_with_tx(tx, &first_query).await;
-      match results {
-        Ok(Either::Left(rows_affected)) => {
-          log::info!("{rows_affected:?} rows affected");
-          (
-            QueryResultsWithMetadata {
-              results: Ok(Rows {
-                headers: vec![],
-                rows: vec![],
-                rows_affected: Some(rows_affected),
-              }),
-              statement_type: Some(statement_type),
-              display_statement_type: Some(display_statement_type),
-            },
-            tx,
-          )
-        },
-        Ok(Either::Right(rows)) => {
-          log::info!("{:?} rows affected", rows.rows_affected);
-          (
-            QueryResultsWithMetadata::with_display_statement_type(
-              Ok(rows),
-              Some(statement_type),
-              Some(display_statement_type),
-            ),
-            tx,
-          )
-        },
-        Err(e) => {
-          log::error!("{e:?}");
-          (
-            QueryResultsWithMetadata::with_display_statement_type(
-              Err(e),
-              Some(statement_type),
-              Some(display_statement_type),
-            ),
-            tx,
-          )
-        },
+    self.task = Some(PostgresTask::TxStart(tokio::spawn(
+      async move {
+        let (results, tx) = query_with_tx(tx, &first_query).await;
+        match results {
+          Ok(Either::Left(rows_affected)) => {
+            log::info!("{rows_affected:?} rows affected");
+            (
+              QueryResultsWithMetadata {
+                results: Ok(Rows {
+                  headers: vec![],
+                  rows: vec![],
+                  rows_affected: Some(rows_affected),
+                }),
+                statement_type: Some(statement_type),
+                display_statement_type: Some(display_statement_type),
+              },
+              tx,
+            )
+          },
+          Ok(Either::Right(rows)) => {
+            log::info!("{:?} rows affected", rows.rows_affected);
+            (
+              QueryResultsWithMetadata::with_display_statement_type(
+                Ok(rows),
+                Some(statement_type),
+                Some(display_statement_type),
+              ),
+              tx,
+            )
+          },
+          Err(e) => {
+            log::error!("{e:?}");
+            (
+              QueryResultsWithMetadata::with_display_statement_type(
+                Err(e),
+                Some(statement_type),
+                Some(display_statement_type),
+              ),
+              tx,
+            )
+          },
+        }
       }
-    })));
+      .in_current_span(),
+    )));
     Ok(())
   }
 

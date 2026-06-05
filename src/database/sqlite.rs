@@ -14,6 +14,7 @@ use sqlx::{
   sqlite::{Sqlite, SqliteConnectOptions, SqlitePoolOptions},
   types::uuid,
 };
+use tracing::Instrument;
 
 use super::{
   Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
@@ -55,18 +56,21 @@ impl Database for SqliteDriver<'_> {
       },
     };
     let pool = self.pool.clone().unwrap();
-    self.task = Some(SqliteTask::Query(tokio::spawn(async move {
-      let results = query_with_pool(pool, first_query.clone()).await;
-      match results {
-        Ok(ref rows) => {
-          log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
-        },
-        Err(ref e) => {
-          log::error!("{e:?}");
-        },
-      };
-      QueryResultsWithMetadata::new(results, statement_type.clone())
-    })));
+    self.task = Some(SqliteTask::Query(tokio::spawn(
+      async move {
+        let results = query_with_pool(pool, first_query.clone()).await;
+        match results {
+          Ok(ref rows) => {
+            log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
+          },
+          Err(ref e) => {
+            log::error!("{e:?}");
+          },
+        };
+        QueryResultsWithMetadata::new(results, statement_type.clone())
+      }
+      .in_current_span(),
+    )));
     Ok(())
   }
 
@@ -143,48 +147,51 @@ impl Database for SqliteDriver<'_> {
     let display_statement_type = super::get_display_statement_for_execution_type(&statement_type);
     let statement_type = super::get_statement_for_execution_type(&statement_type);
     let tx = self.pool.as_mut().unwrap().begin().await?;
-    self.task = Some(SqliteTask::TxStart(tokio::spawn(async move {
-      let (results, tx) = query_with_tx(tx, &first_query).await;
-      match results {
-        Ok(Either::Left(rows_affected)) => {
-          log::info!("{rows_affected:?} rows affected");
-          (
-            QueryResultsWithMetadata {
-              results: Ok(Rows {
-                headers: vec![],
-                rows: vec![],
-                rows_affected: Some(rows_affected),
-              }),
-              statement_type: Some(statement_type),
-              display_statement_type: Some(display_statement_type),
-            },
-            tx,
-          )
-        },
-        Ok(Either::Right(rows)) => {
-          log::info!("{:?} rows affected", rows.rows_affected);
-          (
-            QueryResultsWithMetadata::with_display_statement_type(
-              Ok(rows),
-              Some(statement_type),
-              Some(display_statement_type),
-            ),
-            tx,
-          )
-        },
-        Err(e) => {
-          log::error!("{e:?}");
-          (
-            QueryResultsWithMetadata::with_display_statement_type(
-              Err(e),
-              Some(statement_type),
-              Some(display_statement_type),
-            ),
-            tx,
-          )
-        },
+    self.task = Some(SqliteTask::TxStart(tokio::spawn(
+      async move {
+        let (results, tx) = query_with_tx(tx, &first_query).await;
+        match results {
+          Ok(Either::Left(rows_affected)) => {
+            log::info!("{rows_affected:?} rows affected");
+            (
+              QueryResultsWithMetadata {
+                results: Ok(Rows {
+                  headers: vec![],
+                  rows: vec![],
+                  rows_affected: Some(rows_affected),
+                }),
+                statement_type: Some(statement_type),
+                display_statement_type: Some(display_statement_type),
+              },
+              tx,
+            )
+          },
+          Ok(Either::Right(rows)) => {
+            log::info!("{:?} rows affected", rows.rows_affected);
+            (
+              QueryResultsWithMetadata::with_display_statement_type(
+                Ok(rows),
+                Some(statement_type),
+                Some(display_statement_type),
+              ),
+              tx,
+            )
+          },
+          Err(e) => {
+            log::error!("{e:?}");
+            (
+              QueryResultsWithMetadata::with_display_statement_type(
+                Err(e),
+                Some(statement_type),
+                Some(display_statement_type),
+              ),
+              tx,
+            )
+          },
+        }
       }
-    })));
+      .in_current_span(),
+    )));
     Ok(())
   }
 

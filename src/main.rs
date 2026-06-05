@@ -31,10 +31,11 @@ use config::{
 };
 use dotenvy::dotenv;
 use keyring::get_password;
+use tracing::Instrument;
 
 use crate::{
   app::App,
-  utils::{initialize_logging, initialize_panic_handler},
+  utils::{initialize_logging, initialize_panic_handler, session_id},
 };
 
 async fn run_app(mut args: Cli, config: Config, driver: Driver) -> Result<()> {
@@ -147,15 +148,28 @@ async fn tokio_main() -> Result<()> {
 
   initialize_panic_handler()?;
 
-  let config = Config::new()?;
-  let driver = resolve_driver(&mut args, &config)?;
-  if args.enable_cleartext_plugin && driver != Driver::MySql {
-    eprintln!(
-      "warning: --enable-cleartext-plugin is only supported for mysql connections and will be ignored"
-    );
-  }
+  let session_marker = format!("[{}]", session_id());
+  let session_span = tracing::info_span!(
+    "session",
+    id = %session_marker,
+    db = tracing::field::Empty,
+    conn = tracing::field::Empty,
+  );
+  async move {
+    let config = Config::new()?;
+    let driver = resolve_driver(&mut args, &config)?;
+    let driver_name = format!("{driver:?}");
+    tracing::Span::current().record("db", driver_name.as_str());
+    if args.enable_cleartext_plugin && driver != Driver::MySql {
+      eprintln!(
+        "warning: --enable-cleartext-plugin is only supported for mysql connections and will be ignored"
+      );
+    }
 
-  run_app(args, config, driver).await
+    run_app(args, config, driver).await
+  }
+  .instrument(session_span)
+  .await
 }
 
 #[tokio::main]
