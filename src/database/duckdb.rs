@@ -11,6 +11,7 @@ use duckdb::{
   Config, Connection,
   types::{OrderedMap, TimeUnit, Value as DuckValue},
 };
+use tracing::Instrument;
 
 use crate::cli::{Cli, Driver};
 
@@ -42,13 +43,16 @@ impl Database for DuckDbDriver {
     // since Connection isn't Send/Sync, we need to clone it for each query:
     // https://github.com/duckdb/duckdb-rs/issues/378
     let connection = self.connection.as_ref().unwrap().try_clone()?;
-    self.task = Some(DuckDbTask::Query(tokio::spawn(async move {
-      let results = run_query(connection, first_query).await;
-      match results {
-        Ok(rows) => QueryResultsWithMetadata::new(Ok(rows), Some(statement_type)),
-        Err(e) => QueryResultsWithMetadata::new(Err(e), Some(statement_type)),
+    self.task = Some(DuckDbTask::Query(tokio::spawn(
+      async move {
+        let results = run_query(connection, first_query).await;
+        match results {
+          Ok(rows) => QueryResultsWithMetadata::new(Ok(rows), Some(statement_type)),
+          Err(e) => QueryResultsWithMetadata::new(Err(e), Some(statement_type)),
+        }
       }
-    })));
+      .in_current_span(),
+    )));
     Ok(())
   }
 

@@ -167,8 +167,9 @@ impl App {
     };
     let default_title = database.init(args.clone()).await?;
     let terminal_title = args.connection_name.clone().unwrap_or(default_title);
+    tracing::Span::current().record("conn", terminal_title.as_str());
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
-    log::info!("{driver:?}");
+    log::info!("driver: {driver:?}, connection: {terminal_title}");
 
     let mut tui = tui::Tui::new()?
       .mouse(self.mouse_mode_override.or(self.config.settings.mouse_mode))

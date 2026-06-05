@@ -132,11 +132,15 @@ pub fn get_export_dir() -> PathBuf {
   }
 }
 
+pub fn session_id() -> String {
+  std::process::id().to_string()
+}
+
 pub fn initialize_logging() -> Result<()> {
   let directory = get_data_dir();
   std::fs::create_dir_all(directory.clone())?;
   let log_path = directory.join(LOG_FILE.clone());
-  let log_file = std::fs::File::create(log_path)?;
+  let log_file = std::fs::OpenOptions::new().create(true).append(true).open(log_path)?;
   // TODO: Audit that the environment access only happens in single-threaded code.
   unsafe {
     std::env::set_var(
