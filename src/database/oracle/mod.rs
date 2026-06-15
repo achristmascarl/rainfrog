@@ -14,9 +14,24 @@ use crate::cli::Driver;
 
 use super::{Database, DbTaskResult, Header, QueryResultsWithMetadata, QueryTask, Rows};
 
+type ConnectionTask = JoinHandle<Result<Arc<Connection>>>;
 type TransactionTask = JoinHandle<Result<QueryResultsWithMetadata>>;
 enum OracleTask {
+  QueryConnect {
+    handle: ConnectionTask,
+    first_query: String,
+    statement_type: Option<Statement>,
+    display_statement_type: Option<Statement>,
+    use_query_api: bool,
+  },
   Query(QueryTask),
+  TxConnect {
+    handle: ConnectionTask,
+    first_query: String,
+    statement_type: Option<Statement>,
+    display_statement_type: Option<Statement>,
+    stream_results: bool,
+  },
   TxStart(TransactionTask),
   TxPending(Box<QueryResultsWithMetadata>),
 }
@@ -66,29 +81,13 @@ impl Database for OracleDriver {
     };
     let pool = self.pool.clone().unwrap();
 
-    let conn = Arc::new(pool.get()?);
-    let query_conn = conn.clone();
-    self.querying_conn = Some(conn);
-    self.task = Some(OracleTask::Query(tokio::spawn(
-      async move {
-        let results = if use_query_api {
-          query_with_conn(query_conn.as_ref(), &first_query)
-        } else {
-          execute_with_conn(query_conn.as_ref(), &first_query).and_then(|rows| {
-            query_conn
-              .commit()
-              .map_err(|e| color_eyre::eyre::eyre!("Error committing query: {}", e))?;
-            Ok(rows)
-          })
-        };
-        QueryResultsWithMetadata::with_display_statement_type(
-          results,
-          statement_type,
-          display_statement_type,
-        )
-      }
-      .in_current_span(),
-    )));
+    self.task = Some(OracleTask::QueryConnect {
+      handle: tokio::spawn(async move { Ok(Arc::new(pool.get()?)) }.in_current_span()),
+      first_query,
+      statement_type,
+      display_statement_type,
+      use_query_api,
+    });
 
     Ok(())
   }
@@ -96,7 +95,9 @@ impl Database for OracleDriver {
   async fn abort_query(&mut self) -> Result<bool> {
     if let Some(task) = self.task.take() {
       match task {
+        OracleTask::QueryConnect { handle, .. } => handle.abort(),
         OracleTask::Query(handle) => handle.abort(),
+        OracleTask::TxConnect { handle, .. } => handle.abort(),
         OracleTask::TxStart(handle) => handle.abort(),
         _ => {},
       };
@@ -114,12 +115,106 @@ impl Database for OracleDriver {
   async fn get_query_results(&mut self) -> Result<DbTaskResult> {
     let (task_result, next_task) = match self.task.take() {
       None => (DbTaskResult::NoTask, None),
+      Some(OracleTask::QueryConnect {
+        handle,
+        first_query,
+        statement_type,
+        display_statement_type,
+        use_query_api,
+      }) => {
+        if !handle.is_finished() {
+          (
+            DbTaskResult::Pending,
+            Some(OracleTask::QueryConnect {
+              handle,
+              first_query,
+              statement_type,
+              display_statement_type,
+              use_query_api,
+            }),
+          )
+        } else {
+          match handle.await? {
+            Ok(conn) => {
+              self.querying_conn = Some(conn.clone());
+              (
+                DbTaskResult::Pending,
+                Some(OracleTask::Query(spawn_query_task(
+                  conn,
+                  first_query,
+                  statement_type,
+                  display_statement_type,
+                  use_query_api,
+                ))),
+              )
+            },
+            Err(e) => {
+              log::error!("Connection acquisition failed: {e:?}");
+              (
+                DbTaskResult::Finished(QueryResultsWithMetadata::with_display_statement_type(
+                  Err(e),
+                  statement_type,
+                  display_statement_type,
+                )),
+                None,
+              )
+            },
+          }
+        }
+      },
       Some(OracleTask::Query(handle)) => {
         if !handle.is_finished() {
           (DbTaskResult::Pending, Some(OracleTask::Query(handle)))
         } else {
           self.querying_conn = None;
           (DbTaskResult::Finished(handle.await?), None)
+        }
+      },
+      Some(OracleTask::TxConnect {
+        handle,
+        first_query,
+        statement_type,
+        display_statement_type,
+        stream_results,
+      }) => {
+        if !handle.is_finished() {
+          (
+            DbTaskResult::Pending,
+            Some(OracleTask::TxConnect {
+              handle,
+              first_query,
+              statement_type,
+              display_statement_type,
+              stream_results,
+            }),
+          )
+        } else {
+          match handle.await? {
+            Ok(conn) => {
+              self.querying_conn = Some(conn.clone());
+              (
+                DbTaskResult::Pending,
+                Some(OracleTask::TxStart(spawn_tx_task(
+                  conn,
+                  first_query,
+                  statement_type,
+                  display_statement_type,
+                  stream_results,
+                ))),
+              )
+            },
+            Err(e) => {
+              log::error!("Transaction didn't start: {e:?}");
+              (
+                DbTaskResult::Finished(QueryResultsWithMetadata::with_display_statement_type(
+                  Err(e),
+                  statement_type,
+                  display_statement_type,
+                )),
+                None,
+              )
+            },
+          }
         }
       },
       Some(OracleTask::TxStart(handle)) => {
@@ -174,32 +269,13 @@ impl Database for OracleDriver {
     let display_statement_type = Some(super::get_display_statement_for_execution_type(&stmt));
     let pool = self.pool.clone().unwrap();
 
-    let conn = Arc::new(pool.get()?);
-    let query_conn = conn.clone();
-    self.querying_conn = Some(conn);
-    self.task = Some(OracleTask::TxStart(tokio::spawn(
-      async move {
-        let results = if super::should_stream_tx_results(&stmt) {
-          query_with_conn(query_conn.as_ref(), &first_query)
-        } else {
-          execute_with_conn(query_conn.as_ref(), &first_query)
-        };
-        match results {
-          Ok(ref rows) => {
-            log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
-          },
-          Err(ref e) => {
-            log::error!("{e:?}");
-          },
-        };
-        Ok(QueryResultsWithMetadata::with_display_statement_type(
-          results,
-          statement_type,
-          display_statement_type,
-        ))
-      }
-      .in_current_span(),
-    )));
+    self.task = Some(OracleTask::TxConnect {
+      handle: tokio::spawn(async move { Ok(Arc::new(pool.get()?)) }.in_current_span()),
+      first_query,
+      statement_type,
+      display_statement_type,
+      stream_results: super::should_stream_tx_results(&stmt),
+    });
 
     Ok(())
   }
@@ -291,6 +367,61 @@ impl Database for OracleDriver {
       function, schema
     )
   }
+}
+
+fn spawn_query_task(
+  query_conn: Arc<Connection>,
+  first_query: String,
+  statement_type: Option<Statement>,
+  display_statement_type: Option<Statement>,
+  use_query_api: bool,
+) -> QueryTask {
+  tokio::spawn(async move {
+    let results = if use_query_api {
+      query_with_conn(query_conn.as_ref(), &first_query)
+    } else {
+      execute_with_conn(query_conn.as_ref(), &first_query).and_then(|rows| {
+        query_conn
+          .commit()
+          .map_err(|e| color_eyre::eyre::eyre!("Error committing query: {}", e))?;
+        Ok(rows)
+      })
+    };
+    QueryResultsWithMetadata::with_display_statement_type(
+      results,
+      statement_type,
+      display_statement_type,
+    )
+  })
+}
+
+fn spawn_tx_task(
+  query_conn: Arc<Connection>,
+  first_query: String,
+  statement_type: Option<Statement>,
+  display_statement_type: Option<Statement>,
+  stream_results: bool,
+) -> TransactionTask {
+  tokio::spawn(async move {
+    let results = if stream_results {
+      query_with_conn(query_conn.as_ref(), &first_query)
+    } else {
+      execute_with_conn(query_conn.as_ref(), &first_query)
+    };
+    match results {
+      Ok(ref rows) => {
+        log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
+      },
+      Err(ref e) => {
+        log::error!("{e:?}");
+      },
+    };
+    Ok(QueryResultsWithMetadata::with_display_statement_type(
+      results,
+      statement_type,
+      display_statement_type,
+    ))
+  })
 }
 
 fn query_with_pool(pool: &Pool, query: &str) -> Result<Rows> {

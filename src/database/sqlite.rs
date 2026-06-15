@@ -9,6 +9,7 @@ use std::{
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
+use sqlparser::ast::Statement;
 use sqlx::{
   Column, Either, Row, ValueRef,
   sqlite::{Sqlite, SqliteConnectOptions, SqlitePoolOptions},
@@ -20,25 +21,31 @@ use super::{
   Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
 };
 
-type SqliteTransaction<'a> = sqlx::Transaction<'a, Sqlite>;
-type TransactionTask<'a> =
-  tokio::task::JoinHandle<(QueryResultsWithMetadata, SqliteTransaction<'a>)>;
-enum SqliteTask<'a> {
+type SqliteTransaction = sqlx::Transaction<'static, Sqlite>;
+type TransactionAcquireTask = tokio::task::JoinHandle<Result<SqliteTransaction>>;
+type TransactionTask = tokio::task::JoinHandle<(QueryResultsWithMetadata, SqliteTransaction)>;
+enum SqliteTask {
   Query(QueryTask),
-  TxStart(TransactionTask<'a>),
-  TxPending(Box<(SqliteTransaction<'a>, QueryResultsWithMetadata)>),
+  TxConnect {
+    handle: TransactionAcquireTask,
+    first_query: String,
+    statement_type: Statement,
+    display_statement_type: Statement,
+  },
+  TxStart(TransactionTask),
+  TxPending(Box<(SqliteTransaction, QueryResultsWithMetadata)>),
 }
 
 #[derive(Default)]
-pub struct SqliteDriver<'a> {
+pub struct SqliteDriver {
   pool: Option<Arc<sqlx::Pool<Sqlite>>>,
-  task: Option<SqliteTask<'a>>,
+  task: Option<SqliteTask>,
 }
 
 #[async_trait(?Send)]
-impl Database for SqliteDriver<'_> {
+impl Database for SqliteDriver {
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
-    let opts = super::sqlite::SqliteDriver::<'_>::build_connection_opts(args)?;
+    let opts = super::sqlite::SqliteDriver::build_connection_opts(args)?;
     let pool =
       Arc::new(SqlitePoolOptions::new().max_connections(3).connect_with(opts.clone()).await?);
     self.pool = Some(pool);
@@ -79,6 +86,7 @@ impl Database for SqliteDriver<'_> {
       Some(task) => {
         match task {
           SqliteTask::Query(handle) => handle.abort(),
+          SqliteTask::TxConnect { handle, .. } => handle.abort(),
           SqliteTask::TxStart(handle) => handle.abort(),
           _ => {},
         };
@@ -97,6 +105,47 @@ impl Database for SqliteDriver<'_> {
         } else {
           let result = handle.await?;
           (DbTaskResult::Finished(result), None)
+        }
+      },
+      Some(SqliteTask::TxConnect {
+        handle,
+        first_query,
+        statement_type,
+        display_statement_type,
+      }) => {
+        if !handle.is_finished() {
+          (
+            DbTaskResult::Pending,
+            Some(SqliteTask::TxConnect {
+              handle,
+              first_query,
+              statement_type,
+              display_statement_type,
+            }),
+          )
+        } else {
+          match handle.await? {
+            Ok(tx) => (
+              DbTaskResult::Pending,
+              Some(SqliteTask::TxStart(spawn_tx_task(
+                tx,
+                first_query,
+                statement_type,
+                display_statement_type,
+              ))),
+            ),
+            Err(e) => {
+              log::error!("Transaction didn't start: {e:?}");
+              (
+                DbTaskResult::Finished(QueryResultsWithMetadata::with_display_statement_type(
+                  Err(e),
+                  Some(statement_type),
+                  Some(display_statement_type),
+                )),
+                None,
+              )
+            },
+          }
         }
       },
       Some(SqliteTask::TxStart(handle)) => {
@@ -146,52 +195,13 @@ impl Database for SqliteDriver<'_> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::Sqlite)?;
     let display_statement_type = super::get_display_statement_for_execution_type(&statement_type);
     let statement_type = super::get_statement_for_execution_type(&statement_type);
-    let tx = self.pool.as_mut().unwrap().begin().await?;
-    self.task = Some(SqliteTask::TxStart(tokio::spawn(
-      async move {
-        let (results, tx) = query_with_tx(tx, &first_query).await;
-        match results {
-          Ok(Either::Left(rows_affected)) => {
-            log::info!("{rows_affected:?} rows affected");
-            (
-              QueryResultsWithMetadata {
-                results: Ok(Rows {
-                  headers: vec![],
-                  rows: vec![],
-                  rows_affected: Some(rows_affected),
-                }),
-                statement_type: Some(statement_type),
-                display_statement_type: Some(display_statement_type),
-              },
-              tx,
-            )
-          },
-          Ok(Either::Right(rows)) => {
-            log::info!("{:?} rows affected", rows.rows_affected);
-            (
-              QueryResultsWithMetadata::with_display_statement_type(
-                Ok(rows),
-                Some(statement_type),
-                Some(display_statement_type),
-              ),
-              tx,
-            )
-          },
-          Err(e) => {
-            log::error!("{e:?}");
-            (
-              QueryResultsWithMetadata::with_display_statement_type(
-                Err(e),
-                Some(statement_type),
-                Some(display_statement_type),
-              ),
-              tx,
-            )
-          },
-        }
-      }
-      .in_current_span(),
-    )));
+    let pool = self.pool.clone().unwrap();
+    self.task = Some(SqliteTask::TxConnect {
+      handle: tokio::spawn(async move { Ok(pool.begin().await?) }.in_current_span()),
+      first_query,
+      statement_type,
+      display_statement_type,
+    });
     Ok(())
   }
 
@@ -263,7 +273,7 @@ impl Database for SqliteDriver<'_> {
   }
 }
 
-impl SqliteDriver<'_> {
+impl SqliteDriver {
   pub fn new() -> Self {
     Self { pool: None, task: None }
   }
@@ -299,6 +309,52 @@ async fn query_with_pool(pool: Arc<sqlx::Pool<Sqlite>>, query: String) -> Result
   query_with_stream(&*pool.clone(), &query).await
 }
 
+fn spawn_tx_task(
+  tx: SqliteTransaction,
+  first_query: String,
+  statement_type: Statement,
+  display_statement_type: Statement,
+) -> TransactionTask {
+  tokio::spawn(async move {
+    let (results, tx) = query_with_tx(tx, &first_query).await;
+    match results {
+      Ok(Either::Left(rows_affected)) => {
+        log::info!("{rows_affected:?} rows affected");
+        (
+          QueryResultsWithMetadata {
+            results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+            statement_type: Some(statement_type),
+            display_statement_type: Some(display_statement_type),
+          },
+          tx,
+        )
+      },
+      Ok(Either::Right(rows)) => {
+        log::info!("{:?} rows affected", rows.rows_affected);
+        (
+          QueryResultsWithMetadata::with_display_statement_type(
+            Ok(rows),
+            Some(statement_type),
+            Some(display_statement_type),
+          ),
+          tx,
+        )
+      },
+      Err(e) => {
+        log::error!("{e:?}");
+        (
+          QueryResultsWithMetadata::with_display_statement_type(
+            Err(e),
+            Some(statement_type),
+            Some(display_statement_type),
+          ),
+          tx,
+        )
+      },
+    }
+  })
+}
+
 async fn query_with_stream<'a, E>(e: E, query: &'a str) -> Result<Rows>
 where
   E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
@@ -326,10 +382,10 @@ where
   Ok(Rows { rows_affected: query_rows_affected, headers, rows: query_rows })
 }
 
-async fn query_with_tx<'a>(
-  mut tx: SqliteTransaction<'static>,
+async fn query_with_tx(
+  mut tx: SqliteTransaction,
   query: &str,
-) -> (Result<Either<u64, Rows>>, SqliteTransaction<'static>)
+) -> (Result<Either<u64, Rows>>, SqliteTransaction)
 where
   for<'c> <sqlx::Sqlite as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, sqlx::Sqlite>,
   for<'c> &'c mut <sqlx::Sqlite as sqlx::Database>::Connection:
