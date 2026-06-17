@@ -398,6 +398,9 @@ impl App {
             self.components.menu.set_table_list(Some(rows));
           },
           Action::Query(query_lines, confirmed, bypass) => 'query_action: {
+            if self.state.query_task_running {
+              break 'query_action;
+            }
             let query_string = query_lines.clone().join(" \n");
             if query_string.is_empty() {
               break 'query_action;

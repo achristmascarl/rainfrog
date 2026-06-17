@@ -9,6 +9,7 @@ use std::{
 use async_trait::async_trait;
 use color_eyre::eyre::{self, Result};
 use futures::stream::StreamExt;
+use sqlparser::ast::Statement;
 use sqlx::{
   Column, Either, MySqlConnection, Row, ValueRef,
   mysql::{MySql, MySqlConnectOptions, MySqlPoolOptions},
@@ -21,12 +22,25 @@ use super::{
   Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
 };
 
-type MySqlTransaction<'a> = sqlx::Transaction<'a, MySql>;
-type TransactionTask<'a> = JoinHandle<(QueryResultsWithMetadata, MySqlTransaction<'a>)>;
-enum MySqlTask<'a> {
+type MySqlTransaction = sqlx::Transaction<'static, MySql>;
+type ConnectionTask = JoinHandle<Result<(Arc<Mutex<PoolConnection<MySql>>>, u64)>>;
+type TransactionAcquireTask = JoinHandle<Result<(MySqlTransaction, u64)>>;
+type TransactionTask = JoinHandle<(QueryResultsWithMetadata, MySqlTransaction)>;
+enum MySqlTask {
+  QueryConnect {
+    handle: ConnectionTask,
+    first_query: String,
+    statement_type: Option<Statement>,
+  },
   Query(QueryTask),
-  TxStart(TransactionTask<'a>),
-  TxPending(Box<(MySqlTransaction<'a>, QueryResultsWithMetadata)>),
+  TxConnect {
+    handle: TransactionAcquireTask,
+    first_query: String,
+    statement_type: Statement,
+    display_statement_type: Box<Statement>,
+  },
+  TxStart(TransactionTask),
+  TxPending(Box<(MySqlTransaction, QueryResultsWithMetadata)>),
 }
 
 const MENU_QUERY: &str =
@@ -61,17 +75,17 @@ const SIMPLE_MENU_QUERY: &str = "select table_schema, table_name as object_name,
       order by table_schema, object_kind, object_name asc";
 
 #[derive(Default)]
-pub struct MySqlDriver<'a> {
+pub struct MySqlDriver {
   pool: Option<Arc<sqlx::Pool<MySql>>>,
-  task: Option<MySqlTask<'a>>,
+  task: Option<MySqlTask>,
   querying_conn: Option<Arc<Mutex<PoolConnection<MySql>>>>,
   querying_pid: Option<String>,
 }
 
 #[async_trait(?Send)]
-impl Database for MySqlDriver<'_> {
+impl Database for MySqlDriver {
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
-    let opts = super::mysql::MySqlDriver::<'_>::build_connection_opts(args)?;
+    let opts = super::mysql::MySqlDriver::build_connection_opts(args)?;
     let pool =
       Arc::new(MySqlPoolOptions::new().max_connections(3).connect_with(opts.clone()).await?);
     self.pool = Some(pool);
@@ -89,30 +103,18 @@ impl Database for MySqlDriver<'_> {
       },
     };
     let pool = self.pool.clone().unwrap();
-    self.querying_conn = Some(Arc::new(Mutex::new(pool.acquire().await?)));
-    let conn = self.querying_conn.clone().unwrap();
-    let conn_for_task = conn.clone();
-    let pid_row =
-      sqlx::raw_sql("SELECT CONNECTION_ID()").fetch_one(conn.lock().await.as_mut()).await?;
-    let pid = pid_row.try_get::<u64, _>(0).unwrap_or_else(|_| pid_row.get::<i64, _>(0) as u64);
-    log::info!("Starting query with PID {}", pid.clone());
-    self.querying_pid = Some(pid.to_string());
-    self.task = Some(MySqlTask::Query(tokio::spawn(
-      async move {
-        let results =
-          query_with_conn(conn_for_task.lock().await.as_mut(), first_query.clone()).await;
-        match results {
-          Ok(ref rows) => {
-            log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
-          },
-          Err(ref e) => {
-            log::error!("{e:?}");
-          },
-        };
-        QueryResultsWithMetadata::new(results, statement_type.clone())
-      }
-      .in_current_span(),
-    )));
+    self.task = Some(MySqlTask::QueryConnect {
+      handle: tokio::spawn(
+        async move {
+          let conn = Arc::new(Mutex::new(pool.acquire().await?));
+          let pid = connection_pid(conn.lock().await.as_mut()).await?;
+          Ok((conn, pid))
+        }
+        .in_current_span(),
+      ),
+      first_query,
+      statement_type,
+    });
     Ok(())
   }
 
@@ -120,7 +122,9 @@ impl Database for MySqlDriver<'_> {
     match self.task.take() {
       Some(task) => {
         match task {
+          MySqlTask::QueryConnect { handle, .. } => handle.abort(),
           MySqlTask::Query(handle) => handle.abort(),
+          MySqlTask::TxConnect { handle, .. } => handle.abort(),
           MySqlTask::TxStart(handle) => handle.abort(),
           _ => {},
         };
@@ -147,6 +151,30 @@ impl Database for MySqlDriver<'_> {
   async fn get_query_results(&mut self) -> Result<DbTaskResult> {
     let (task_result, next_task) = match self.task.take() {
       None => (DbTaskResult::NoTask, None),
+      Some(MySqlTask::QueryConnect { handle, first_query, statement_type }) => {
+        if !handle.is_finished() {
+          (
+            DbTaskResult::Pending,
+            Some(MySqlTask::QueryConnect { handle, first_query, statement_type }),
+          )
+        } else {
+          match handle.await? {
+            Ok((conn, pid)) => {
+              log::info!("Starting query with PID {}", pid.clone());
+              self.querying_conn = Some(conn.clone());
+              self.querying_pid = Some(pid.to_string());
+              (
+                DbTaskResult::Pending,
+                Some(MySqlTask::Query(spawn_query_task(conn, first_query, statement_type))),
+              )
+            },
+            Err(e) => {
+              log::error!("Connection acquisition failed: {e:?}");
+              (DbTaskResult::Finished(QueryResultsWithMetadata::new(Err(e), statement_type)), None)
+            },
+          }
+        }
+      },
       Some(MySqlTask::Query(handle)) => {
         if !handle.is_finished() {
           (DbTaskResult::Pending, Some(MySqlTask::Query(handle)))
@@ -155,6 +183,51 @@ impl Database for MySqlDriver<'_> {
           self.querying_conn = None;
           self.querying_pid = None;
           (DbTaskResult::Finished(result), None)
+        }
+      },
+      Some(MySqlTask::TxConnect {
+        handle,
+        first_query,
+        statement_type,
+        display_statement_type,
+      }) => {
+        if !handle.is_finished() {
+          (
+            DbTaskResult::Pending,
+            Some(MySqlTask::TxConnect {
+              handle,
+              first_query,
+              statement_type,
+              display_statement_type,
+            }),
+          )
+        } else {
+          match handle.await? {
+            Ok((tx, pid)) => {
+              log::info!("Starting transaction with PID {}", pid.clone());
+              self.querying_pid = Some(pid.to_string());
+              (
+                DbTaskResult::Pending,
+                Some(MySqlTask::TxStart(spawn_tx_task(
+                  tx,
+                  first_query,
+                  statement_type,
+                  *display_statement_type,
+                ))),
+              )
+            },
+            Err(e) => {
+              log::error!("Transaction didn't start: {e:?}");
+              (
+                DbTaskResult::Finished(QueryResultsWithMetadata::with_display_statement_type(
+                  Err(e),
+                  Some(statement_type),
+                  Some(*display_statement_type),
+                )),
+                None,
+              )
+            },
+          }
         }
       },
       Some(MySqlTask::TxStart(handle)) => {
@@ -206,55 +279,20 @@ impl Database for MySqlDriver<'_> {
     let (first_query, statement_type) = super::get_first_query(query, Driver::MySql)?;
     let display_statement_type = super::get_display_statement_for_execution_type(&statement_type);
     let statement_type = super::get_statement_for_execution_type(&statement_type);
-    let mut tx = self.pool.clone().unwrap().begin().await?;
-    let pid = sqlx::raw_sql("SELECT CONNECTION_ID()").fetch_one(&mut *tx).await?.get::<u64, _>(0);
-    log::info!("Starting transaction with PID {}", pid.clone());
-    self.querying_pid = Some(pid.to_string());
-    self.task = Some(MySqlTask::TxStart(tokio::spawn(
-      async move {
-        let (results, tx) = query_with_tx(tx, &first_query).await;
-        match results {
-          Ok(Either::Left(rows_affected)) => {
-            log::info!("{rows_affected:?} rows affected");
-            (
-              QueryResultsWithMetadata {
-                results: Ok(Rows {
-                  headers: vec![],
-                  rows: vec![],
-                  rows_affected: Some(rows_affected),
-                }),
-                statement_type: Some(statement_type),
-                display_statement_type: Some(display_statement_type),
-              },
-              tx,
-            )
-          },
-          Ok(Either::Right(rows)) => {
-            log::info!("{:?} rows affected", rows.rows_affected);
-            (
-              QueryResultsWithMetadata::with_display_statement_type(
-                Ok(rows),
-                Some(statement_type),
-                Some(display_statement_type),
-              ),
-              tx,
-            )
-          },
-          Err(e) => {
-            log::error!("{e:?}");
-            (
-              QueryResultsWithMetadata::with_display_statement_type(
-                Err(e),
-                Some(statement_type),
-                Some(display_statement_type),
-              ),
-              tx,
-            )
-          },
+    let pool = self.pool.clone().unwrap();
+    self.task = Some(MySqlTask::TxConnect {
+      handle: tokio::spawn(
+        async move {
+          let mut tx = pool.begin().await?;
+          let pid = connection_pid(&mut tx).await?;
+          Ok((tx, pid))
         }
-      }
-      .in_current_span(),
-    )));
+        .in_current_span(),
+      ),
+      first_query,
+      statement_type,
+      display_statement_type: Box::new(display_statement_type),
+    });
     Ok(())
   }
 
@@ -354,7 +392,7 @@ impl Database for MySqlDriver<'_> {
   }
 }
 
-impl MySqlDriver<'_> {
+impl MySqlDriver {
   pub fn new() -> Self {
     Self { pool: None, task: None, querying_conn: None, querying_pid: None }
   }
@@ -461,6 +499,71 @@ async fn query_with_conn(conn: &mut MySqlConnection, query: String) -> Result<Ro
   query_with_stream(conn, &query).await
 }
 
+fn spawn_query_task(
+  conn: Arc<Mutex<PoolConnection<MySql>>>,
+  first_query: String,
+  statement_type: Option<Statement>,
+) -> QueryTask {
+  tokio::spawn(async move {
+    let results = query_with_conn(conn.lock().await.as_mut(), first_query.clone()).await;
+    match results {
+      Ok(ref rows) => {
+        log::info!("{:?} rows, {:?} affected", rows.rows.len(), rows.rows_affected);
+      },
+      Err(ref e) => {
+        log::error!("{e:?}");
+      },
+    };
+    QueryResultsWithMetadata::new(results, statement_type.clone())
+  })
+}
+
+fn spawn_tx_task(
+  tx: MySqlTransaction,
+  first_query: String,
+  statement_type: Statement,
+  display_statement_type: Statement,
+) -> TransactionTask {
+  tokio::spawn(async move {
+    let (results, tx) = query_with_tx(tx, &first_query).await;
+    match results {
+      Ok(Either::Left(rows_affected)) => {
+        log::info!("{rows_affected:?} rows affected");
+        (
+          QueryResultsWithMetadata {
+            results: Ok(Rows { headers: vec![], rows: vec![], rows_affected: Some(rows_affected) }),
+            statement_type: Some(statement_type),
+            display_statement_type: Some(display_statement_type),
+          },
+          tx,
+        )
+      },
+      Ok(Either::Right(rows)) => {
+        log::info!("{:?} rows affected", rows.rows_affected);
+        (
+          QueryResultsWithMetadata::with_display_statement_type(
+            Ok(rows),
+            Some(statement_type),
+            Some(display_statement_type),
+          ),
+          tx,
+        )
+      },
+      Err(e) => {
+        log::error!("{e:?}");
+        (
+          QueryResultsWithMetadata::with_display_statement_type(
+            Err(e),
+            Some(statement_type),
+            Some(display_statement_type),
+          ),
+          tx,
+        )
+      },
+    }
+  })
+}
+
 async fn query_with_stream<'a, E>(e: E, query: &'a str) -> Result<Rows>
 where
   E: sqlx::Executor<'a, Database = sqlx::MySql>,
@@ -488,10 +591,10 @@ where
   Ok(Rows { rows_affected: query_rows_affected, headers, rows: query_rows })
 }
 
-async fn query_with_tx<'a>(
-  mut tx: MySqlTransaction<'static>,
+async fn query_with_tx(
+  mut tx: MySqlTransaction,
   query: &str,
-) -> (Result<Either<u64, Rows>>, MySqlTransaction<'static>)
+) -> (Result<Either<u64, Rows>>, MySqlTransaction)
 where
   for<'c> <sqlx::MySql as sqlx::Database>::Arguments<'c>: sqlx::IntoArguments<'c, sqlx::MySql>,
   for<'c> &'c mut <sqlx::MySql as sqlx::Database>::Connection:
@@ -516,6 +619,25 @@ where
       },
     },
     Err(e) => (Err(eyre::Report::new(e)), tx),
+  }
+}
+
+async fn connection_pid(conn: &mut MySqlConnection) -> Result<u64>
+where
+  for<'c> &'c mut <sqlx::MySql as sqlx::Database>::Connection:
+    sqlx::Executor<'c, Database = sqlx::MySql>,
+{
+  let ipid = sqlx::query_scalar::<_, i64>("SELECT CONNECTION_ID()").fetch_one(&mut *conn).await;
+  if let Ok(pid) = ipid {
+    return Ok(pid as u64);
+  }
+  let upid = sqlx::query_scalar::<_, u64>("SELECT CONNECTION_ID()").fetch_one(conn).await;
+  match upid {
+    Ok(pid) => Ok(pid),
+    Err(e) => Err(
+      eyre::Report::new(e)
+        .wrap_err("Failed to get connection PID using both signed and unsigned integers"),
+    ),
   }
 }
 
