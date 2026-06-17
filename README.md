@@ -37,7 +37,7 @@ the levels of support for different databases can be split into 4 tiers:
 | mysql | 2 |  | |
 | sqlite | 2  |          | |
 | redshift| 2  |          | postgres |
-| duckdb | 4 | musl binaries are not compatible with this driver      | |
+| duckdb | 4 | prebuilt duckdb and musl binaries do not include this driver      | |
 | oracle | 4 | requires additional runtime dependencies          | |
 
 
@@ -109,6 +109,11 @@ cargo install rainfrog --locked
 
 by default, all features are included. some features may not be compatible with your platform; 
 check [Cargo.toml](./Cargo.toml) to see what feature combinations are available.
+
+if you have [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), you can run:
+```sh
+cargo binstall rainfrog
+```
 
 <!-- TOC --><a name="homebrew"></a>
 ### homebrew
