@@ -25,8 +25,7 @@ services:
 
   rainfrog-oracle:
     container_name: rainfrog-oracle
-    image: gvenzl/oracle-xe:21.3.0
-    platform: linux/amd64 # only has this platform available
+    image: gvenzl/oracle-free:23-slim
     environment:
       ORACLE_PASSWORD: password
       APP_USER: rainfrog
