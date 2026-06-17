@@ -627,7 +627,18 @@ where
   for<'c> &'c mut <sqlx::MySql as sqlx::Database>::Connection:
     sqlx::Executor<'c, Database = sqlx::MySql>,
 {
-  Ok(sqlx::query_scalar::<_, i64>("SELECT CONNECTION_ID()").fetch_one(conn).await? as u64)
+  let ipid = sqlx::query_scalar::<_, i64>("SELECT CONNECTION_ID()").fetch_one(&mut *conn).await;
+  if let Ok(pid) = ipid {
+    return Ok(pid as u64);
+  }
+  let upid = sqlx::query_scalar::<_, u64>("SELECT CONNECTION_ID()").fetch_one(conn).await;
+  return match upid {
+    Ok(pid) => Ok(pid),
+    Err(e) => Err(
+      eyre::Report::new(e)
+        .wrap_err("Failed to get connection PID using both signed and unsigned integers"),
+    ),
+  };
 }
 
 fn get_headers(row: &<sqlx::MySql as sqlx::Database>::Row) -> Headers {

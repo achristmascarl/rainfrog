@@ -7,8 +7,7 @@ use color_eyre::eyre::Result;
 use connect_options::OracleConnectOptions;
 use oracle::{Connection, pool::Pool};
 use sqlparser::ast::Statement;
-use tokio::task::JoinHandle;
-use tracing::Instrument;
+use tokio::task::{self, JoinHandle};
 
 use crate::cli::Driver;
 
@@ -81,8 +80,12 @@ impl Database for OracleDriver {
     };
     let pool = self.pool.clone().unwrap();
 
+    let span = tracing::Span::current();
     self.task = Some(OracleTask::QueryConnect {
-      handle: tokio::spawn(async move { Ok(Arc::new(pool.get()?)) }.in_current_span()),
+      handle: task::spawn_blocking(move || {
+        let _enter = span.enter();
+        Ok(Arc::new(pool.get()?))
+      }),
       first_query,
       statement_type,
       display_statement_type,
@@ -269,8 +272,12 @@ impl Database for OracleDriver {
     let display_statement_type = Some(super::get_display_statement_for_execution_type(&stmt));
     let pool = self.pool.clone().unwrap();
 
+    let span = tracing::Span::current();
     self.task = Some(OracleTask::TxConnect {
-      handle: tokio::spawn(async move { Ok(Arc::new(pool.get()?)) }.in_current_span()),
+      handle: task::spawn_blocking(move || {
+        let _enter = span.enter();
+        Ok(Arc::new(pool.get()?))
+      }),
       first_query,
       statement_type,
       display_statement_type,
