@@ -37,7 +37,7 @@ enum MySqlTask {
     handle: TransactionAcquireTask,
     first_query: String,
     statement_type: Statement,
-    display_statement_type: Statement,
+    display_statement_type: Box<Statement>,
   },
   TxStart(TransactionTask),
   TxPending(Box<(MySqlTransaction, QueryResultsWithMetadata)>),
@@ -212,7 +212,7 @@ impl Database for MySqlDriver {
                   tx,
                   first_query,
                   statement_type,
-                  display_statement_type,
+                  *display_statement_type,
                 ))),
               )
             },
@@ -222,7 +222,7 @@ impl Database for MySqlDriver {
                 DbTaskResult::Finished(QueryResultsWithMetadata::with_display_statement_type(
                   Err(e),
                   Some(statement_type),
-                  Some(display_statement_type),
+                  Some(*display_statement_type),
                 )),
                 None,
               )
@@ -284,14 +284,14 @@ impl Database for MySqlDriver {
       handle: tokio::spawn(
         async move {
           let mut tx = pool.begin().await?;
-          let pid = connection_pid(&mut *tx).await?;
+          let pid = connection_pid(&mut tx).await?;
           Ok((tx, pid))
         }
         .in_current_span(),
       ),
       first_query,
       statement_type,
-      display_statement_type,
+      display_statement_type: Box::new(display_statement_type),
     });
     Ok(())
   }
@@ -632,13 +632,13 @@ where
     return Ok(pid as u64);
   }
   let upid = sqlx::query_scalar::<_, u64>("SELECT CONNECTION_ID()").fetch_one(conn).await;
-  return match upid {
+  match upid {
     Ok(pid) => Ok(pid),
     Err(e) => Err(
       eyre::Report::new(e)
         .wrap_err("Failed to get connection PID using both signed and unsigned integers"),
     ),
-  };
+  }
 }
 
 fn get_headers(row: &<sqlx::MySql as sqlx::Database>::Row) -> Headers {

@@ -40,7 +40,7 @@ enum PostgresTask {
     handle: TransactionAcquireTask,
     first_query: String,
     statement_type: Statement,
-    display_statement_type: Statement,
+    display_statement_type: Box<Statement>,
   },
   TxStart(TransactionTask),
   TxPending(Box<(PostgresTransaction, QueryResultsWithMetadata)>),
@@ -233,7 +233,7 @@ impl Database for PostgresDriver {
                   tx,
                   first_query,
                   statement_type,
-                  display_statement_type,
+                  *display_statement_type,
                 ))),
               )
             },
@@ -243,7 +243,7 @@ impl Database for PostgresDriver {
                 DbTaskResult::Finished(QueryResultsWithMetadata::with_display_statement_type(
                   Err(e),
                   Some(statement_type),
-                  Some(display_statement_type),
+                  Some(*display_statement_type),
                 )),
                 None,
               )
@@ -305,14 +305,14 @@ impl Database for PostgresDriver {
       handle: tokio::spawn(
         async move {
           let mut tx = pool.begin().await?;
-          let pid = connection_pid(&mut *tx).await?;
+          let pid = connection_pid(&mut tx).await?;
           Ok((tx, pid))
         }
         .in_current_span(),
       ),
       first_query,
       statement_type,
-      display_statement_type,
+      display_statement_type: Box::new(display_statement_type),
     });
     Ok(())
   }

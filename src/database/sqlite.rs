@@ -29,8 +29,8 @@ enum SqliteTask {
   TxConnect {
     handle: TransactionAcquireTask,
     first_query: String,
-    statement_type: Statement,
-    display_statement_type: Statement,
+    statement_type: Box<Statement>,
+    display_statement_type: Box<Statement>,
   },
   TxStart(TransactionTask),
   TxPending(Box<(SqliteTransaction, QueryResultsWithMetadata)>),
@@ -130,8 +130,8 @@ impl Database for SqliteDriver {
               Some(SqliteTask::TxStart(spawn_tx_task(
                 tx,
                 first_query,
-                statement_type,
-                display_statement_type,
+                *statement_type,
+                *display_statement_type,
               ))),
             ),
             Err(e) => {
@@ -139,8 +139,8 @@ impl Database for SqliteDriver {
               (
                 DbTaskResult::Finished(QueryResultsWithMetadata::with_display_statement_type(
                   Err(e),
-                  Some(statement_type),
-                  Some(display_statement_type),
+                  Some(*statement_type),
+                  Some(*display_statement_type),
                 )),
                 None,
               )
@@ -199,8 +199,8 @@ impl Database for SqliteDriver {
     self.task = Some(SqliteTask::TxConnect {
       handle: tokio::spawn(async move { Ok(pool.begin().await?) }.in_current_span()),
       first_query,
-      statement_type,
-      display_statement_type,
+      statement_type: Box::new(statement_type),
+      display_statement_type: Box::new(display_statement_type),
     });
     Ok(())
   }
