@@ -764,7 +764,7 @@ impl TableForYank {
     let width = col.iter().map(|s| s.len()).max().unwrap_or(1) + 1;
 
     let format_cell = |s: &str| {
-      let prefix = if index == 0 { " " } else { "| " };
+      let prefix = if index == 0 { "" } else { "| " };
       let padding =
         if index == last_index { " ".repeat(0) } else { " ".repeat(width.saturating_sub(s.len())) };
       format!("{prefix}{s}{padding}")
@@ -773,8 +773,11 @@ impl TableForYank {
     col.iter_mut().for_each(|s| *s = format_cell(s));
 
     if let Some(header) = col.pop_front() {
-      let div =
-        if index == 0 { "-".repeat(width + 1) } else { format!("+{}", "-".repeat(width + 1)) };
+      let div = if index == 0 {
+        "-".repeat(width + if index == 0 { 0 } else { 1 })
+      } else {
+        format!("+{}", "-".repeat(width + 1))
+      };
       col.push_front(div);
       col.push_front(header);
     }
