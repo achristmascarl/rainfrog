@@ -4,9 +4,9 @@ use color_eyre::eyre::{self, Result};
 use crossterm::event::{KeyEvent, MouseEventKind};
 use csv::Writer;
 use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
+use ratatui_textarea::{Input, Key};
 use sqlparser::ast::Statement;
 use tokio::sync::mpsc::UnboundedSender;
-use tui_textarea::{Input, Key};
 
 use super::{
   Frame,
