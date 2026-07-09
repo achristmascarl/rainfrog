@@ -10,7 +10,7 @@ use ratatui::{
   text::Line,
   widgets::{Block, Borders},
 };
-use ratatui_textarea::{CursorMove, Input, Key, Scrolling, TextArea};
+use ratatui_textarea::{CursorMove, DataCursor, Input, Key, Scrolling, TextArea};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::action::Action;
@@ -33,7 +33,7 @@ pub enum SelectionDirection {
 
 fn get_selection_direction(
   range: ((usize, usize), (usize, usize)),
-  cursor: (usize, usize),
+  cursor: DataCursor,
 ) -> SelectionDirection {
   let (start, end) = range;
   if cursor == start && cursor == end {

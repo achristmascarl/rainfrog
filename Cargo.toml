@@ -55,7 +55,6 @@ pretty_assertions = "1.4.0"
 ratatui = { version = "0.30.2", features = [
   "serde",
   "macros",
-  "unstable-widget-ref",
 ] }
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.107"

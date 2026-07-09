@@ -2,7 +2,7 @@ use color_eyre::eyre::Result;
 use ratatui::{
   buffer::Cell,
   prelude::*,
-  widgets::{Block, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState, WidgetRef},
+  widgets::{Block, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState},
 };
 use symbols::scrollbar;
 
@@ -330,7 +330,7 @@ impl Widget for Renderer<'_> {
     if let Some(SelectionMode::Row) = scrollable.selection_mode {
       table_state = table_state.with_selected(current_offset);
     }
-    scrollable.block.render_ref(area, buf);
+    scrollable.block.as_ref().render(area, buf);
     let render_area = scrollable.block.inner_if_some(area);
     if render_area.is_empty() {
       return;
@@ -342,7 +342,7 @@ impl Widget for Renderer<'_> {
       scrollable.requested_width,
       std::cmp::min(scrollable.max_height, render_area.height),
     ));
-    ratatui::widgets::StatefulWidgetRef::render_ref(
+    ratatui::widgets::StatefulWidget::render(
       table,
       content_buf.area,
       &mut content_buf,
@@ -379,7 +379,7 @@ impl Widget for Renderer<'_> {
           .set_symbol(cell.symbol())
           .set_fg(cell.fg)
           .set_bg(cell.bg)
-          .set_skip(cell.skip)
+          .set_diff_option(cell.diff_option)
           .set_style(style);
       }
     }

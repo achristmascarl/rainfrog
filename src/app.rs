@@ -6,7 +6,7 @@ use ratatui::{
   Frame,
   layout::{Constraint, Direction, Layout, Position},
   prelude::Rect,
-  style::{Color, Style, Stylize},
+  style::{Color, Style},
   text::Line,
   widgets::{Block, Borders, Clear, Padding, Paragraph, Tabs, Wrap},
 };
