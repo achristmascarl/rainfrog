@@ -10,8 +10,8 @@ use ratatui::{
   text::Line,
   widgets::{Block, Borders},
 };
+use ratatui_textarea::{CursorMove, Input, Key, Scrolling, TextArea};
 use tokio::sync::mpsc::UnboundedSender;
-use tui_textarea::{CursorMove, Input, Key, Scrolling, TextArea};
 
 use crate::action::Action;
 

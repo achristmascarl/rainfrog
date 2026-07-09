@@ -1,8 +1,8 @@
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::prelude::*;
+use ratatui_textarea::{Input, Key, TextArea};
 use tokio::sync::mpsc::UnboundedSender;
-use tui_textarea::{Input, Key, TextArea};
 
 use super::{Component, Frame};
 use crate::{
