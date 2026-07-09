@@ -631,14 +631,15 @@ where
   if let Ok(pid) = ipid {
     return Ok(pid as u64);
   }
-  let upid = sqlx::query_scalar::<_, u64>("SELECT CONNECTION_ID()").fetch_one(conn).await;
-  match upid {
-    Ok(pid) => Ok(pid),
-    Err(e) => Err(
-      eyre::Report::new(e)
-        .wrap_err("Failed to get connection PID using both signed and unsigned integers"),
-    ),
+  let upid = sqlx::query_scalar::<_, u64>("SELECT CONNECTION_ID()").fetch_one(&mut *conn).await;
+  if let Ok(pid) = upid {
+    return Ok(pid);
   }
+  let spid = sqlx::query_scalar::<_, String>("SELECT CONNECTION_ID()").fetch_one(conn).await?;
+  spid.parse().map_err(|e| {
+    eyre::Report::new(e)
+      .wrap_err("Failed to parse connection PID after deserializing it as a string")
+  })
 }
 
 fn get_headers(row: &<sqlx::MySql as sqlx::Database>::Row) -> Headers {
