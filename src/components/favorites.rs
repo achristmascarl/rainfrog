@@ -149,47 +149,6 @@ impl FavoriteEntries {
   }
 }
 
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::{components::app_state_with_focus, tui::Event};
-
-  #[test]
-  fn paste_appends_to_focused_search_and_resets_selection() {
-    let mut favorites = Favorites::new();
-    favorites.search = Some("saved".to_string());
-    favorites.search_focused = true;
-    favorites.list_state.select(Some(2));
-
-    favorites
-      .handle_events(
-        Some(Event::Paste(" query\ntext".to_string())),
-        Vec::new(),
-        &app_state_with_focus(Focus::Favorites),
-      )
-      .unwrap();
-
-    assert_eq!(favorites.search.as_deref(), Some("saved query\ntext"));
-    assert_eq!(favorites.list_state.selected(), None);
-  }
-
-  #[test]
-  fn paste_is_ignored_when_search_is_not_focused() {
-    let mut favorites = Favorites::new();
-    favorites.search = Some("saved".to_string());
-
-    favorites
-      .handle_events(
-        Some(Event::Paste(" query".to_string())),
-        Vec::new(),
-        &app_state_with_focus(Focus::Favorites),
-      )
-      .unwrap();
-
-    assert_eq!(favorites.search.as_deref(), Some("saved"));
-  }
-}
-
 impl Favorites {
   pub fn new() -> Self {
     Favorites {
@@ -436,5 +395,46 @@ impl Component for Favorites {
     f.render_stateful_widget(vertical_scrollbar, scrollbar_margin, &mut vertical_scrollbar_state);
 
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::{components::app_state_with_focus, tui::Event};
+
+  #[test]
+  fn paste_appends_to_focused_search_and_resets_selection() {
+    let mut favorites = Favorites::new();
+    favorites.search = Some("saved".to_string());
+    favorites.search_focused = true;
+    favorites.list_state.select(Some(2));
+
+    favorites
+      .handle_events(
+        Some(Event::Paste(" query\ntext".to_string())),
+        Vec::new(),
+        &app_state_with_focus(Focus::Favorites),
+      )
+      .unwrap();
+
+    assert_eq!(favorites.search.as_deref(), Some("saved query\ntext"));
+    assert_eq!(favorites.list_state.selected(), None);
+  }
+
+  #[test]
+  fn paste_is_ignored_when_search_is_not_focused() {
+    let mut favorites = Favorites::new();
+    favorites.search = Some("saved".to_string());
+
+    favorites
+      .handle_events(
+        Some(Event::Paste(" query".to_string())),
+        Vec::new(),
+        &app_state_with_focus(Focus::Favorites),
+      )
+      .unwrap();
+
+    assert_eq!(favorites.search.as_deref(), Some("saved"));
   }
 }

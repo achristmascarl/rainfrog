@@ -349,54 +349,6 @@ impl SettableTableList<'_> for Menu {
   }
 }
 
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::{components::app_state_with_focus, tui::Event};
-
-  #[test]
-  fn paste_appends_to_focused_search_and_selects_first_match() {
-    let mut menu = Menu::new();
-    menu.menu_focus = MenuFocus::Tables;
-    menu.search = Some("user".to_string());
-    menu.search_focused = true;
-    menu.table_map.insert(
-      "public".to_string(),
-      MenuSchemaItems {
-        tables: vec!["users".to_string(), "orders".to_string()],
-        ..MenuSchemaItems::default()
-      },
-    );
-
-    menu
-      .handle_events(
-        Some(Event::Paste("s\n".to_string())),
-        Vec::new(),
-        &app_state_with_focus(Focus::Menu),
-      )
-      .unwrap();
-
-    assert_eq!(menu.search.as_deref(), Some("users\n"));
-    assert_eq!(menu.list_state.selected(), Some(1));
-  }
-
-  #[test]
-  fn paste_is_ignored_when_search_is_not_focused() {
-    let mut menu = Menu::new();
-    menu.search = Some("user".to_string());
-
-    menu
-      .handle_events(
-        Some(Event::Paste("s".to_string())),
-        Vec::new(),
-        &app_state_with_focus(Focus::Menu),
-      )
-      .unwrap();
-
-    assert_eq!(menu.search.as_deref(), Some("user"));
-  }
-}
-
 impl Component for Menu {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
@@ -733,5 +685,53 @@ impl Component for Menu {
 
     f.render_widget(parent_block, area);
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::{components::app_state_with_focus, tui::Event};
+
+  #[test]
+  fn paste_appends_to_focused_search_and_selects_first_match() {
+    let mut menu = Menu::new();
+    menu.menu_focus = MenuFocus::Tables;
+    menu.search = Some("user".to_string());
+    menu.search_focused = true;
+    menu.table_map.insert(
+      "public".to_string(),
+      MenuSchemaItems {
+        tables: vec!["users".to_string(), "orders".to_string()],
+        ..MenuSchemaItems::default()
+      },
+    );
+
+    menu
+      .handle_events(
+        Some(Event::Paste("s\n".to_string())),
+        Vec::new(),
+        &app_state_with_focus(Focus::Menu),
+      )
+      .unwrap();
+
+    assert_eq!(menu.search.as_deref(), Some("users\n"));
+    assert_eq!(menu.list_state.selected(), Some(1));
+  }
+
+  #[test]
+  fn paste_is_ignored_when_search_is_not_focused() {
+    let mut menu = Menu::new();
+    menu.search = Some("user".to_string());
+
+    menu
+      .handle_events(
+        Some(Event::Paste("s".to_string())),
+        Vec::new(),
+        &app_state_with_focus(Focus::Menu),
+      )
+      .unwrap();
+
+    assert_eq!(menu.search.as_deref(), Some("user"));
   }
 }
