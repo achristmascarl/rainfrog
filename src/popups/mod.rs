@@ -38,6 +38,11 @@ pub trait PopUp {
   ) -> Result<Option<PopUpPayload>>;
 
   #[allow(unused_variables)]
+  fn handle_paste_events(&mut self, text: &str, app_state: &mut AppState) -> Result<()> {
+    Ok(())
+  }
+
+  #[allow(unused_variables)]
   fn get_cta_text(&self, app_state: &AppState) -> String {
     "".to_string()
   }

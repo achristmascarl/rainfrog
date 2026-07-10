@@ -232,6 +232,12 @@ impl App {
           tui::Event::Render => action_tx.send(Action::Render)?,
           tui::Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
           tui::Event::Mouse(event) => self.last_frame_mouse_event = Some(event),
+          tui::Event::Paste(ref text) => {
+            if let Some(popup) = &mut self.popup {
+              popup.handle_paste_events(text, &mut self.state)?;
+              event_consumed = true;
+            }
+          },
           tui::Event::Key(key) => {
             if let Some(keymap) = self.config.keybindings.get(&self.state.focus) {
               if let Some(action) = keymap.get(&vec![key]) {

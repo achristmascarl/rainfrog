@@ -26,6 +26,19 @@ pub mod favorites;
 pub mod history;
 pub mod menu;
 pub mod scroll_table;
+
+#[cfg(test)]
+pub(crate) fn app_state_with_focus(focus: crate::focus::Focus) -> AppState {
+  AppState {
+    focus,
+    history: Vec::new(),
+    favorites: favorites::FavoriteEntries::empty_for_test(),
+    last_query_start: None,
+    last_query_end: None,
+    query_task_running: false,
+  }
+}
+
 pub trait Component {
   /// Register an action handler that can send actions for processing if necessary.
   ///
@@ -83,9 +96,15 @@ pub trait Component {
     let r = match event {
       Some(Event::Key(key_event)) => self.handle_key_events(key_event, app_state)?,
       Some(Event::Mouse(mouse_event)) => self.handle_mouse_events(mouse_event, app_state)?,
+      Some(Event::Paste(text)) => self.handle_paste_events(&text, app_state)?,
       _ => None,
     };
     Ok(r)
+  }
+  /// Handle bracketed paste events and produce actions if necessary.
+  #[allow(unused_variables)]
+  fn handle_paste_events(&mut self, text: &str, app_state: &AppState) -> Result<Option<Action>> {
+    Ok(None)
   }
   /// Handle key events and produce actions if necessary.
   ///
