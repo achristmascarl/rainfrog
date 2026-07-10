@@ -40,6 +40,14 @@ pub struct Cli {
   #[arg(long = "password", value_name = "PASSWORD", help = "Password for database connection")]
   pub password: Option<String>,
 
+  #[arg(
+    short = 'R',
+    long = "reenter-password",
+    action = clap::ArgAction::SetTrue,
+    help = "Reenter the password for a saved database connection"
+  )]
+  pub reenter_password: bool,
+
   #[arg(long = "host", value_name = "HOST", help = "Host for database connection (ex. localhost)")]
   pub host: Option<String>,
 
@@ -307,5 +315,23 @@ mod tests {
   fn enable_cleartext_plugin_flag_sets_true() {
     let cli = Cli::parse_from(["rainfrog", "--enable-cleartext-plugin"]);
     assert!(cli.enable_cleartext_plugin);
+  }
+
+  #[test]
+  fn reenter_password_defaults_to_false() {
+    let cli = Cli::parse_from(["rainfrog"]);
+    assert!(!cli.reenter_password);
+  }
+
+  #[test]
+  fn reenter_password_long_flag_sets_true() {
+    let cli = Cli::parse_from(["rainfrog", "--reenter-password"]);
+    assert!(cli.reenter_password);
+  }
+
+  #[test]
+  fn reenter_password_short_flag_sets_true() {
+    let cli = Cli::parse_from(["rainfrog", "-R"]);
+    assert!(cli.reenter_password);
   }
 }

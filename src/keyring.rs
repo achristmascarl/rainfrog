@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use color_eyre::eyre;
+use color_eyre::eyre::{self, WrapErr};
 use keyring::Entry;
 
 use crate::Result;
@@ -13,8 +13,23 @@ impl AsRef<str> for Password {
   }
 }
 
-pub fn get_password(connection_name: &str, username: &str) -> Result<Password> {
+fn revoke_password(entry: &Entry) -> Result<()> {
+  match entry.delete_credential() {
+    Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+    Err(e) => Err(e).wrap_err("Failed to revoke password from keyring"),
+  }
+}
+
+pub fn get_password(
+  connection_name: &str,
+  username: &str,
+  reenter_password: bool,
+) -> Result<Password> {
   let entry = Entry::new("rainfrog", &format!("{connection_name}-{username}"))?;
+
+  if reenter_password {
+    revoke_password(&entry)?;
+  }
 
   match entry.get_password() {
     Ok(password) => {
@@ -47,5 +62,45 @@ pub fn get_password(connection_name: &str, username: &str) -> Result<Password> {
       },
       _ => Err(eyre::Report::msg("Failed to extract password from secret: {e:?}")),
     },
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use keyring::mock::MockCredential;
+
+  fn mock_entry() -> Entry {
+    Entry::new_with_credential(Box::new(MockCredential::default()))
+  }
+
+  #[test]
+  fn revokes_existing_password() {
+    let entry = mock_entry();
+    entry.set_password("incorrect-password").unwrap();
+
+    revoke_password(&entry).unwrap();
+
+    assert!(matches!(entry.get_password(), Err(keyring::Error::NoEntry)));
+  }
+
+  #[test]
+  fn treats_missing_password_as_already_revoked() {
+    let entry = mock_entry();
+
+    revoke_password(&entry).unwrap();
+  }
+
+  #[test]
+  fn propagates_keyring_revocation_errors() {
+    let entry = mock_entry();
+    let credential = entry.get_credential().downcast_ref::<MockCredential>().unwrap();
+    credential.set_error(keyring::Error::NoStorageAccess(Box::new(std::io::Error::other(
+      "keyring is locked",
+    ))));
+
+    let error = revoke_password(&entry).unwrap_err();
+
+    assert!(error.to_string().contains("Failed to revoke password from keyring"));
   }
 }
