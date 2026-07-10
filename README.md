@@ -231,6 +231,7 @@ Options:
   -u, --url <URL>            Full connection URL for the database, e.g. postgres://username:password@localhost:5432/dbname
       --username <USERNAME>  Username for database connection
       --password <PASSWORD>  Password for database connection
+  -R, --reenter-password     Reenter the password for a saved database connection
       --host <HOST>          Host for database connection (ex. localhost)
       --port <PORT>          Port for database connection (ex. 5432)
       --database <DATABASE>  Name of database for connection (ex. postgres)
@@ -371,6 +372,9 @@ if no database connection in the config is set as the default connection,
 a prompt will appear to select the desired database. The user will also be 
 prompted for the password for the selected database and will have the option to 
 store it in a platform specific keychain for future reuse.
+Pass `--reenter-password` (or `-R`) to revoke a saved keychain password before
+being prompted to enter and optionally save its replacement.
+
 future plans for database connections include switching database without having to restart rainfrog.
 
 <!-- TOC --><a name="keybindings"></a>

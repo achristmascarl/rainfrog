@@ -86,7 +86,7 @@ fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
         let url = match conn.connection {
           ConnectionString::Raw { connection_string } => Ok(connection_string),
           ConnectionString::Structured { details } => {
-            let password = get_password(&name, &details.username)?;
+            let password = get_password(&name, &details.username, args.reenter_password)?;
             details.connection_string(conn.driver, password)
           },
         }?;
