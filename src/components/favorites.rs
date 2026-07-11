@@ -44,6 +44,11 @@ impl FavoriteEntry {
 }
 
 impl FavoriteEntries {
+  #[cfg(test)]
+  pub(crate) fn empty_for_test() -> Self {
+    Self { dir: PathBuf::new(), entries: Vec::new() }
+  }
+
   pub fn new(favorites_dir: &Path) -> Result<Self> {
     if !favorites_dir.exists() {
       std::fs::create_dir_all(favorites_dir)?;
@@ -288,6 +293,17 @@ impl Component for Favorites {
     Ok(None)
   }
 
+  fn handle_paste_events(&mut self, text: &str, app_state: &AppState) -> Result<Option<Action>> {
+    if app_state.focus != Focus::Favorites || !self.search_focused {
+      return Ok(None);
+    }
+    if let Some(search) = self.search.as_mut() {
+      search.push_str(text);
+      self.list_state = ListState::default();
+    }
+    Ok(None)
+  }
+
   fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
     Ok(None)
   }
@@ -379,5 +395,46 @@ impl Component for Favorites {
     f.render_stateful_widget(vertical_scrollbar, scrollbar_margin, &mut vertical_scrollbar_state);
 
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::{components::app_state_with_focus, tui::Event};
+
+  #[test]
+  fn paste_appends_to_focused_search_and_resets_selection() {
+    let mut favorites = Favorites::new();
+    favorites.search = Some("saved".to_string());
+    favorites.search_focused = true;
+    favorites.list_state.select(Some(2));
+
+    favorites
+      .handle_events(
+        Some(Event::Paste(" query\ntext".to_string())),
+        Vec::new(),
+        &app_state_with_focus(Focus::Favorites),
+      )
+      .unwrap();
+
+    assert_eq!(favorites.search.as_deref(), Some("saved query\ntext"));
+    assert_eq!(favorites.list_state.selected(), None);
+  }
+
+  #[test]
+  fn paste_is_ignored_when_search_is_not_focused() {
+    let mut favorites = Favorites::new();
+    favorites.search = Some("saved".to_string());
+
+    favorites
+      .handle_events(
+        Some(Event::Paste(" query".to_string())),
+        Vec::new(),
+        &app_state_with_focus(Focus::Favorites),
+      )
+      .unwrap();
+
+    assert_eq!(favorites.search.as_deref(), Some("saved"));
   }
 }

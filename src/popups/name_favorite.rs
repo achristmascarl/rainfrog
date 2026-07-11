@@ -13,6 +13,23 @@ impl NameFavorite {
   pub fn new(existing_names: Vec<String>, query_lines: Vec<String>) -> Self {
     Self { name: "".to_string(), existing_names, query_lines }
   }
+
+  fn push_char(&mut self, c: char) {
+    // Preserve the existing favorite-name sanitization for typed and pasted input.
+    if c.is_whitespace()
+      || c.is_ascii_whitespace()
+      || (c.is_ascii_punctuation() && c != '_' && c != '-')
+    {
+      return;
+    }
+    self.name.push(c);
+  }
+
+  fn push_input(&mut self, input: &str) {
+    for c in input.chars() {
+      self.push_char(c);
+    }
+  }
 }
 
 impl PopUp for NameFavorite {
@@ -23,14 +40,7 @@ impl PopUp for NameFavorite {
   ) -> color_eyre::eyre::Result<Option<PopUpPayload>> {
     match key.code {
       KeyCode::Char(c) => {
-        // ignore invalid characters
-        if c.is_whitespace()
-          || c.is_ascii_whitespace()
-          || (c.is_ascii_punctuation() && c != '_' && c != '-')
-        {
-          return Ok(None);
-        }
-        self.name.push(c);
+        self.push_char(c);
         Ok(None)
       },
       KeyCode::Enter => {
@@ -54,6 +64,15 @@ impl PopUp for NameFavorite {
     }
   }
 
+  fn handle_paste_events(
+    &mut self,
+    text: &str,
+    app_state: &mut crate::app::AppState,
+  ) -> color_eyre::eyre::Result<()> {
+    self.push_input(text);
+    Ok(())
+  }
+
   fn get_cta_text(&self, app_state: &crate::app::AppState) -> String {
     "Input a name for the favorite and then press [Enter]; press [Esc] to cancel. No spaces or special characters allowed.".to_string()
   }
@@ -68,5 +87,21 @@ impl PopUp for NameFavorite {
         ""
       }
     )
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::{components::app_state_with_focus, focus::Focus};
+
+  #[test]
+  fn paste_uses_the_same_name_sanitization_as_typed_input() {
+    let mut favorite = NameFavorite::new(Vec::new(), vec!["select 1".to_string()]);
+    let mut app_state = app_state_with_focus(Focus::PopUp);
+
+    favorite.handle_paste_events("my favorite!?_v2-東京\n", &mut app_state).unwrap();
+
+    assert_eq!(favorite.name, "myfavorite_v2-東京");
   }
 }

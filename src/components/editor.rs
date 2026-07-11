@@ -232,3 +232,24 @@ impl Component for Editor<'_> {
     Ok(())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::{components::app_state_with_focus, tui::Event};
+
+  #[test]
+  fn paste_keeps_multiline_editor_input() {
+    let mut editor = Editor::new();
+
+    editor
+      .handle_events(
+        Some(Event::Paste("select 1;\nselect 2;".to_string())),
+        Vec::new(),
+        &app_state_with_focus(Focus::Editor),
+      )
+      .unwrap();
+
+    assert_eq!(editor.textarea.lines(), &["select 1;", "select 2;"]);
+  }
+}
