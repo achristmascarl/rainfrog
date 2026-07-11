@@ -490,7 +490,14 @@ impl MySqlDriver {
       },
     };
 
-    Ok(if ssl_required { opts.ssl_mode(MySqlSslMode::Required) } else { opts })
+    Ok(if ssl_required {
+      match opts.get_ssl_mode() {
+        MySqlSslMode::VerifyCa | MySqlSslMode::VerifyIdentity => opts,
+        _ => opts.ssl_mode(MySqlSslMode::Required),
+      }
+    } else {
+      opts
+    })
   }
 }
 
@@ -794,6 +801,29 @@ mod tests {
     ]);
     let opts = MySqlDriver::build_connection_opts(args).unwrap();
     assert!(matches!(opts.get_ssl_mode(), MySqlSslMode::Required));
+  }
+
+  #[test]
+  fn ssl_required_preserves_stricter_url_ssl_modes() {
+    for (mode, expected) in
+      [("verify_ca", MySqlSslMode::VerifyCa), ("verify_identity", MySqlSslMode::VerifyIdentity)]
+    {
+      let args = crate::cli::Cli::parse_from([
+        "rainfrog",
+        "--url",
+        &format!("mysql://localhost/mysql?sslmode={mode}"),
+        "--ssl-required",
+      ]);
+      let opts = MySqlDriver::build_connection_opts(args).unwrap();
+      assert!(
+        matches!(
+          (opts.get_ssl_mode(), expected),
+          (MySqlSslMode::VerifyCa, MySqlSslMode::VerifyCa)
+            | (MySqlSslMode::VerifyIdentity, MySqlSslMode::VerifyIdentity)
+        ),
+        "mode {mode} was not preserved"
+      );
+    }
   }
 
   #[test]

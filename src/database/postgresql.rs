@@ -485,7 +485,14 @@ impl PostgresDriver {
       },
     };
 
-    Ok(if ssl_required { opts.ssl_mode(PgSslMode::Require) } else { opts })
+    Ok(if ssl_required {
+      match opts.get_ssl_mode() {
+        PgSslMode::VerifyCa | PgSslMode::VerifyFull => opts,
+        _ => opts.ssl_mode(PgSslMode::Require),
+      }
+    } else {
+      opts
+    })
   }
 }
 
@@ -877,6 +884,29 @@ mod tests {
     ]);
     let opts = PostgresDriver::build_connection_opts(args).unwrap();
     assert!(matches!(opts.get_ssl_mode(), PgSslMode::Require));
+  }
+
+  #[test]
+  fn ssl_required_preserves_stricter_url_ssl_modes() {
+    for (mode, expected) in
+      [("verify-ca", PgSslMode::VerifyCa), ("verify-full", PgSslMode::VerifyFull)]
+    {
+      let args = crate::cli::Cli::parse_from([
+        "rainfrog",
+        "--url",
+        &format!("postgres://localhost/postgres?sslmode={mode}"),
+        "--ssl-required",
+      ]);
+      let opts = PostgresDriver::build_connection_opts(args).unwrap();
+      assert!(
+        matches!(
+          (opts.get_ssl_mode(), expected),
+          (PgSslMode::VerifyCa, PgSslMode::VerifyCa)
+            | (PgSslMode::VerifyFull, PgSslMode::VerifyFull)
+        ),
+        "mode {mode} was not preserved"
+      );
+    }
   }
 
   #[test]
