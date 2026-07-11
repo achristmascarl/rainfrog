@@ -45,6 +45,10 @@ async fn run_app(mut args: Cli, config: Config, driver: Driver) -> Result<()> {
   Ok(())
 }
 
+fn supports_ssl_required(driver: Driver) -> bool {
+  matches!(driver, Driver::Postgres | Driver::MySql | Driver::Oracle)
+}
+
 fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
   let url = args.connection_url.clone().or_else(|| {
     env::var("DATABASE_URL").map_or(None, |url| {
@@ -165,6 +169,11 @@ async fn tokio_main() -> Result<()> {
         "warning: --enable-cleartext-plugin is only supported for mysql connections and will be ignored"
       );
     }
+    if args.ssl_required && !supports_ssl_required(driver) {
+      eprintln!(
+        "warning: --ssl-required is only supported for postgres, mysql, and oracle connections and will be ignored"
+      );
+    }
 
     run_app(args, config, driver).await
   }
@@ -189,4 +198,19 @@ pub fn prompt_for_driver() -> Result<Driver> {
   io::stdout().flush()?;
   io::stdin().read_line(&mut driver)?;
   driver.trim().to_lowercase().parse()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn ssl_required_support_matches_tls_capable_drivers() {
+    assert!(supports_ssl_required(Driver::Postgres));
+    assert!(supports_ssl_required(Driver::MySql));
+    assert!(supports_ssl_required(Driver::Oracle));
+    assert!(!supports_ssl_required(Driver::Sqlite));
+    #[cfg(feature = "duckdb")]
+    assert!(!supports_ssl_required(Driver::DuckDb));
+  }
 }

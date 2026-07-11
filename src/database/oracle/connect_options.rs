@@ -5,12 +5,19 @@ use std::{
 
 use color_eyre::eyre::Result;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OracleProtocol {
+  Tcp,
+  Tcps,
+}
+
 pub struct OracleConnectOptions {
   user: Option<String>,
   password: Option<String>,
   host: String,
   port: Option<u16>,
   database: String,
+  protocol: OracleProtocol,
 }
 impl OracleConnectOptions {
   fn new() -> Self {
@@ -20,12 +27,16 @@ impl OracleConnectOptions {
       host: "localhost".to_string(),
       port: Some(1521),
       database: "XE".to_string(),
+      protocol: OracleProtocol::Tcp,
     }
   }
 
   fn get_connection_string(&self) -> String {
     let port = self.port.unwrap_or(1521u16);
-    format!("//{}:{}/{}", self.host, port, self.database)
+    match self.protocol {
+      OracleProtocol::Tcp => format!("//{}:{}/{}", self.host, port, self.database),
+      OracleProtocol::Tcps => format!("tcps://{}:{}/{}", self.host, port, self.database),
+    }
   }
   pub fn get_connection_options(
     &self,
@@ -51,6 +62,10 @@ impl OracleConnectOptions {
       Some(url) => {
         let mut opts =
           OracleConnectOptions::from_str(&url).map_err(|e| color_eyre::eyre::eyre!(e))?;
+
+        if args.ssl_required {
+          opts.protocol = OracleProtocol::Tcps;
+        }
 
         // Username
         if opts.user.is_none() {
@@ -89,6 +104,10 @@ impl OracleConnectOptions {
       },
       None => {
         let mut opts = OracleConnectOptions::new();
+
+        if args.ssl_required {
+          opts.protocol = OracleProtocol::Tcps;
+        }
 
         // Username
         if let Some(user) = args.user {
@@ -172,17 +191,16 @@ impl FromStr for OracleConnectOptions {
 
   fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
     let s = s.trim().trim_start_matches("jdbc:oracle:thin:").trim_start_matches("jdbc:");
-    let (is_easy_connect, (auth_part, host_part)) = if s.contains("@//") {
-      (
-        true,
-        s.split_once("@//")
-          .ok_or("Invalid Oracle Easy Connect connection string format".to_string())?,
-      )
-    } else if s.contains("@") {
-      (false, s.split_once('@').ok_or("Invalid Oracle SID connection string format".to_string())?)
-    } else {
-      return Err("Invalid Oracle connection string format".to_string());
-    };
+    let (auth_part, connect_identifier) =
+      s.split_once('@').ok_or("Invalid Oracle connection string format".to_string())?;
+    let (protocol, is_easy_connect, host_part) =
+      if let Some(host_part) = connect_identifier.strip_prefix("tcps://") {
+        (OracleProtocol::Tcps, true, host_part)
+      } else if let Some(host_part) = connect_identifier.strip_prefix("//") {
+        (OracleProtocol::Tcp, true, host_part)
+      } else {
+        (OracleProtocol::Tcp, false, connect_identifier)
+      };
 
     let (user, password) = if auth_part.contains('/') {
       let (user, password) =
@@ -222,7 +240,7 @@ impl FromStr for OracleConnectOptions {
       }
     };
 
-    Ok(OracleConnectOptions { user, password, host, port, database })
+    Ok(OracleConnectOptions { user, password, host, port, database, protocol })
   }
 }
 
@@ -255,5 +273,35 @@ mod tests {
   fn test_oracle_connect_options_get_connection_string() {
     let opts = OracleConnectOptions::new();
     assert_eq!(opts.get_connection_string(), "//localhost:1521/XE");
+  }
+
+  #[test]
+  fn test_oracle_connect_options_from_tcps_string() {
+    let opts = OracleConnectOptions::from_str(
+      "jdbc:oracle:thin:user/password@tcps://localhost:1521/XE?wallet_location=/tmp/wallet",
+    )
+    .unwrap();
+    assert_eq!(opts.protocol, OracleProtocol::Tcps);
+    assert_eq!(
+      opts.get_connection_string(),
+      "tcps://localhost:1521/XE?wallet_location=/tmp/wallet"
+    );
+  }
+
+  #[test]
+  fn ssl_required_uses_tcps_and_preserves_parameters() {
+    use clap::Parser;
+
+    let args = crate::cli::Cli::parse_from([
+      "rainfrog",
+      "--url",
+      "jdbc:oracle:thin:user/password@//localhost:1521/XE?wallet_location=/tmp/wallet",
+      "--ssl-required",
+    ]);
+    let opts = OracleConnectOptions::build_connection_opts(args).unwrap();
+    assert_eq!(
+      opts.get_connection_string(),
+      "tcps://localhost:1521/XE?wallet_location=/tmp/wallet"
+    );
   }
 }

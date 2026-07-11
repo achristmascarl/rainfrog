@@ -75,6 +75,13 @@ pub struct Cli {
   )]
   pub enable_cleartext_plugin: bool,
 
+  #[arg(
+    long = "ssl-required",
+    action = clap::ArgAction::SetTrue,
+    help = "Require an SSL/TLS connection (supported by PostgreSQL, MySQL, and Oracle)"
+  )]
+  pub ssl_required: bool,
+
   #[arg(skip)]
   pub connection_name: Option<String>,
 }
@@ -333,5 +340,17 @@ mod tests {
   fn reenter_password_short_flag_sets_true() {
     let cli = Cli::parse_from(["rainfrog", "-R"]);
     assert!(cli.reenter_password);
+  }
+
+  #[test]
+  fn ssl_required_defaults_to_false() {
+    let cli = Cli::parse_from(["rainfrog"]);
+    assert!(!cli.ssl_required);
+  }
+
+  #[test]
+  fn ssl_required_flag_sets_true() {
+    let cli = Cli::parse_from(["rainfrog", "--ssl-required"]);
+    assert!(cli.ssl_required);
   }
 }
