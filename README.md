@@ -226,18 +226,23 @@ Commands:
   help  Print this message or the help of the given subcommand(s)
 
 Options:
-  -M, --mouse <MOUSE_MODE>   Whether to enable mouse event support. If enabled, the default mouse event handling for your terminal
-                             will not work. [possible values: true, false]
-  -u, --url <URL>            Full connection URL for the database, e.g. postgres://username:password@localhost:5432/dbname
-      --username <USERNAME>  Username for database connection
-      --password <PASSWORD>  Password for database connection
-  -R, --reenter-password     Reenter the password for a saved database connection
-      --host <HOST>          Host for database connection (ex. localhost)
-      --port <PORT>          Port for database connection (ex. 5432)
-      --database <DATABASE>  Name of database for connection (ex. postgres)
-      --driver <DRIVER>      Driver for database connection (ex. postgres)
-  -h, --help                 Print help
-  -V, --version              Print version
+  -M, --mouse <MOUSE_MODE>       Whether to enable mouse event support. If enabled, your terminal's
+                                 default mouse event handling will not work. [possible values: true,
+                                 false]
+  -u, --url <URL>                Full connection URL for the database, e.g.
+                                 postgres://username:password@localhost:5432/dbname
+      --username <USERNAME>      Username for database connection
+      --password <PASSWORD>      Password for database connection
+  -R, --reenter-password         Reenter the password for a saved database connection
+      --host <HOST>              Host for database connection (ex. localhost)
+      --port <PORT>              Port for database connection (ex. 5432)
+      --database <DATABASE>      Name of database for connection (ex. postgres)
+      --driver <DRIVER>          Driver for database connection (ex. postgres)
+      --enable-cleartext-plugin  Enable MySQL cleartext plugin
+      --ssl-required             Require an SSL/TLS connection (supported by PostgreSQL, MySQL, and
+                                 Oracle)
+  -h, --help                     Print help
+  -V, --version                  Print version
 ```
 
 <!-- TOC --><a name="with-connection-options"></a>
@@ -253,7 +258,8 @@ rainfrog \
   --username <username> \
   --host <hostname> \
   --port <db_port> \
-  --database <db_name>
+  --database <db_name> \
+  --ssl-required
 ```
 
 <!-- TOC --><a name="with-connection-url"></a>
@@ -264,8 +270,14 @@ to the database (ex. `postgres://username:password@localhost:5432/postgres`).
 it will take precedence over all connection options.
 
 ```sh
-rainfrog --url $(connection_url)
+rainfrog --url $(connection_url) --ssl-required
 ```
+
+`--ssl-required` overrides the transport setting from a connection URL. It selects
+PostgreSQL's `require` mode, MySQL's `required` mode, or Oracle's `tcps` protocol.
+SQLite and DuckDB do not support SSL/TLS connections. Advanced certificate and
+verification settings can still be supplied in PostgreSQL and MySQL URL parameters,
+or through an Oracle Easy Connect string and Oracle client configuration.
 
 <!-- TOC --><a name="with-environment-variables"></a>
 ### with environment variables

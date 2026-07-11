@@ -5,12 +5,19 @@ use std::{
 
 use color_eyre::eyre::Result;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OracleProtocol {
+  Tcp,
+  Tcps,
+}
+
 pub struct OracleConnectOptions {
   user: Option<String>,
   password: Option<String>,
   host: String,
   port: Option<u16>,
   database: String,
+  protocol: OracleProtocol,
 }
 impl OracleConnectOptions {
   fn new() -> Self {
@@ -20,12 +27,16 @@ impl OracleConnectOptions {
       host: "localhost".to_string(),
       port: Some(1521),
       database: "XE".to_string(),
+      protocol: OracleProtocol::Tcp,
     }
   }
 
   fn get_connection_string(&self) -> String {
     let port = self.port.unwrap_or(1521u16);
-    format!("//{}:{}/{}", self.host, port, self.database)
+    match self.protocol {
+      OracleProtocol::Tcp => format!("//{}:{}/{}", self.host, port, self.database),
+      OracleProtocol::Tcps => format!("tcps://{}:{}/{}", self.host, port, self.database),
+    }
   }
   pub fn get_connection_options(
     &self,
@@ -51,6 +62,10 @@ impl OracleConnectOptions {
       Some(url) => {
         let mut opts =
           OracleConnectOptions::from_str(&url).map_err(|e| color_eyre::eyre::eyre!(e))?;
+
+        if args.ssl_required {
+          opts.protocol = OracleProtocol::Tcps;
+        }
 
         // Username
         if opts.user.is_none() {
@@ -89,6 +104,10 @@ impl OracleConnectOptions {
       },
       None => {
         let mut opts = OracleConnectOptions::new();
+
+        if args.ssl_required {
+          opts.protocol = OracleProtocol::Tcps;
+        }
 
         // Username
         if let Some(user) = args.user {
@@ -172,17 +191,21 @@ impl FromStr for OracleConnectOptions {
 
   fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
     let s = s.trim().trim_start_matches("jdbc:oracle:thin:").trim_start_matches("jdbc:");
-    let (is_easy_connect, (auth_part, host_part)) = if s.contains("@//") {
-      (
-        true,
-        s.split_once("@//")
-          .ok_or("Invalid Oracle Easy Connect connection string format".to_string())?,
-      )
-    } else if s.contains("@") {
-      (false, s.split_once('@').ok_or("Invalid Oracle SID connection string format".to_string())?)
-    } else {
-      return Err("Invalid Oracle connection string format".to_string());
-    };
+    let easy_connect_separator = [("@//", OracleProtocol::Tcp), ("@tcps://", OracleProtocol::Tcps)]
+      .into_iter()
+      .filter_map(|(separator, protocol)| {
+        s.rfind(separator).map(|index| (index, separator, protocol))
+      })
+      .max_by_key(|(index, _, _)| *index);
+
+    let (auth_part, protocol, is_easy_connect, host_part) =
+      if let Some((index, separator, protocol)) = easy_connect_separator {
+        (&s[..index], protocol, true, &s[index + separator.len()..])
+      } else {
+        let (auth_part, host_part) =
+          s.rsplit_once('@').ok_or("Invalid Oracle connection string format".to_string())?;
+        (auth_part, OracleProtocol::Tcp, false, host_part)
+      };
 
     let (user, password) = if auth_part.contains('/') {
       let (user, password) =
@@ -222,7 +245,7 @@ impl FromStr for OracleConnectOptions {
       }
     };
 
-    Ok(OracleConnectOptions { user, password, host, port, database })
+    Ok(OracleConnectOptions { user, password, host, port, database, protocol })
   }
 }
 
@@ -232,9 +255,9 @@ mod tests {
   #[test]
   fn test_oracle_connect_options_from_easy_connect_string() {
     let opts =
-      OracleConnectOptions::from_str("jdbc:oracle:thin:user/password@//localhost:1521/XE").unwrap();
+      OracleConnectOptions::from_str("jdbc:oracle:thin:user/p@ss@//localhost:1521/XE").unwrap();
     assert_eq!(opts.user, Some("user".to_string()));
-    assert_eq!(opts.password, Some("password".to_string()));
+    assert_eq!(opts.password, Some("p@ss".to_string()));
     assert_eq!(opts.host, "localhost");
     assert_eq!(opts.port, Some(1521));
     assert_eq!(opts.database, "XE");
@@ -243,9 +266,9 @@ mod tests {
   #[test]
   fn test_oracle_connect_options_from_sid_string() {
     let opts =
-      OracleConnectOptions::from_str("jdbc:oracle:thin:user/password@localhost:1521:XE").unwrap();
+      OracleConnectOptions::from_str("jdbc:oracle:thin:user/p@ss@localhost:1521:XE").unwrap();
     assert_eq!(opts.user, Some("user".to_string()));
-    assert_eq!(opts.password, Some("password".to_string()));
+    assert_eq!(opts.password, Some("p@ss".to_string()));
     assert_eq!(opts.host, "localhost");
     assert_eq!(opts.port, Some(1521));
     assert_eq!(opts.database, "XE");
@@ -255,5 +278,36 @@ mod tests {
   fn test_oracle_connect_options_get_connection_string() {
     let opts = OracleConnectOptions::new();
     assert_eq!(opts.get_connection_string(), "//localhost:1521/XE");
+  }
+
+  #[test]
+  fn test_oracle_connect_options_from_tcps_string() {
+    let opts = OracleConnectOptions::from_str(
+      "jdbc:oracle:thin:user/p@ss@tcps://localhost:1521/XE?wallet_location=/tmp/wallet",
+    )
+    .unwrap();
+    assert_eq!(opts.password, Some("p@ss".to_string()));
+    assert_eq!(opts.protocol, OracleProtocol::Tcps);
+    assert_eq!(
+      opts.get_connection_string(),
+      "tcps://localhost:1521/XE?wallet_location=/tmp/wallet"
+    );
+  }
+
+  #[test]
+  fn ssl_required_uses_tcps_and_preserves_parameters() {
+    use clap::Parser;
+
+    let args = crate::cli::Cli::parse_from([
+      "rainfrog",
+      "--url",
+      "jdbc:oracle:thin:user/password@//localhost:1521/XE?wallet_location=/tmp/wallet",
+      "--ssl-required",
+    ]);
+    let opts = OracleConnectOptions::build_connection_opts(args).unwrap();
+    assert_eq!(
+      opts.get_connection_string(),
+      "tcps://localhost:1521/XE?wallet_location=/tmp/wallet"
+    );
   }
 }

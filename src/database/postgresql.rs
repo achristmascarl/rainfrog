@@ -13,7 +13,7 @@ use sqlparser::ast::Statement;
 use sqlx::{
   Column, Either, Row, ValueRef,
   pool::PoolConnection,
-  postgres::{PgConnectOptions, PgConnection, PgPoolOptions, Postgres},
+  postgres::{PgConnectOptions, PgConnection, PgPoolOptions, PgSslMode, Postgres},
   types::Uuid,
 };
 use tokio::sync::Mutex;
@@ -411,8 +411,9 @@ impl PostgresDriver {
   fn build_connection_opts(
     args: crate::cli::Cli,
   ) -> Result<<<sqlx::Postgres as sqlx::Database>::Connection as sqlx::Connection>::Options> {
-    match args.connection_url {
-      Some(url) => Ok(PgConnectOptions::from_str(url.trim().trim_start_matches("jdbc:"))?),
+    let ssl_required = args.ssl_required;
+    let opts = match args.connection_url {
+      Some(url) => PgConnectOptions::from_str(url.trim().trim_start_matches("jdbc:"))?,
       None => {
         let mut opts = PgConnectOptions::new();
 
@@ -480,9 +481,18 @@ impl PostgresDriver {
           }
         }
 
-        Ok(opts)
+        opts
       },
-    }
+    };
+
+    Ok(if ssl_required {
+      match opts.get_ssl_mode() {
+        PgSslMode::VerifyCa | PgSslMode::VerifyFull => opts,
+        _ => opts.ssl_mode(PgSslMode::Require),
+      }
+    } else {
+      opts
+    })
   }
 }
 
@@ -857,10 +867,69 @@ fn parse_value(
 
 #[cfg(test)]
 mod tests {
+  use clap::Parser;
   use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::ParserError};
+  use sqlx::postgres::PgSslMode;
 
   use super::*;
   use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
+
+  #[test]
+  fn ssl_required_overrides_url_ssl_mode() {
+    let args = crate::cli::Cli::parse_from([
+      "rainfrog",
+      "--url",
+      "postgres://localhost/postgres?sslmode=disable",
+      "--ssl-required",
+    ]);
+    let opts = PostgresDriver::build_connection_opts(args).unwrap();
+    assert!(matches!(opts.get_ssl_mode(), PgSslMode::Require));
+  }
+
+  #[test]
+  fn ssl_required_preserves_stricter_url_ssl_modes() {
+    for (mode, expected) in
+      [("verify-ca", PgSslMode::VerifyCa), ("verify-full", PgSslMode::VerifyFull)]
+    {
+      let args = crate::cli::Cli::parse_from([
+        "rainfrog",
+        "--url",
+        &format!("postgres://localhost/postgres?sslmode={mode}"),
+        "--ssl-required",
+      ]);
+      let opts = PostgresDriver::build_connection_opts(args).unwrap();
+      assert!(
+        matches!(
+          (opts.get_ssl_mode(), expected),
+          (PgSslMode::VerifyCa, PgSslMode::VerifyCa)
+            | (PgSslMode::VerifyFull, PgSslMode::VerifyFull)
+        ),
+        "mode {mode} was not preserved"
+      );
+    }
+  }
+
+  #[test]
+  fn ssl_required_applies_to_structured_options() {
+    let args = crate::cli::Cli::parse_from([
+      "rainfrog",
+      "--driver",
+      "postgres",
+      "--username",
+      "user",
+      "--password",
+      "password",
+      "--host",
+      "localhost",
+      "--port",
+      "5432",
+      "--database",
+      "postgres",
+      "--ssl-required",
+    ]);
+    let opts = PostgresDriver::build_connection_opts(args).unwrap();
+    assert!(matches!(opts.get_ssl_mode(), PgSslMode::Require));
+  }
 
   #[test]
   fn test_get_first_query() {
