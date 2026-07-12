@@ -23,7 +23,7 @@ use super::{
 };
 
 type MySqlTransaction = sqlx::Transaction<'static, MySql>;
-type ConnectionTask = JoinHandle<Result<(Arc<Mutex<PoolConnection<MySql>>>, u64)>>;
+type ConnectionTask = JoinHandle<Result<(Arc<Mutex<PoolConnection<MySql>>>, u64, bool)>>;
 type TransactionAcquireTask = JoinHandle<Result<(MySqlTransaction, u64)>>;
 type TransactionTask = JoinHandle<(QueryResultsWithMetadata, MySqlTransaction)>;
 enum MySqlTask {
@@ -96,7 +96,7 @@ impl Database for MySqlDriver {
   // we only execute the first one and then drop the rest.
   async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()> {
     let (first_query, statement_type) = match bypass_parser {
-      true => (preprocess_delimiter_script(query), None),
+      true => (query, None),
       false => {
         let (first, stmt) = super::get_first_query(query, Driver::MySql)?;
         (first, Some(stmt))
@@ -107,8 +107,12 @@ impl Database for MySqlDriver {
       handle: tokio::spawn(
         async move {
           let conn = Arc::new(Mutex::new(pool.acquire().await?));
-          let pid = connection_pid(conn.lock().await.as_mut()).await?;
-          Ok((conn, pid))
+          let mut guard = conn.lock().await;
+          let pid = connection_pid(guard.as_mut()).await?;
+          let no_backslash_escapes =
+            if bypass_parser { session_no_backslash_escapes(guard.as_mut()).await? } else { false };
+          drop(guard);
+          Ok((conn, pid, no_backslash_escapes))
         }
         .in_current_span(),
       ),
@@ -159,10 +163,15 @@ impl Database for MySqlDriver {
           )
         } else {
           match handle.await? {
-            Ok((conn, pid)) => {
+            Ok((conn, pid, no_backslash_escapes)) => {
               log::info!("Starting query with PID {}", pid.clone());
               self.querying_conn = Some(conn.clone());
               self.querying_pid = Some(pid.to_string());
+              let first_query = if statement_type.is_none() {
+                preprocess_delimiter_script(first_query, no_backslash_escapes)
+              } else {
+                first_query
+              };
               (
                 DbTaskResult::Pending,
                 Some(MySqlTask::Query(spawn_query_task(conn, first_query, statement_type))),
@@ -538,12 +547,11 @@ enum ScriptState {
   BlockComment,
 }
 
-fn preprocess_delimiter_script(query: String) -> String {
+fn preprocess_delimiter_script(query: String, mut no_backslash_escapes: bool) -> String {
   let mut delimiter = ";".to_owned();
   let mut statements = Vec::new();
   let mut statement = String::new();
   let mut state = ScriptState::Normal;
-  let mut no_backslash_escapes = false;
   let mut ends_with_line_comment = false;
   let mut saw_directive = false;
   let mut index = 0;
@@ -640,7 +648,7 @@ fn preprocess_delimiter_script(query: String) -> String {
         statement.push(current);
         index += current.len_utf8();
 
-        if current == '\\' && (!no_backslash_escapes || matches!(state, ScriptState::Backtick)) {
+        if current == '\\' && !no_backslash_escapes && !matches!(state, ScriptState::Backtick) {
           if let Some(next) = next {
             statement.push(next);
             index += next.len_utf8();
@@ -738,7 +746,17 @@ fn no_backslash_escapes_setting(statement: &str) -> Option<bool> {
     return None;
   }
   let modes = &value[quote.len_utf8()..value.len() - quote.len_utf8()];
-  Some(modes.split(',').any(|mode| mode.trim().eq_ignore_ascii_case("NO_BACKSLASH_ESCAPES")))
+  Some(sql_mode_has_no_backslash_escapes(modes))
+}
+
+fn sql_mode_has_no_backslash_escapes(sql_mode: &str) -> bool {
+  sql_mode.split(',').any(|mode| mode.trim().eq_ignore_ascii_case("NO_BACKSLASH_ESCAPES"))
+}
+
+async fn session_no_backslash_escapes(conn: &mut MySqlConnection) -> Result<bool> {
+  let sql_mode =
+    sqlx::query_scalar::<_, String>("SELECT @@SESSION.sql_mode").fetch_one(conn).await?;
+  Ok(sql_mode_has_no_backslash_escapes(&sql_mode))
 }
 
 fn delimiter_directive(line: &str) -> Option<Option<&str>> {
@@ -755,7 +773,18 @@ fn delimiter_directive(line: &str) -> Option<Option<&str>> {
     return None;
   }
 
-  Some(remainder.split_whitespace().next())
+  Some(remainder.split_whitespace().next().map(|delimiter| {
+    match (delimiter.chars().next(), delimiter.chars().last()) {
+      (Some(first), Some(last))
+        if delimiter.len() >= first.len_utf8() + last.len_utf8()
+          && first == last
+          && matches!(first, '\'' | '"') =>
+      {
+        &delimiter[first.len_utf8()..delimiter.len() - last.len_utf8()]
+      },
+      _ => delimiter,
+    }
+  }))
 }
 
 fn spawn_tx_task(
@@ -1088,9 +1117,18 @@ END $$
 DELIMITER ;"#;
 
     assert_eq!(
-      preprocess_delimiter_script(query.to_owned()),
+      preprocess_delimiter_script(query.to_owned(), false),
       "CREATE PROCEDURE hello_world()\nBEGIN\n  SELECT 'Hello World';\nEND;"
     );
+  }
+
+  #[test]
+  fn preprocesses_quoted_mysql_delimiters() {
+    let query = r#"DELIMITER "$$"
+SELECT 1$$
+DELIMITER ";""#;
+
+    assert_eq!(preprocess_delimiter_script(query.to_owned(), false), "SELECT 1;");
   }
 
   #[test]
@@ -1108,7 +1146,7 @@ DELIMITER ;
 SELECT 1;"#;
 
     assert_eq!(
-      preprocess_delimiter_script(query.to_owned()),
+      preprocess_delimiter_script(query.to_owned(), false),
       r#"CREATE PROCEDURE delimiter_examples()
 BEGIN
   SELECT 'single // ;', "double // ;", `identifier//name`;
@@ -1118,6 +1156,20 @@ BEGIN
   SELECT 'escaped \'// value', 'doubled ''// value';
 END;
 SELECT 1;"#
+    );
+  }
+
+  #[test]
+  fn backslashes_do_not_escape_backticks() {
+    let query = r#"DELIMITER $$
+SELECT 1 AS `p\`$$
+DELIMITER ;
+SELECT 2;"#;
+
+    assert_eq!(
+      preprocess_delimiter_script(query.to_owned(), false),
+      r#"SELECT 1 AS `p\`;
+SELECT 2;"#
     );
   }
 
@@ -1132,7 +1184,7 @@ END$$
 DELIMITER ;"#;
 
     assert_eq!(
-      preprocess_delimiter_script(query.to_owned()),
+      preprocess_delimiter_script(query.to_owned(), false),
       r#"SET sql_mode='NO_BACKSLASH_ESCAPES';
 CREATE PROCEDURE backslash_literal()
 BEGIN
@@ -1142,18 +1194,32 @@ END;"#
   }
 
   #[test]
+  fn connection_no_backslash_escapes_mode_does_not_escape_closing_quotes() {
+    let query = r#"DELIMITER $$
+SELECT 'abc\'$$
+DELIMITER ;
+SELECT 1;"#;
+
+    assert_eq!(
+      preprocess_delimiter_script(query.to_owned(), true),
+      r#"SELECT 'abc\';
+SELECT 1;"#
+    );
+  }
+
+  #[test]
   fn script_without_delimiter_directive_is_unchanged() {
     let query = "  SELECT 'preserve formatting';\r\n\r\nSELECT 2;  ";
 
-    assert_eq!(preprocess_delimiter_script(query.to_owned()), query);
-    assert_eq!(preprocess_delimiter_script(String::new()), "");
-    assert_eq!(preprocess_delimiter_script(" \n\t".to_owned()), " \n\t");
+    assert_eq!(preprocess_delimiter_script(query.to_owned(), false), query);
+    assert_eq!(preprocess_delimiter_script(String::new(), false), "");
+    assert_eq!(preprocess_delimiter_script(" \n\t".to_owned(), false), " \n\t");
   }
 
   #[test]
   fn blank_delimiter_directive_is_ignored_without_creating_statements() {
-    assert_eq!(preprocess_delimiter_script("DELIMITER\nSELECT 1;".to_owned()), "SELECT 1;");
-    assert_eq!(preprocess_delimiter_script("  delimiter  \n".to_owned()), "");
+    assert_eq!(preprocess_delimiter_script("DELIMITER\nSELECT 1;".to_owned(), false), "SELECT 1;");
+    assert_eq!(preprocess_delimiter_script("  delimiter  \n".to_owned(), false), "");
   }
 
   #[test]
@@ -1161,7 +1227,7 @@ END;"#
     let query = "DELIMITER $$\nSELECT 1 -- first\n$$\nSELECT 2 # second\n$$";
 
     assert_eq!(
-      preprocess_delimiter_script(query.to_owned()),
+      preprocess_delimiter_script(query.to_owned(), false),
       "SELECT 1 -- first\n;\nSELECT 2 # second\n;"
     );
   }
@@ -1170,7 +1236,7 @@ END;"#
   fn double_dash_without_whitespace_is_not_a_comment() {
     let query = "DELIMITER $$\nSELECT 1--2$$";
 
-    assert_eq!(preprocess_delimiter_script(query.to_owned()), "SELECT 1--2;");
+    assert_eq!(preprocess_delimiter_script(query.to_owned(), false), "SELECT 1--2;");
   }
 
   #[test]
