@@ -357,6 +357,9 @@ export RAINFROG_CONFIG=~/.config/rainfrog
 | mouse_mode | `true` | whether to capture mouse events. capturing mouse events allows you to change focus and scroll using the mouse. however, your terminal will not handle mouse events like it normally does (you won't be able to copy by highlighting, for example). |
 | data_compact_columns | `true` | whether column widths should be dynamic based on the length of the contents of each column. there is still a max column width that won't be exceeded, so this will save some space by compressing the widths of columns with shorter strings. |
 | data_row_spacer | `false` | whether rows will have a space separating them to make the data table less visually dense.                    |
+| autocomplete_enabled | `true` | whether completions are requested while editing SQL. |
+| autocomplete_debounce_ms | `200` | how long edit-triggered completion waits before refreshing or hiding the menu. |
+| autocomplete_trigger_len | `2` | minimum identifier length for automatic completion; `Ctrl+Space` bypasses it. |
 
 <!-- TOC --><a name="database-connections"></a>
 ### database connections
@@ -449,6 +452,10 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | ----------------- | -------------------------------------- |
 | `Alt+Enter`, `F5` | Execute query                          |
 | `F7`              | Bypass parser to execute query (cannot rollback, no validation) |
+| `Ctrl+Space`      | Show SQL, schema, buffer, or path completions |
+| `Tab`, `Enter`    | Accept the selected completion             |
+| `Up`, `Down`, `Ctrl+p`, `Ctrl+n` | Navigate completions          |
+| `Esc`             | Dismiss completions; press again for normal mode |
 | `j`, `↓`          | Move cursor down 1 line                |
 | `k`, `↑`          | Move cursor up 1 line                  |
 | `h`, `←`          | Move cursor left 1 char                |

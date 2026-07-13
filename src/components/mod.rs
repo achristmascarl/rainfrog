@@ -30,6 +30,7 @@ pub mod scroll_table;
 #[cfg(test)]
 pub(crate) fn app_state_with_focus(focus: crate::focus::Focus) -> AppState {
   AppState {
+    driver: crate::cli::Driver::Postgres,
     focus,
     history: Vec::new(),
     favorites: favorites::FavoriteEntries::empty_for_test(),

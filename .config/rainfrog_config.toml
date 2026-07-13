@@ -2,6 +2,9 @@
 mouse_mode = true
 data_compact_columns = true
 data_row_spacer = false
+autocomplete_enabled = true
+autocomplete_debounce_ms = 200
+autocomplete_trigger_len = 2
 
 [db]
 # you can add frequently used database connections here. example:
@@ -26,6 +29,7 @@ data_row_spacer = false
 "<Backtab>" = "CycleFocusBackwards"
 
 [keybindings.Editor]
+"<Ctrl-space>" = "TriggerCompletion"
 "<Alt-q>" = "AbortQuery"
 "<F5>" = "SubmitEditorQuery"
 "<F7>" = "SubmitEditorQueryBypassParser"

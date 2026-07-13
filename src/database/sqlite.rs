@@ -20,6 +20,7 @@ use tracing::Instrument;
 use super::{
   Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
 };
+use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
 type SqliteTransaction = sqlx::Transaction<'static, Sqlite>;
 type TransactionAcquireTask = tokio::task::JoinHandle<Result<SqliteTransaction>>;
@@ -226,10 +227,12 @@ impl Database for SqliteDriver {
     Ok(())
   }
 
-  async fn load_menu(&self) -> Result<Rows> {
-    query_with_pool(
-      self.pool.clone().unwrap(),
-      "select '' as table_schema,
+  fn start_load_menu(&self) -> Result<tokio::task::JoinHandle<Result<Rows>>> {
+    let pool = self.pool.clone().unwrap();
+    Ok(tokio::spawn(async move {
+      query_with_pool(
+        pool,
+        "select '' as table_schema,
         name as table_name,
         case
           when type = 'table' then 'table'
@@ -240,9 +243,26 @@ impl Database for SqliteDriver {
       where type in ('table', 'view')
       and name not like 'sqlite_%'
       order by object_kind, name asc"
-        .to_owned(),
-    )
-    .await
+          .to_owned(),
+      )
+      .await
+    }))
+  }
+
+  fn start_load_columns(
+    &self,
+    tables: Vec<TableRef>,
+  ) -> Result<tokio::task::JoinHandle<Result<Vec<TableColumns>>>> {
+    let pool = self.pool.clone().unwrap();
+    Ok(tokio::spawn(async move {
+      let mut output = Vec::with_capacity(tables.len());
+      for table in tables {
+        let name = table.table.replace('\'', "''");
+        let query = format!("select name, type from pragma_table_info('{name}') order by cid");
+        output.push(table_columns_from_rows(table, query_with_pool(pool.clone(), query).await?));
+      }
+      Ok(output)
+    }))
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
@@ -552,6 +572,25 @@ mod tests {
 
   use super::*;
   use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
+
+  #[tokio::test]
+  async fn completion_catalog_loads_from_memory_database() {
+    let pool = Arc::new(
+      SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap(),
+    );
+    sqlx::query("create table users(id integer, name text)").execute(pool.as_ref()).await.unwrap();
+    let driver = SqliteDriver { pool: Some(pool), task: None };
+
+    let menu = driver.start_load_menu().unwrap().await.unwrap().unwrap();
+    assert!(menu.rows.iter().any(|row| row.get(1).is_some_and(|name| name == "users")));
+
+    let table = TableRef { schema: String::new(), table: "users".into() };
+    let columns = driver.start_load_columns(vec![table]).unwrap().await.unwrap().unwrap();
+    assert_eq!(
+      columns[0].columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
+      vec!["id", "name"]
+    );
+  }
 
   #[test]
   fn test_get_first_query() {

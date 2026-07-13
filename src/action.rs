@@ -42,6 +42,7 @@ pub enum Action {
   Help,
   SubmitEditorQuery,
   SubmitEditorQueryBypassParser,
+  TriggerCompletion,
   Query(Vec<String>, bool, bool), // (query_lines, execution_confirmed, bypass_parser)
   MenuPreview(MenuPreview, MenuTarget), // (preview, target)
   QueryToEditor(Vec<String>),

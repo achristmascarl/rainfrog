@@ -12,6 +12,7 @@ use sqlparser::{
 use tokio::task::JoinHandle;
 
 use crate::cli::{Cli, Driver};
+use crate::completion::{TableColumns, TableRef};
 
 #[cfg(feature = "duckdb")]
 mod duckdb;
@@ -138,9 +139,14 @@ pub trait Database {
   /// if no transaction is pending.
   async fn rollback_tx(&mut self) -> Result<()>;
 
-  /// Returns rows representing the database menu. The menu component
-  /// expects each row to be combination of schema, object name, and kind.
-  async fn load_menu(&self) -> Result<Rows>;
+  /// Starts loading rows representing the database menu without blocking the UI loop.
+  fn start_load_menu(&self) -> Result<JoinHandle<Result<Rows>>>;
+
+  /// Starts loading normalized column metadata for the requested tables.
+  fn start_load_columns(
+    &self,
+    tables: Vec<TableRef>,
+  ) -> Result<JoinHandle<Result<Vec<TableColumns>>>>;
 
   /// Returns a query that can be used to preview the rows in a table.
   fn preview_rows_query(&self, schema: &str, table: &str) -> String;

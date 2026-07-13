@@ -12,6 +12,7 @@ use tokio::task::{self, JoinHandle};
 use crate::cli::Driver;
 
 use super::{Database, DbTaskResult, Header, QueryResultsWithMetadata, QueryTask, Rows};
+use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
 type ConnectionTask = JoinHandle<Result<Arc<Connection>>>;
 type TransactionTask = JoinHandle<Result<QueryResultsWithMetadata>>;
@@ -311,10 +312,12 @@ impl Database for OracleDriver {
     }
   }
 
-  async fn load_menu(&self) -> Result<Rows> {
-    query_with_pool(
-      self.pool.as_ref().unwrap(),
-      "select user, table_name, 'table' as object_kind
+  fn start_load_menu(&self) -> Result<JoinHandle<Result<Rows>>> {
+    let pool = self.pool.clone().unwrap();
+    Ok(task::spawn_blocking(move || {
+      query_with_pool(
+        &pool,
+        "select user, table_name, 'table' as object_kind
         from user_tables
         where tablespace_name is not null
       union all
@@ -327,8 +330,28 @@ impl Database for OracleDriver {
       select user, object_name, 'function' as object_kind
         from user_objects
         where object_type = 'FUNCTION'
-      order by 1, 3, 2",
-    )
+        order by 1, 3, 2",
+      )
+    }))
+  }
+
+  fn start_load_columns(
+    &self,
+    tables: Vec<TableRef>,
+  ) -> Result<JoinHandle<Result<Vec<TableColumns>>>> {
+    let pool = self.pool.clone().unwrap();
+    Ok(task::spawn_blocking(move || {
+      let mut output = Vec::with_capacity(tables.len());
+      for table in tables {
+        let schema = table.schema.replace('\'', "''");
+        let name = table.table.replace('\'', "''");
+        let query = format!(
+          "select column_name, data_type from all_tab_columns where owner = upper('{schema}') and table_name = upper('{name}') order by column_id"
+        );
+        output.push(table_columns_from_rows(table, query_with_pool(&pool, &query)?));
+      }
+      Ok(output)
+    }))
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
