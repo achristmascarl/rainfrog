@@ -3,8 +3,8 @@ mouse_mode = true
 data_compact_columns = true
 data_row_spacer = false
 autocomplete_enabled = true
-autocomplete_debounce_ms = 200
-autocomplete_trigger_len = 2
+autocomplete_debounce_ms = 100
+autocomplete_trigger_len = 1
 
 [db]
 # you can add frequently used database connections here. example:

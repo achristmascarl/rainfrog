@@ -601,8 +601,8 @@ mod tests {
     );
     assert_eq!(c.settings.mouse_mode, Some(true));
     assert_eq!(c.settings.autocomplete_enabled, Some(true));
-    assert_eq!(c.settings.autocomplete_debounce_ms, Some(200));
-    assert_eq!(c.settings.autocomplete_trigger_len, Some(2));
+    assert_eq!(c.settings.autocomplete_debounce_ms, Some(100));
+    assert_eq!(c.settings.autocomplete_trigger_len, Some(1));
     Ok(())
   }
 

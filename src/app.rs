@@ -211,9 +211,9 @@ impl App {
     loop {
       self.completion.poll(
         std::time::Duration::from_millis(
-          self.config.settings.autocomplete_debounce_ms.unwrap_or(200),
+          self.config.settings.autocomplete_debounce_ms.unwrap_or(100),
         ),
-        self.config.settings.autocomplete_trigger_len.unwrap_or(2),
+        self.config.settings.autocomplete_trigger_len.unwrap_or(1),
       );
       self.completion.start_missing_columns(database.as_ref())?;
       for event in self.completion.poll_database().await {
