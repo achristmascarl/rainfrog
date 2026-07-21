@@ -685,8 +685,12 @@ pub fn complete(
       add_keywords(&mut candidates);
     },
     CompletionContext::Expression => {
-      for table in &analysis.referenced_tables {
-        let table = resolved_table_ref(table, catalog);
+      let mut tables: HashSet<_> =
+        analysis.referenced_tables.iter().map(|table| resolved_table_ref(table, catalog)).collect();
+      tables.extend(mentioned_table_refs(&request.text, catalog));
+      let mut tables: Vec<_> = tables.into_iter().collect();
+      tables.sort();
+      for table in tables {
         if let Some(columns) = catalog.columns.get(&table) {
           candidates.extend(columns.iter().map(|column| column_candidate(column, &table)));
         } else if !missing_columns.contains(&table) {
@@ -1323,6 +1327,36 @@ mod tests {
         .any(|candidate| { candidate.label == "name" && candidate.kind == CompletionKind::Column })
     );
     assert!(!response.candidates.iter().any(|candidate| candidate.label == "number"));
+  }
+
+  #[test]
+  fn returns_columns_from_table_mentioned_after_cursor_in_expression_context() {
+    let users = TableRef { schema: "public".into(), table: "users".into() };
+    let mut catalog = CompletionCatalog {
+      objects: vec![CatalogObject {
+        schema: users.schema.clone(),
+        name: users.table.clone(),
+        kind: CompletionKind::Table,
+      }],
+      ..CompletionCatalog::default()
+    };
+    catalog.insert_columns(users, vec![Column { name: "name".into(), type_name: "text".into() }]);
+    let request = CompletionRequest {
+      generation: 1,
+      text: "select na from users".into(),
+      cursor: CursorPosition { row: 0, col: 9 },
+      manual: false,
+      driver: Driver::Postgres,
+    };
+
+    assert_eq!(analyze(&request).context, CompletionContext::Expression);
+    let response = complete(&request, &catalog, Vec::new());
+    assert!(
+      response
+        .candidates
+        .iter()
+        .any(|candidate| { candidate.label == "name" && candidate.kind == CompletionKind::Column })
+    );
   }
 
   #[test]
