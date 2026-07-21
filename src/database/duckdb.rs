@@ -16,6 +16,7 @@ use tracing::Instrument;
 use crate::cli::{Cli, Driver};
 
 use super::{Database, DbTaskResult, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows};
+use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
 enum DuckDbTask {
   Query(QueryTask),
@@ -45,7 +46,7 @@ impl Database for DuckDbDriver {
     let connection = self.connection.as_ref().unwrap().try_clone()?;
     self.task = Some(DuckDbTask::Query(tokio::spawn(
       async move {
-        let results = run_query(connection, first_query).await;
+        let results = run_query(connection, first_query);
         match results {
           Ok(rows) => QueryResultsWithMetadata::new(Ok(rows), Some(statement_type)),
           Err(e) => QueryResultsWithMetadata::new(Err(e), Some(statement_type)),
@@ -95,11 +96,12 @@ impl Database for DuckDbDriver {
     Err(eyre::Report::msg("Transactions are not currently supported when using the DuckDB driver"))
   }
 
-  async fn load_menu(&self) -> Result<Rows> {
+  fn start_load_menu(&self) -> Result<tokio::task::JoinHandle<Result<Rows>>> {
     let connection = self.connection.as_ref().unwrap().try_clone()?;
-    run_query(
-      connection,
-      "select table_schema,
+    Ok(tokio::task::spawn_blocking(move || {
+      run_query(
+        connection,
+        "select table_schema,
         table_name,
         case
           when table_type = 'BASE TABLE' then 'table'
@@ -110,9 +112,28 @@ impl Database for DuckDbDriver {
       where table_schema != 'information_schema'
       group by table_schema, table_name, table_type
       order by table_schema, object_kind, table_name asc"
-        .to_string(),
-    )
-    .await
+          .to_string(),
+      )
+    }))
+  }
+
+  fn start_load_columns(
+    &self,
+    tables: Vec<TableRef>,
+  ) -> Result<tokio::task::JoinHandle<Result<Vec<TableColumns>>>> {
+    let connection = self.connection.as_ref().unwrap().try_clone()?;
+    Ok(tokio::task::spawn_blocking(move || {
+      let mut output = Vec::with_capacity(tables.len());
+      for table in tables {
+        let schema = table.schema.replace('\'', "''");
+        let name = table.table.replace('\'', "''");
+        let query = format!(
+          "select column_name, data_type from information_schema.columns where table_schema = '{schema}' and table_name = '{name}' order by ordinal_position"
+        );
+        output.push(table_columns_from_rows(table, run_query(connection.try_clone()?, query)?));
+      }
+      Ok(output)
+    }))
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
@@ -156,7 +177,7 @@ impl Database for DuckDbDriver {
   }
 }
 
-async fn run_query(connection: Connection, query: String) -> Result<Rows> {
+fn run_query(connection: Connection, query: String) -> Result<Rows> {
   let mut statement = connection.prepare(query.as_str())?;
   let rows = statement.query([])?;
   fetch_rows(rows)
@@ -340,6 +361,24 @@ mod tests {
 
   use super::*;
   use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
+
+  #[tokio::test]
+  async fn completion_catalog_loads_from_memory_database() {
+    let connection = Connection::open_in_memory().unwrap();
+    connection.execute_batch("create table users(id integer, name varchar)").unwrap();
+    let driver = DuckDbDriver { connection: Some(connection), task: None };
+
+    let menu = driver.start_load_menu().unwrap().await.unwrap().unwrap();
+    let user_row = menu.rows.iter().find(|row| row.get(1).is_some_and(|name| name == "users"));
+    assert!(user_row.is_some());
+
+    let table = TableRef { schema: "main".into(), table: "users".into() };
+    let columns = driver.start_load_columns(vec![table]).unwrap().await.unwrap().unwrap();
+    assert_eq!(
+      columns[0].columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
+      vec!["id", "name"]
+    );
+  }
 
   #[test]
   fn test_get_first_query() {

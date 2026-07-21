@@ -17,6 +17,7 @@ use tokio::sync::mpsc::{self};
 use crate::{
   action::{Action, ExportFormat, MenuItemKind, MenuPreview},
   cli::{Cli, Driver},
+  completion::{CompletionCoordinator, CompletionDatabaseEvent},
   components::{
     Component, ComponentImpls,
     data::{Data, DataComponent},
@@ -43,6 +44,7 @@ pub struct HistoryEntry {
 }
 
 pub struct AppState {
+  pub driver: Driver,
   pub focus: Focus,
   pub history: Vec<HistoryEntry>,
   pub favorites: FavoriteEntries,
@@ -70,13 +72,15 @@ pub struct App {
   last_focused_tab: Focus,
   last_focused_component: Focus,
   popup: Option<Box<dyn PopUp>>,
+  completion: CompletionCoordinator,
 }
 
 impl App {
   pub fn new(mouse_mode_override: Option<bool>, config: Config) -> Result<Self> {
     let focus = Focus::Menu;
+    let (completion, completion_client) = CompletionCoordinator::new();
     let menu = Menu::new();
-    let editor = Editor::new();
+    let editor = Editor::with_completion_channels(completion_client);
     let history = History::new();
     let data = Data::new();
     let favorites = Favorites::new();
@@ -96,6 +100,7 @@ impl App {
       last_tick_key_events: Vec::new(),
       last_frame_mouse_event: None,
       state: AppState {
+        driver: Driver::Postgres,
         focus,
         history: vec![],
         last_query_start: None,
@@ -106,6 +111,7 @@ impl App {
       last_focused_tab: Focus::Editor,
       last_focused_component: focus,
       popup: None,
+      completion,
     })
   }
 
@@ -157,6 +163,7 @@ impl App {
   }
 
   pub async fn run(&mut self, driver: Driver, args: Cli) -> Result<()> {
+    self.state.driver = driver;
     let mut database: Box<dyn Database> = match driver {
       Driver::Postgres => Box::new(database::PostgresDriver::new()),
       Driver::MySql => Box::new(database::MySqlDriver::new()),
@@ -202,6 +209,20 @@ impl App {
     action_tx.send(Action::LoadMenu)?;
 
     loop {
+      self.completion.poll(
+        std::time::Duration::from_millis(
+          self.config.settings.autocomplete_debounce_ms.unwrap_or(100),
+        ),
+        self.config.settings.autocomplete_trigger_len.unwrap_or(1),
+      );
+      self.completion.start_missing_columns(database.as_ref())?;
+      for event in self.completion.poll_database().await {
+        match event {
+          CompletionDatabaseEvent::MenuLoaded(rows) => {
+            self.components.menu.set_table_list(Some(Ok(rows)));
+          },
+        }
+      }
       if self.popup.is_some() {
         self.set_focus(Focus::PopUp);
       }
@@ -400,8 +421,7 @@ impl App {
             Focus::PopUp => {},
           },
           Action::LoadMenu => {
-            let rows = database.load_menu().await;
-            self.components.menu.set_table_list(Some(rows));
+            self.completion.start_menu_load(database.as_ref())?;
           },
           Action::Query(query_lines, confirmed, bypass) => 'query_action: {
             if self.state.query_task_running {
@@ -424,7 +444,8 @@ impl App {
             match execution_info {
               Ok((ExecutionType::Transaction, _)) => {
                 self.components.data.set_loading();
-                database.start_tx(query_string).await?;
+                database.start_tx(query_string.clone()).await?;
+                self.completion.queue_columns_for_text(query_string);
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },
@@ -433,7 +454,8 @@ impl App {
               },
               Ok((ExecutionType::Normal, _)) => {
                 self.components.data.set_loading();
-                database.start_query(query_string, *bypass).await?;
+                database.start_query(query_string.clone(), *bypass).await?;
+                self.completion.queue_columns_for_text(query_string);
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },
@@ -563,6 +585,7 @@ impl App {
         })?;
       }
       if self.should_quit {
+        self.completion.cancel_all();
         database.abort_query().await?;
         tui.stop()?;
         break;

@@ -184,6 +184,15 @@ impl Config {
         cfg.settings.data_row_spacer = default_config.settings.data_row_spacer;
       },
     };
+    if cfg.settings.autocomplete_enabled.is_none() {
+      cfg.settings.autocomplete_enabled = default_config.settings.autocomplete_enabled;
+    }
+    if cfg.settings.autocomplete_debounce_ms.is_none() {
+      cfg.settings.autocomplete_debounce_ms = default_config.settings.autocomplete_debounce_ms;
+    }
+    if cfg.settings.autocomplete_trigger_len.is_none() {
+      cfg.settings.autocomplete_trigger_len = default_config.settings.autocomplete_trigger_len;
+    }
 
     Ok(cfg)
   }
@@ -403,6 +412,9 @@ pub struct Settings {
   pub mouse_mode: Option<bool>,
   pub data_compact_columns: Option<bool>,
   pub data_row_spacer: Option<bool>,
+  pub autocomplete_enabled: Option<bool>,
+  pub autocomplete_debounce_ms: Option<u64>,
+  pub autocomplete_trigger_len: Option<usize>,
 }
 
 #[derive(Clone, Debug, Default, Deref, DerefMut)]
@@ -578,7 +590,7 @@ mod tests {
 
   #[test]
   fn test_config() -> Result<()> {
-    let c = Config::new()?;
+    let c: Config = toml::from_str(CONFIG)?;
     assert_eq!(
       c.keybindings
         .get(&Focus::Menu)
@@ -588,6 +600,9 @@ mod tests {
       &Action::AbortQuery
     );
     assert_eq!(c.settings.mouse_mode, Some(true));
+    assert_eq!(c.settings.autocomplete_enabled, Some(true));
+    assert_eq!(c.settings.autocomplete_debounce_ms, Some(100));
+    assert_eq!(c.settings.autocomplete_trigger_len, Some(1));
     Ok(())
   }
 

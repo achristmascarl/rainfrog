@@ -3340,6 +3340,7 @@ dependencies = [
  "tracing",
  "tracing-error",
  "tracing-subscriber",
+ "unicode-width",
  "vergen",
  "vergen-git2",
 ]

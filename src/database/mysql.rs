@@ -21,6 +21,7 @@ use tracing::Instrument;
 use super::{
   Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
 };
+use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
 type MySqlTransaction = sqlx::Transaction<'static, MySql>;
 type ConnectionTask = JoinHandle<Result<(Arc<Mutex<PoolConnection<MySql>>>, u64)>>;
@@ -321,15 +322,36 @@ impl Database for MySqlDriver {
     Ok(())
   }
 
-  async fn load_menu(&self) -> Result<Rows> {
+  fn start_load_menu(&self) -> Result<JoinHandle<Result<Rows>>> {
     let pool = self.pool.clone().unwrap();
-    match query_with_pool(pool.clone(), MENU_QUERY.to_owned()).await {
-      Ok(rows) => Ok(rows),
-      Err(e) => {
-        log::warn!("Falling back to simple MySQL menu query: {e:?}");
-        query_with_pool(pool, SIMPLE_MENU_QUERY.to_owned()).await
-      },
-    }
+    Ok(tokio::spawn(async move {
+      match query_with_pool(pool.clone(), MENU_QUERY.to_owned()).await {
+        Ok(rows) => Ok(rows),
+        Err(e) => {
+          log::warn!("Falling back to simple MySQL menu query: {e:?}");
+          query_with_pool(pool, SIMPLE_MENU_QUERY.to_owned()).await
+        },
+      }
+    }))
+  }
+
+  fn start_load_columns(
+    &self,
+    tables: Vec<TableRef>,
+  ) -> Result<JoinHandle<Result<Vec<TableColumns>>>> {
+    let pool = self.pool.clone().unwrap();
+    Ok(tokio::spawn(async move {
+      let mut output = Vec::with_capacity(tables.len());
+      for table in tables {
+        let schema = table.schema.replace('\'', "''");
+        let name = table.table.replace('\'', "''");
+        let query = format!(
+          "select column_name, data_type from information_schema.columns where table_schema = '{schema}' and table_name = '{name}' order by ordinal_position"
+        );
+        output.push(table_columns_from_rows(table, query_with_pool(pool.clone(), query).await?));
+      }
+      Ok(output)
+    }))
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
