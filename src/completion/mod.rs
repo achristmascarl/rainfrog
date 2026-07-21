@@ -706,15 +706,13 @@ fn complete_with_analysis(
             .filter(|object| object.schema.eq_ignore_ascii_case(qualifier))
             .map(|object| database_object_candidate(object, request.driver)),
         );
-      } else {
-        for table in resolve_tables(qualifier, &analysis, catalog) {
-          if let Some(columns) = catalog.columns.get(&table) {
-            candidates.extend(
-              columns.iter().map(|column| column_candidate(column, &table, request.driver)),
-            );
-          } else if !missing_columns.contains(&table) {
-            missing_columns.push(table);
-          }
+      }
+      for table in resolve_tables(qualifier, &analysis, catalog) {
+        if let Some(columns) = catalog.columns.get(&table) {
+          candidates
+            .extend(columns.iter().map(|column| column_candidate(column, &table, request.driver)));
+        } else if !missing_columns.contains(&table) {
+          missing_columns.push(table);
         }
       }
     },
@@ -1781,6 +1779,67 @@ mod tests {
     assert_eq!(response.candidates[0].label, "name");
     assert_eq!(response.candidates[0].kind, CompletionKind::Column);
     assert_eq!(response.candidates[0].detail.as_deref(), Some("text · public.users"));
+  }
+
+  #[test]
+  fn combines_schema_objects_and_cached_alias_columns_when_names_collide() {
+    let orders = TableRef { schema: "public".into(), table: "orders".into() };
+    let mut catalog = CompletionCatalog {
+      objects: vec![
+        CatalogObject {
+          schema: orders.schema.clone(),
+          name: orders.table.clone(),
+          kind: CompletionKind::Table,
+        },
+        CatalogObject { schema: "p".into(), name: "payments".into(), kind: CompletionKind::Table },
+      ],
+      ..CompletionCatalog::default()
+    };
+    catalog.insert_columns(
+      orders,
+      vec![Column { name: "order_number".into(), type_name: "text".into() }],
+    );
+
+    let response =
+      complete(&request("select * from public.orders as p where p."), &catalog, Vec::new());
+
+    assert!(response.candidates.iter().any(|candidate| {
+      candidate.label == "order_number" && candidate.kind == CompletionKind::Column
+    }));
+    assert!(
+      response
+        .candidates
+        .iter()
+        .any(|candidate| candidate.label == "payments" && candidate.kind == CompletionKind::Table)
+    );
+    assert!(response.missing_columns.is_empty());
+  }
+
+  #[test]
+  fn requests_alias_columns_while_returning_colliding_schema_objects() {
+    let orders = TableRef { schema: "public".into(), table: "orders".into() };
+    let catalog = CompletionCatalog {
+      objects: vec![
+        CatalogObject {
+          schema: orders.schema.clone(),
+          name: orders.table.clone(),
+          kind: CompletionKind::Table,
+        },
+        CatalogObject { schema: "p".into(), name: "payments".into(), kind: CompletionKind::Table },
+      ],
+      ..CompletionCatalog::default()
+    };
+
+    let response =
+      complete(&request("select * from public.orders as p where p."), &catalog, Vec::new());
+
+    assert_eq!(response.missing_columns, vec![orders]);
+    assert!(
+      response
+        .candidates
+        .iter()
+        .any(|candidate| candidate.label == "payments" && candidate.kind == CompletionKind::Table)
+    );
   }
 
   #[test]
