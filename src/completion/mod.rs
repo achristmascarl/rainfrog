@@ -661,12 +661,15 @@ pub fn complete(
             .filter(|object| object.schema.eq_ignore_ascii_case(qualifier))
             .map(|object| database_object_candidate(object, request.driver)),
         );
-      } else if let Some(table) = resolve_table(qualifier, &analysis, catalog) {
-        if let Some(columns) = catalog.columns.get(&table) {
-          candidates
-            .extend(columns.iter().map(|column| column_candidate(column, &table, request.driver)));
-        } else {
-          missing_columns.push(table);
+      } else {
+        for table in resolve_tables(qualifier, &analysis, catalog) {
+          if let Some(columns) = catalog.columns.get(&table) {
+            candidates.extend(
+              columns.iter().map(|column| column_candidate(column, &table, request.driver)),
+            );
+          } else if !missing_columns.contains(&table) {
+            missing_columns.push(table);
+          }
         }
       }
     },
@@ -908,29 +911,38 @@ fn add_unqualified_columns(
   }
 }
 
-fn resolve_table(
+fn resolve_tables(
   qualifier: &str,
   analysis: &Analysis,
   catalog: &CompletionCatalog,
-) -> Option<TableRef> {
+) -> Vec<TableRef> {
   if let Some(table) = analysis.aliases.get(&qualifier.to_ascii_lowercase()) {
-    return Some(resolved_table_ref(table, catalog));
+    return vec![resolved_table_ref(table, catalog)];
   }
-  analysis
+
+  let mut tables: HashSet<_> = analysis
     .referenced_tables
     .iter()
-    .find(|table| table.table.eq_ignore_ascii_case(qualifier))
-    .map(|table| resolved_table_ref(table, catalog))
-    .or_else(|| {
-      catalog
-        .objects
-        .iter()
-        .find(|object| {
-          matches!(object.kind, CompletionKind::Table | CompletionKind::View)
-            && object.name.eq_ignore_ascii_case(qualifier)
-        })
-        .map(|object| TableRef { schema: object.schema.clone(), table: object.name.clone() })
-    })
+    .filter(|table| table.table.eq_ignore_ascii_case(qualifier))
+    .filter(|table| !table.schema.is_empty())
+    .cloned()
+    .collect();
+  tables.extend(
+    catalog
+      .objects
+      .iter()
+      .filter(|object| {
+        matches!(object.kind, CompletionKind::Table | CompletionKind::View)
+          && object.name.eq_ignore_ascii_case(qualifier)
+      })
+      .map(|object| TableRef { schema: object.schema.clone(), table: object.name.clone() }),
+  );
+  tables.extend(
+    catalog.columns.keys().filter(|table| table.table.eq_ignore_ascii_case(qualifier)).cloned(),
+  );
+  let mut tables: Vec<_> = tables.into_iter().collect();
+  tables.sort();
+  tables
 }
 
 fn resolved_table_ref(table: &TableRef, catalog: &CompletionCatalog) -> TableRef {
@@ -1429,6 +1441,73 @@ mod tests {
     assert_eq!(response.candidates[0].label, "name");
     assert_eq!(response.candidates[0].kind, CompletionKind::Column);
     assert_eq!(response.candidates[0].detail.as_deref(), Some("text · public.users"));
+  }
+
+  #[test]
+  fn returns_columns_from_all_tables_sharing_a_qualified_name() {
+    let audit_users = TableRef { schema: "audit".into(), table: "users".into() };
+    let sales_users = TableRef { schema: "sales".into(), table: "users".into() };
+    let mut catalog = CompletionCatalog {
+      objects: vec![
+        CatalogObject {
+          schema: audit_users.schema.clone(),
+          name: audit_users.table.clone(),
+          kind: CompletionKind::Table,
+        },
+        CatalogObject {
+          schema: sales_users.schema.clone(),
+          name: sales_users.table.clone(),
+          kind: CompletionKind::Table,
+        },
+      ],
+      ..CompletionCatalog::default()
+    };
+    catalog
+      .insert_columns(audit_users, vec![Column { name: "actor".into(), type_name: "text".into() }]);
+    catalog.insert_columns(
+      sales_users,
+      vec![Column { name: "amount".into(), type_name: "numeric".into() }],
+    );
+
+    let response = complete(&request("select sales.users."), &catalog, Vec::new());
+    let labels: Vec<_> =
+      response.candidates.iter().map(|candidate| candidate.label.as_str()).collect();
+
+    assert_eq!(labels, vec!["actor", "amount"]);
+  }
+
+  #[test]
+  fn keeps_alias_qualified_columns_scoped_to_the_aliased_table() {
+    let audit_users = TableRef { schema: "audit".into(), table: "users".into() };
+    let sales_users = TableRef { schema: "sales".into(), table: "users".into() };
+    let mut catalog = CompletionCatalog {
+      objects: vec![
+        CatalogObject {
+          schema: audit_users.schema.clone(),
+          name: audit_users.table.clone(),
+          kind: CompletionKind::Table,
+        },
+        CatalogObject {
+          schema: sales_users.schema.clone(),
+          name: sales_users.table.clone(),
+          kind: CompletionKind::Table,
+        },
+      ],
+      ..CompletionCatalog::default()
+    };
+    catalog
+      .insert_columns(audit_users, vec![Column { name: "actor".into(), type_name: "text".into() }]);
+    catalog.insert_columns(
+      sales_users,
+      vec![Column { name: "amount".into(), type_name: "numeric".into() }],
+    );
+
+    let response =
+      complete(&request("select * from sales.users as u where u."), &catalog, Vec::new());
+    let labels: Vec<_> =
+      response.candidates.iter().map(|candidate| candidate.label.as_str()).collect();
+
+    assert_eq!(labels, vec!["amount"]);
   }
 
   #[test]

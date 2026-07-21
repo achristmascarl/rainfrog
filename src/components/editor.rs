@@ -207,7 +207,8 @@ impl Editor<'_> {
         self.completion.next();
         true
       },
-      Input { key: Key::Tab, .. } | Input { key: Key::Enter, .. } => {
+      Input { key: Key::Tab, .. }
+      | Input { key: Key::Enter, ctrl: false, alt: false, shift: false } => {
         self.accept_completion();
         true
       },
@@ -356,6 +357,7 @@ impl Component for Editor<'_> {
     }
     self.drain_completion_responses();
     let before = self.textarea.lines().to_vec();
+    let cursor_before = self.textarea.cursor();
     if let Some(Event::Paste(text)) = event {
       self.textarea.insert_str(text);
     } else if let Some(Event::Mouse(event)) = event {
@@ -370,6 +372,12 @@ impl Component for Editor<'_> {
       } else {
         self.request_completion(app_state, false);
       }
+    } else if self.textarea.cursor() != cursor_before
+      && (self.completion.is_visible() || self.pending_request_snapshot.is_some())
+    {
+      self.completion.dismiss();
+      self.cancel_completion();
+      self.pending_request_snapshot = None;
     }
     Ok(None)
   }
@@ -545,6 +553,28 @@ mod tests {
   }
 
   #[test]
+  fn modified_enter_executes_query_instead_of_accepting_completion() {
+    let mut editor = Editor::new();
+    editor.vim_state = Vim::new(Mode::Insert);
+    editor.textarea.insert_str("sel");
+    editor.apply_completion_response(response(&["SELECT"]));
+    let (action_tx, mut action_rx) = mpsc::unbounded_channel();
+    editor.register_action_handler(action_tx).unwrap();
+
+    editor
+      .transition_vim_state(
+        Input { key: Key::Enter, ctrl: false, alt: true, shift: false },
+        &app_state_with_focus(Focus::Editor),
+      )
+      .unwrap();
+
+    assert_eq!(editor.textarea.lines(), &["sel"]);
+    assert_eq!(action_rx.try_recv().unwrap(), Action::Query(vec!["sel".into()], false, false));
+    assert_eq!(editor.vim_state.mode, Mode::Normal);
+    assert!(!editor.completion.is_visible());
+  }
+
+  #[test]
   fn completion_escape_dismisses_without_leaving_insert_mode() {
     let mut editor = Editor::new();
     editor.vim_state = Vim::new(Mode::Insert);
@@ -577,5 +607,25 @@ mod tests {
 
     assert!(editor.completion.is_visible());
     assert_eq!(editor.textarea.lines(), &["x"]);
+  }
+
+  #[test]
+  fn cursor_movement_dismisses_existing_completion() {
+    let mut editor = Editor::new();
+    editor.vim_state = Vim::new(Mode::Insert);
+    editor.textarea.insert_str("sel");
+    editor.apply_completion_response(response(&["SELECT"]));
+
+    editor
+      .handle_events(
+        Some(Event::Key(KeyEvent::new(KeyCode::Left, crossterm::event::KeyModifiers::NONE))),
+        Vec::new(),
+        &app_state_with_focus(Focus::Editor),
+      )
+      .unwrap();
+
+    assert_eq!(editor.textarea.cursor(), (0, 2));
+    assert_eq!(editor.textarea.lines(), &["sel"]);
+    assert!(!editor.completion.is_visible());
   }
 }
