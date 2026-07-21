@@ -669,12 +669,16 @@ pub fn complete(
   path_candidates: Vec<CompletionCandidate>,
 ) -> CompletionResponse {
   let analysis = analyze(request);
-  let mentioned_tables =
-    if matches!(analysis.context, CompletionContext::Expression | CompletionContext::Generic) {
-      mentioned_table_refs(&request.text, catalog)
-    } else {
-      Vec::new()
-    };
+  let mentioned_tables = if matches!(
+    analysis.context,
+    CompletionContext::Qualified { .. }
+      | CompletionContext::Expression
+      | CompletionContext::Generic
+  ) {
+    mentioned_table_refs(&request.text, catalog)
+  } else {
+    Vec::new()
+  };
   complete_with_analysis(request, catalog, path_candidates, analysis, &mentioned_tables)
 }
 
@@ -755,24 +759,34 @@ fn complete_with_analysis(
       );
     },
     CompletionContext::Generic => {
-      add_unqualified_columns(
+      add_generic_candidates(
         &mut candidates,
         &mut missing_columns,
         &mut preferred_column_details,
+        request,
         catalog,
-        mentioned_tables.iter().cloned().collect(),
-        request.driver,
-      );
-      add_keywords(&mut candidates);
-      add_buffer_words(&mut candidates, &request.text);
-      candidates.extend(
-        catalog.objects.iter().map(|object| database_object_candidate(object, request.driver)),
+        mentioned_tables,
       );
     },
   }
 
+  let prefix = analysis.prefix.to_lowercase();
+  let qualified_fallback = matches!(analysis.context, CompletionContext::Qualified { .. })
+    && !candidates.iter().any(|candidate| match_tier(&candidate.label, &prefix).is_some());
+  if qualified_fallback {
+    add_generic_candidates(
+      &mut candidates,
+      &mut missing_columns,
+      &mut preferred_column_details,
+      request,
+      catalog,
+      mentioned_tables,
+    );
+  }
+  let ranking_context =
+    if qualified_fallback { CompletionContext::Generic } else { analysis.context.clone() };
   let candidates =
-    rank_candidates(candidates, &analysis.prefix, &analysis.context, &preferred_column_details);
+    rank_candidates(candidates, &analysis.prefix, &ranking_context, &preferred_column_details);
   CompletionResponse {
     generation: request.generation,
     replacement_range: analysis.replacement_range,
@@ -988,6 +1002,28 @@ fn add_unqualified_columns(
   }
 }
 
+fn add_generic_candidates(
+  candidates: &mut Vec<CompletionCandidate>,
+  missing_columns: &mut Vec<TableRef>,
+  preferred_column_details: &mut HashSet<String>,
+  request: &CompletionRequest,
+  catalog: &CompletionCatalog,
+  mentioned_tables: &[TableRef],
+) {
+  add_unqualified_columns(
+    candidates,
+    missing_columns,
+    preferred_column_details,
+    catalog,
+    mentioned_tables.iter().cloned().collect(),
+    request.driver,
+  );
+  add_keywords(candidates);
+  add_buffer_words(candidates, &request.text);
+  candidates
+    .extend(catalog.objects.iter().map(|object| database_object_candidate(object, request.driver)));
+}
+
 fn resolve_tables(
   qualifier: &str,
   analysis: &Analysis,
@@ -1053,14 +1089,7 @@ fn rank_candidates(
   let prefix = prefix.to_lowercase();
   let mut best: HashMap<String, (u8, u8, u8, CompletionCandidate)> = HashMap::new();
   for candidate in candidates {
-    let text = candidate.label.to_lowercase();
-    let match_tier = if prefix.is_empty() || text.starts_with(&prefix) {
-      0
-    } else if text.contains(&prefix) {
-      1
-    } else {
-      continue;
-    };
+    let Some(match_tier) = match_tier(&candidate.label, &prefix) else { continue };
     let source_tier = source_priority(candidate.kind, context);
     let preferred_tier = u8::from(
       candidate.kind != CompletionKind::Column
@@ -1087,6 +1116,17 @@ fn rank_candidates(
     (a.0, a.1, a.2, a.3.label.to_lowercase()).cmp(&(b.0, b.1, b.2, b.3.label.to_lowercase()))
   });
   ranked.into_iter().map(|(_, _, _, candidate)| candidate).take(MAX_CANDIDATES).collect()
+}
+
+fn match_tier(label: &str, prefix: &str) -> Option<u8> {
+  let label = label.to_lowercase();
+  if prefix.is_empty() || label.starts_with(prefix) {
+    Some(0)
+  } else if label.contains(prefix) {
+    Some(1)
+  } else {
+    None
+  }
 }
 
 fn source_priority(kind: CompletionKind, context: &CompletionContext) -> u8 {
@@ -1741,6 +1781,51 @@ mod tests {
     assert_eq!(response.candidates[0].label, "name");
     assert_eq!(response.candidates[0].kind, CompletionKind::Column);
     assert_eq!(response.candidates[0].detail.as_deref(), Some("text · public.users"));
+  }
+
+  #[test]
+  fn falls_back_to_generic_candidates_when_a_qualifier_cannot_be_resolved() {
+    let orders = TableRef { schema: "public".into(), table: "orders".into() };
+    let mut catalog = CompletionCatalog::default();
+    catalog.insert_columns(
+      orders,
+      vec![Column { name: "tracking_number".into(), type_name: "text".into() }],
+    );
+
+    let response = complete(&request("select unknown.track"), &catalog, Vec::new());
+
+    assert_eq!(
+      analyze(&request("select unknown.track")).context,
+      CompletionContext::Qualified { qualifier: "unknown".into() }
+    );
+    assert!(response.candidates.iter().any(|candidate| {
+      candidate.label == "tracking_number" && candidate.kind == CompletionKind::Column
+    }));
+  }
+
+  #[test]
+  fn falls_back_to_generic_candidates_when_qualified_columns_do_not_match() {
+    let users = TableRef { schema: "public".into(), table: "users".into() };
+    let orders = TableRef { schema: "public".into(), table: "orders".into() };
+    let mut catalog = CompletionCatalog {
+      objects: vec![CatalogObject {
+        schema: users.schema.clone(),
+        name: users.table.clone(),
+        kind: CompletionKind::Table,
+      }],
+      ..CompletionCatalog::default()
+    };
+    catalog.insert_columns(users, vec![Column { name: "id".into(), type_name: "integer".into() }]);
+    catalog.insert_columns(
+      orders,
+      vec![Column { name: "tracking_number".into(), type_name: "text".into() }],
+    );
+
+    let response = complete(&request("select users.track"), &catalog, Vec::new());
+
+    assert!(response.candidates.iter().any(|candidate| {
+      candidate.label == "tracking_number" && candidate.kind == CompletionKind::Column
+    }));
   }
 
   #[test]
