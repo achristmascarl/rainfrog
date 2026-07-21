@@ -646,6 +646,8 @@ pub fn complete(
   let analysis = analyze(request);
   let mut candidates = Vec::new();
   let mut missing_columns = Vec::new();
+  let mut preferred_column_details = HashSet::new();
+  log::debug!("completion analysis: {analysis:?}");
 
   match &analysis.context {
     CompletionContext::Comment => {},
@@ -657,11 +659,12 @@ pub fn complete(
             .objects
             .iter()
             .filter(|object| object.schema.eq_ignore_ascii_case(qualifier))
-            .map(database_object_candidate),
+            .map(|object| database_object_candidate(object, request.driver)),
         );
       } else if let Some(table) = resolve_table(qualifier, &analysis, catalog) {
         if let Some(columns) = catalog.columns.get(&table) {
-          candidates.extend(columns.iter().map(|column| column_candidate(column, &table)));
+          candidates
+            .extend(columns.iter().map(|column| column_candidate(column, &table, request.driver)));
         } else {
           missing_columns.push(table);
         }
@@ -669,17 +672,22 @@ pub fn complete(
     },
     CompletionContext::Table => {
       candidates.extend(catalog.schemas().map(|schema| {
-        CompletionCandidate::new(schema, CompletionKind::Schema, CompletionSource::Database)
+        identifier_candidate(
+          schema,
+          CompletionKind::Schema,
+          CompletionSource::Database,
+          request.driver,
+        )
       }));
       candidates.extend(
         catalog
           .objects
           .iter()
           .filter(|object| matches!(object.kind, CompletionKind::Table | CompletionKind::View))
-          .map(database_object_candidate),
+          .map(|object| database_object_candidate(object, request.driver)),
       );
       candidates.extend(analysis.ctes.iter().map(|cte| {
-        CompletionCandidate::new(cte, CompletionKind::Table, CompletionSource::Buffer)
+        identifier_candidate(cte, CompletionKind::Table, CompletionSource::Buffer, request.driver)
           .with_detail("CTE")
       }));
       add_keywords(&mut candidates);
@@ -688,34 +696,39 @@ pub fn complete(
       let mut tables: HashSet<_> =
         analysis.referenced_tables.iter().map(|table| resolved_table_ref(table, catalog)).collect();
       tables.extend(mentioned_table_refs(&request.text, catalog));
-      let mut tables: Vec<_> = tables.into_iter().collect();
-      tables.sort();
-      for table in tables {
-        if let Some(columns) = catalog.columns.get(&table) {
-          candidates.extend(columns.iter().map(|column| column_candidate(column, &table)));
-        } else if !missing_columns.contains(&table) {
-          missing_columns.push(table);
-        }
-      }
+      add_unqualified_columns(
+        &mut candidates,
+        &mut missing_columns,
+        &mut preferred_column_details,
+        catalog,
+        tables,
+        request.driver,
+      );
       add_buffer_words(&mut candidates, &request.text);
       add_keywords(&mut candidates);
-      candidates.extend(catalog.objects.iter().map(database_object_candidate));
+      candidates.extend(
+        catalog.objects.iter().map(|object| database_object_candidate(object, request.driver)),
+      );
     },
     CompletionContext::Generic => {
-      for table in mentioned_table_refs(&request.text, catalog) {
-        if let Some(columns) = catalog.columns.get(&table) {
-          candidates.extend(columns.iter().map(|column| column_candidate(column, &table)));
-        } else if !missing_columns.contains(&table) {
-          missing_columns.push(table);
-        }
-      }
+      add_unqualified_columns(
+        &mut candidates,
+        &mut missing_columns,
+        &mut preferred_column_details,
+        catalog,
+        mentioned_table_refs(&request.text, catalog).into_iter().collect(),
+        request.driver,
+      );
       add_keywords(&mut candidates);
       add_buffer_words(&mut candidates, &request.text);
-      candidates.extend(catalog.objects.iter().map(database_object_candidate));
+      candidates.extend(
+        catalog.objects.iter().map(|object| database_object_candidate(object, request.driver)),
+      );
     },
   }
 
-  let candidates = rank_candidates(candidates, &analysis.prefix, &analysis.context);
+  let candidates =
+    rank_candidates(candidates, &analysis.prefix, &analysis.context, &preferred_column_details);
   CompletionResponse {
     generation: request.generation,
     replacement_range: analysis.replacement_range,
@@ -817,19 +830,82 @@ fn add_buffer_words(candidates: &mut Vec<CompletionCandidate>, text: &str) {
   }));
 }
 
-fn database_object_candidate(object: &CatalogObject) -> CompletionCandidate {
-  CompletionCandidate::new(&object.name, object.kind, CompletionSource::Database)
-    .with_detail(&object.schema)
+fn identifier_candidate(
+  identifier: &str,
+  kind: CompletionKind,
+  source: CompletionSource,
+  driver: Driver,
+) -> CompletionCandidate {
+  CompletionCandidate::new(identifier, kind, source)
+    .with_insert_text(identifier_insert_text(identifier, driver))
 }
 
-fn column_candidate(column: &Column, table: &TableRef) -> CompletionCandidate {
+fn identifier_insert_text(identifier: &str, driver: Driver) -> String {
+  if !identifier.chars().any(char::is_whitespace) {
+    return identifier.to_owned();
+  }
+  match driver {
+    Driver::MySql => format!("`{}`", identifier.replace('`', "``")),
+    Driver::Postgres | Driver::Sqlite | Driver::Oracle => {
+      format!("\"{}\"", identifier.replace('"', "\"\""))
+    },
+    #[cfg(feature = "duckdb")]
+    Driver::DuckDb => format!("\"{}\"", identifier.replace('"', "\"\"")),
+  }
+}
+
+fn database_object_candidate(object: &CatalogObject, driver: Driver) -> CompletionCandidate {
+  let candidate = if matches!(object.kind, CompletionKind::Table | CompletionKind::View) {
+    identifier_candidate(&object.name, object.kind, CompletionSource::Database, driver)
+  } else {
+    CompletionCandidate::new(&object.name, object.kind, CompletionSource::Database)
+  };
+  candidate.with_detail(&object.schema)
+}
+
+fn column_candidate(column: &Column, table: &TableRef, driver: Driver) -> CompletionCandidate {
   let detail = if column.type_name.is_empty() {
     format!("{}.{}", table.schema, table.table)
   } else {
     format!("{} · {}.{}", column.type_name, table.schema, table.table)
   };
-  CompletionCandidate::new(&column.name, CompletionKind::Column, CompletionSource::Database)
+  identifier_candidate(&column.name, CompletionKind::Column, CompletionSource::Database, driver)
     .with_detail(detail)
+}
+
+fn add_unqualified_columns(
+  candidates: &mut Vec<CompletionCandidate>,
+  missing_columns: &mut Vec<TableRef>,
+  preferred_column_details: &mut HashSet<String>,
+  catalog: &CompletionCatalog,
+  preferred_tables: HashSet<TableRef>,
+  driver: Driver,
+) {
+  let mut preferred_tables: Vec<_> = preferred_tables.into_iter().collect();
+  preferred_tables.sort();
+  for table in &preferred_tables {
+    if let Some(columns) = catalog.columns.get(table) {
+      for column in columns {
+        let candidate = column_candidate(column, table, driver);
+        if let Some(detail) = &candidate.detail {
+          preferred_column_details.insert(detail.clone());
+        }
+        candidates.push(candidate);
+      }
+    } else if !missing_columns.contains(table) {
+      missing_columns.push(table.clone());
+    }
+  }
+
+  let preferred_tables: HashSet<_> = preferred_tables.into_iter().collect();
+  let mut other_cached_tables: Vec<_> =
+    catalog.columns.keys().filter(|table| !preferred_tables.contains(*table)).collect();
+  other_cached_tables.sort();
+  for table in other_cached_tables {
+    if let Some(columns) = catalog.columns.get(table) {
+      candidates.extend(columns.iter().map(|column| column_candidate(column, table, driver)));
+    }
+  }
 }
 
 fn resolve_table(
@@ -883,9 +959,10 @@ fn rank_candidates(
   candidates: Vec<CompletionCandidate>,
   prefix: &str,
   context: &CompletionContext,
+  preferred_column_details: &HashSet<String>,
 ) -> Vec<CompletionCandidate> {
   let prefix = prefix.to_lowercase();
-  let mut best: HashMap<String, (u8, u8, CompletionCandidate)> = HashMap::new();
+  let mut best: HashMap<String, (u8, u8, u8, CompletionCandidate)> = HashMap::new();
   for candidate in candidates {
     let text = candidate.label.to_lowercase();
     let match_tier = if prefix.is_empty() || text.starts_with(&prefix) {
@@ -896,17 +973,27 @@ fn rank_candidates(
       continue;
     };
     let source_tier = source_priority(candidate.kind, context);
+    let preferred_tier = u8::from(
+      candidate.kind != CompletionKind::Column
+        || candidate
+          .detail
+          .as_ref()
+          .is_none_or(|detail| !preferred_column_details.contains(detail)),
+    );
     let key = candidate.insert_text.to_lowercase();
-    let score = (source_tier, match_tier);
-    if best.get(&key).is_none_or(|(source, matched, _)| score < (*source, *matched)) {
-      best.insert(key, (source_tier, match_tier, candidate));
+    let score = (source_tier, preferred_tier, match_tier);
+    if best
+      .get(&key)
+      .is_none_or(|(source, preferred, matched, _)| score < (*source, *preferred, *matched))
+    {
+      best.insert(key, (source_tier, preferred_tier, match_tier, candidate));
     }
   }
   let mut ranked: Vec<_> = best.into_values().collect();
   ranked.sort_by(|a, b| {
-    (a.0, a.1, a.2.label.to_lowercase()).cmp(&(b.0, b.1, b.2.label.to_lowercase()))
+    (a.0, a.1, a.2, a.3.label.to_lowercase()).cmp(&(b.0, b.1, b.2, b.3.label.to_lowercase()))
   });
-  ranked.into_iter().map(|(_, _, candidate)| candidate).take(MAX_CANDIDATES).collect()
+  ranked.into_iter().map(|(_, _, _, candidate)| candidate).take(MAX_CANDIDATES).collect()
 }
 
 fn source_priority(kind: CompletionKind, context: &CompletionContext) -> u8 {
@@ -1244,12 +1331,60 @@ mod tests {
       CompletionCandidate::new("other_users", CompletionKind::Table, CompletionSource::Database),
       CompletionCandidate::new("users", CompletionKind::Table, CompletionSource::Database),
     ];
-    let ranked = rank_candidates(candidates, "us", &CompletionContext::Table);
+    let ranked = rank_candidates(candidates, "us", &CompletionContext::Table, &HashSet::new());
     assert_eq!(
       ranked.iter().map(|item| item.label.as_str()).collect::<Vec<_>>(),
       vec!["users", "other_users"]
     );
     assert_eq!(ranked[0].kind, CompletionKind::Table);
+  }
+
+  #[test]
+  fn quotes_whitespace_identifiers_only_in_insertion_text() {
+    let table = TableRef { schema: "sales data".into(), table: "order details".into() };
+    let mut catalog = CompletionCatalog {
+      objects: vec![CatalogObject {
+        schema: table.schema.clone(),
+        name: table.table.clone(),
+        kind: CompletionKind::Table,
+      }],
+      ..CompletionCatalog::default()
+    };
+    catalog
+      .insert_columns(table, vec![Column { name: "full name".into(), type_name: "text".into() }]);
+
+    let table_response = complete(&request("select * from "), &catalog, Vec::new());
+    let schema = table_response
+      .candidates
+      .iter()
+      .find(|candidate| candidate.kind == CompletionKind::Schema)
+      .unwrap();
+    assert_eq!(schema.label, "sales data");
+    assert_eq!(schema.insert_text, "\"sales data\"");
+    let table = table_response
+      .candidates
+      .iter()
+      .find(|candidate| candidate.kind == CompletionKind::Table)
+      .unwrap();
+    assert_eq!(table.label, "order details");
+    assert_eq!(table.insert_text, "\"order details\"");
+
+    let column_response = complete(&request("select fu"), &catalog, Vec::new());
+    let column = column_response
+      .candidates
+      .iter()
+      .find(|candidate| candidate.kind == CompletionKind::Column)
+      .unwrap();
+    assert_eq!(column.label, "full name");
+    assert_eq!(column.insert_text, "\"full name\"");
+  }
+
+  #[test]
+  fn uses_mysql_identifier_quotes_and_escapes_quote_delimiters() {
+    assert_eq!(identifier_insert_text("order details", Driver::MySql), "`order details`");
+    assert_eq!(identifier_insert_text("odd ` name", Driver::MySql), "`odd `` name`");
+    assert_eq!(identifier_insert_text("odd \" name", Driver::Postgres), "\"odd \"\" name\"");
+    assert_eq!(identifier_insert_text("ordinary_name", Driver::Postgres), "ordinary_name");
   }
 
   #[test]
@@ -1297,7 +1432,7 @@ mod tests {
   }
 
   #[test]
-  fn returns_mentioned_table_columns_in_generic_context() {
+  fn returns_all_cached_columns_in_generic_context() {
     let users = TableRef { schema: "public".into(), table: "users".into() };
     let orders = TableRef { schema: "public".into(), table: "orders".into() };
     let mut catalog = CompletionCatalog {
@@ -1319,14 +1454,16 @@ mod tests {
     catalog
       .insert_columns(orders, vec![Column { name: "number".into(), type_name: "integer".into() }]);
 
-    let response = complete(&request("users; na"), &catalog, Vec::new());
+    let response = complete(&request("users; "), &catalog, Vec::new());
     assert!(
       response
         .candidates
         .iter()
         .any(|candidate| { candidate.label == "name" && candidate.kind == CompletionKind::Column })
     );
-    assert!(!response.candidates.iter().any(|candidate| candidate.label == "number"));
+    assert!(response.candidates.iter().any(|candidate| {
+      candidate.label == "number" && candidate.kind == CompletionKind::Column
+    }));
   }
 
   #[test]
@@ -1357,6 +1494,60 @@ mod tests {
         .iter()
         .any(|candidate| { candidate.label == "name" && candidate.kind == CompletionKind::Column })
     );
+  }
+
+  #[test]
+  fn returns_cached_columns_without_a_table_mention_in_expression_context() {
+    let users = TableRef { schema: "public".into(), table: "users".into() };
+    let mut catalog = CompletionCatalog::default();
+    catalog.insert_columns(users, vec![Column { name: "name".into(), type_name: "text".into() }]);
+
+    let response = complete(&request("select na"), &catalog, Vec::new());
+
+    assert_eq!(analyze(&request("select na")).context, CompletionContext::Expression);
+    assert!(
+      response
+        .candidates
+        .iter()
+        .any(|candidate| candidate.label == "name" && candidate.kind == CompletionKind::Column)
+    );
+  }
+
+  #[test]
+  fn prioritizes_columns_from_mentioned_tables_over_other_cached_columns() {
+    let users = TableRef { schema: "public".into(), table: "users".into() };
+    let orders = TableRef { schema: "public".into(), table: "orders".into() };
+    let mut catalog = CompletionCatalog {
+      objects: vec![CatalogObject {
+        schema: users.schema.clone(),
+        name: users.table.clone(),
+        kind: CompletionKind::Table,
+      }],
+      ..CompletionCatalog::default()
+    };
+    catalog
+      .insert_columns(users, vec![Column { name: "z_mentioned".into(), type_name: "text".into() }]);
+    catalog.insert_columns(
+      orders,
+      vec![Column { name: "a_unmentioned".into(), type_name: "text".into() }],
+    );
+    let request = CompletionRequest {
+      generation: 1,
+      text: "select  from users".into(),
+      cursor: CursorPosition { row: 0, col: 7 },
+      manual: true,
+      driver: Driver::Postgres,
+    };
+
+    let response = complete(&request, &catalog, Vec::new());
+    let columns: Vec<_> = response
+      .candidates
+      .iter()
+      .filter(|candidate| candidate.kind == CompletionKind::Column)
+      .map(|candidate| candidate.label.as_str())
+      .collect();
+
+    assert_eq!(columns, vec!["z_mentioned", "a_unmentioned"]);
   }
 
   #[test]

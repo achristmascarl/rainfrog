@@ -522,6 +522,29 @@ mod tests {
   }
 
   #[test]
+  fn completion_accepts_insert_text_while_displaying_label() {
+    let mut editor = Editor::new();
+    editor.vim_state = Vim::new(Mode::Insert);
+    editor.textarea.insert_str("full");
+    let mut completion_response = response(&[]);
+    completion_response.candidates.push(
+      CompletionCandidate::new("full name", CompletionKind::Column, CompletionSource::Database)
+        .with_insert_text("\"full name\""),
+    );
+    editor.apply_completion_response(completion_response);
+
+    assert_eq!(editor.completion.candidates[0].label, "full name");
+    editor
+      .transition_vim_state(
+        Input { key: Key::Tab, ctrl: false, alt: false, shift: false },
+        &app_state_with_focus(Focus::Editor),
+      )
+      .unwrap();
+
+    assert_eq!(editor.textarea.lines(), &["\"full name\""]);
+  }
+
+  #[test]
   fn completion_escape_dismisses_without_leaving_insert_mode() {
     let mut editor = Editor::new();
     editor.vim_state = Vim::new(Mode::Insert);
