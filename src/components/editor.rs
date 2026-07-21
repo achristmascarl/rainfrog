@@ -11,7 +11,8 @@ use crate::{
   app::AppState,
   completion::{
     CompletionCandidate, CompletionClient, CompletionCommand, CompletionKind, CompletionRequest,
-    CompletionResponse, CompletionUiEvent, CursorPosition, current_replacement_range,
+    CompletionResponse, CompletionUiEvent, CursorPosition, accepted_insert_text,
+    current_replacement_range,
     render::{ViewportState, cursor_anchor, render_dropdown},
   },
   config::Config,
@@ -189,7 +190,7 @@ impl Editor<'_> {
     let _ = self.completion_command_tx.send(CompletionCommand::Cancel { generation });
   }
 
-  fn handle_completion_input(&mut self, input: Input) -> bool {
+  fn handle_completion_input(&mut self, input: Input, app_state: &AppState) -> bool {
     if !self.completion.is_visible() || self.vim_state.mode != Mode::Insert {
       return false;
     }
@@ -209,14 +210,14 @@ impl Editor<'_> {
       },
       Input { key: Key::Tab, .. }
       | Input { key: Key::Enter, ctrl: false, alt: false, shift: false } => {
-        self.accept_completion();
+        self.accept_completion(app_state);
         true
       },
       _ => false,
     }
   }
 
-  fn accept_completion(&mut self) {
+  fn accept_completion(&mut self, app_state: &AppState) {
     let Some(candidate) = self.completion.candidates.get(self.completion.selected).cloned() else {
       return;
     };
@@ -224,20 +225,25 @@ impl Editor<'_> {
       candidate.kind == CompletionKind::Path && candidate.insert_text.ends_with('/');
     let text = self.textarea.lines().join("\n");
     let cursor = self.textarea.cursor();
-    let range = current_replacement_range(&text, CursorPosition { row: cursor.0, col: cursor.1 });
+    let range = current_replacement_range(
+      &text,
+      CursorPosition { row: cursor.0, col: cursor.1 },
+      app_state.driver,
+    );
+    let insert_text = accepted_insert_text(&candidate, &text, range, app_state.driver);
     if range.start.row == cursor.0 && range.end.row == cursor.0 && range.start.col <= cursor.1 {
       self.textarea.start_selection();
       for _ in range.start.col..cursor.1 {
         self.textarea.move_cursor(CursorMove::Back);
       }
-      self.textarea.insert_str(candidate.insert_text);
+      self.textarea.insert_str(insert_text);
     }
     self.suppress_next_completion_request = !completes_directory;
     self.completion.hide();
   }
 
   pub fn transition_vim_state(&mut self, input: Input, app_state: &AppState) -> Result<()> {
-    if self.handle_completion_input(input.clone()) {
+    if self.handle_completion_input(input.clone(), app_state) {
       return Ok(());
     }
     let previous_mode = self.vim_state.mode;
@@ -550,6 +556,28 @@ mod tests {
       .unwrap();
 
     assert_eq!(editor.textarea.lines(), &["\"full name\""]);
+  }
+
+  #[test]
+  fn completion_closes_an_existing_open_identifier_quote() {
+    let mut editor = Editor::new();
+    editor.vim_state = Vim::new(Mode::Insert);
+    editor.textarea.insert_str("select \"fu");
+    let mut completion_response = response(&[]);
+    completion_response.candidates.push(
+      CompletionCandidate::new("full name", CompletionKind::Column, CompletionSource::Database)
+        .with_insert_text("\"full name\""),
+    );
+    editor.apply_completion_response(completion_response);
+
+    editor
+      .transition_vim_state(
+        Input { key: Key::Tab, ctrl: false, alt: false, shift: false },
+        &app_state_with_focus(Focus::Editor),
+      )
+      .unwrap();
+
+    assert_eq!(editor.textarea.lines(), &["select \"full name\""]);
   }
 
   #[test]

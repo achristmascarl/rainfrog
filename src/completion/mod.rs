@@ -604,11 +604,18 @@ pub fn analyze(request: &CompletionRequest) -> Analysis {
     };
   }
 
-  let prefix_start = before_line
-    .char_indices()
-    .rev()
-    .find(|(_, ch)| !is_identifier_char(*ch))
-    .map_or(0, |(idx, ch)| idx + ch.len_utf8());
+  let open_identifier_quote = open_identifier_quote_position(&before_cursor, request.driver)
+    .filter(|position| position.row == row && position.col < col);
+  let prefix_start = open_identifier_quote.map_or_else(
+    || {
+      before_line
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| !is_identifier_char(*ch))
+        .map_or(0, |(idx, ch)| idx + ch.len_utf8())
+    },
+    |position| char_to_byte(line, position.col.saturating_add(1)),
+  );
   let prefix = before_line[prefix_start..].to_owned();
   let start_col = line[..prefix_start].chars().count();
   let replacement_range =
@@ -619,15 +626,20 @@ pub fn analyze(request: &CompletionRequest) -> Analysis {
   let (aliases, referenced_tables) = extract_tables(&tokens);
   let ctes = extract_ctes(&tokens);
 
-  let qualifier = before_line[..prefix_start].strip_suffix('.').and_then(|before_dot| {
-    let start = before_dot
-      .char_indices()
-      .rev()
-      .find(|(_, ch)| !is_identifier_char(*ch))
-      .map_or(0, |(idx, ch)| idx + ch.len_utf8());
-    let qualifier = &before_dot[start..];
-    (!qualifier.is_empty()).then(|| qualifier.to_owned())
-  });
+  let qualifier = open_identifier_quote
+    .is_none()
+    .then(|| {
+      before_line[..prefix_start].strip_suffix('.').and_then(|before_dot| {
+        let start = before_dot
+          .char_indices()
+          .rev()
+          .find(|(_, ch)| !is_identifier_char(*ch))
+          .map_or(0, |(idx, ch)| idx + ch.len_utf8());
+        let qualifier = &before_dot[start..];
+        (!qualifier.is_empty()).then(|| qualifier.to_owned())
+      })
+    })
+    .flatten();
 
   let context = if let Some(qualifier) = qualifier {
     CompletionContext::Qualified { qualifier }
@@ -759,15 +771,37 @@ pub fn extract_words(text: &str) -> Vec<String> {
   words
 }
 
-pub fn current_replacement_range(text: &str, cursor: CursorPosition) -> TextRange {
-  let request = CompletionRequest {
-    generation: 0,
-    text: text.to_owned(),
-    cursor,
-    manual: true,
-    driver: Driver::Postgres,
-  };
+pub fn current_replacement_range(text: &str, cursor: CursorPosition, driver: Driver) -> TextRange {
+  let request =
+    CompletionRequest { generation: 0, text: text.to_owned(), cursor, manual: true, driver };
   analyze(&request).replacement_range
+}
+
+pub fn accepted_insert_text(
+  candidate: &CompletionCandidate,
+  text: &str,
+  range: TextRange,
+  driver: Driver,
+) -> String {
+  let before_cursor = text_before_cursor(text, range.end.row, range.end.col);
+  let open_quote = open_identifier_quote_position(&before_cursor, driver);
+  let opens_current_token = open_quote.is_some_and(|position| {
+    position.row == range.start.row && position.col.saturating_add(1) == range.start.col
+  });
+  if !opens_current_token {
+    return candidate.insert_text.clone();
+  }
+
+  let quote = identifier_quote(driver);
+  if let Some(without_duplicate_open) = candidate.insert_text.strip_prefix(quote) {
+    return without_duplicate_open.to_owned();
+  }
+  if candidate.kind == CompletionKind::Function
+    && let Some(function_name) = candidate.insert_text.strip_suffix('(')
+  {
+    return format!("{function_name}{quote}(");
+  }
+  format!("{}{quote}", candidate.insert_text)
 }
 
 async fn path_candidates(analysis: &Analysis) -> Vec<CompletionCandidate> {
@@ -847,13 +881,17 @@ fn identifier_insert_text(identifier: &str, driver: Driver) -> String {
   if !identifier.chars().any(char::is_whitespace) {
     return identifier.to_owned();
   }
+  let quote = identifier_quote(driver);
+  let escaped = identifier.replace(quote, &quote.to_string().repeat(2));
+  format!("{quote}{escaped}{quote}")
+}
+
+pub const fn identifier_quote(driver: Driver) -> char {
   match driver {
-    Driver::MySql => format!("`{}`", identifier.replace('`', "``")),
-    Driver::Postgres | Driver::Sqlite | Driver::Oracle => {
-      format!("\"{}\"", identifier.replace('"', "\"\""))
-    },
+    Driver::MySql => '`',
+    Driver::Postgres | Driver::Sqlite | Driver::Oracle => '"',
     #[cfg(feature = "duckdb")]
-    Driver::DuckDb => format!("\"{}\"", identifier.replace('"', "\"\"")),
+    Driver::DuckDb => '"',
   }
 }
 
@@ -1194,6 +1232,85 @@ fn text_before_cursor(text: &str, row: usize, col: usize) -> String {
   out
 }
 
+fn open_identifier_quote_position(text: &str, driver: Driver) -> Option<CursorPosition> {
+  let quote = identifier_quote(driver);
+  let chars: Vec<_> = text.char_indices().collect();
+  let mut open_identifier = None;
+  let mut in_single_quote = false;
+  let mut in_line_comment = false;
+  let mut in_block_comment = false;
+  let mut i = 0;
+  while i < chars.len() {
+    let (byte, ch) = chars[i];
+    let next = chars.get(i + 1).map(|(_, ch)| *ch);
+    if in_line_comment {
+      if ch == '\n' {
+        in_line_comment = false;
+      }
+      i += 1;
+      continue;
+    }
+    if in_block_comment {
+      if ch == '*' && next == Some('/') {
+        in_block_comment = false;
+        i += 2;
+      } else {
+        i += 1;
+      }
+      continue;
+    }
+    if in_single_quote {
+      if ch == '\'' {
+        if next == Some('\'') {
+          i += 2;
+        } else {
+          in_single_quote = false;
+          i += 1;
+        }
+      } else {
+        i += 1;
+      }
+      continue;
+    }
+    if open_identifier.is_some() {
+      if ch == quote {
+        if next == Some(quote) {
+          i += 2;
+        } else {
+          open_identifier = None;
+          i += 1;
+        }
+      } else {
+        i += 1;
+      }
+      continue;
+    }
+    if ch == '-' && next == Some('-') {
+      in_line_comment = true;
+      i += 2;
+    } else if ch == '/' && next == Some('*') {
+      in_block_comment = true;
+      i += 2;
+    } else if ch == '\'' {
+      in_single_quote = true;
+      i += 1;
+    } else if ch == quote {
+      open_identifier = Some(byte);
+      i += 1;
+    } else {
+      i += 1;
+    }
+  }
+
+  open_identifier.map(|byte| {
+    let before = &text[..byte];
+    CursorPosition {
+      row: before.matches('\n').count(),
+      col: before.rsplit_once('\n').map_or(before, |(_, line)| line).chars().count(),
+    }
+  })
+}
+
 #[derive(Default)]
 struct LexicalState {
   in_single_quote: bool,
@@ -1351,6 +1468,60 @@ mod tests {
     let analysis = analyze(&request("select café"));
     assert_eq!(analysis.replacement_range.start.col, 7);
     assert_eq!(analysis.replacement_range.end.col, 11);
+  }
+
+  #[test]
+  fn open_identifier_quotes_include_whitespace_in_the_replacement_range() {
+    let analysis = analyze(&request("select \"full na"));
+
+    assert_eq!(analysis.prefix, "full na");
+    assert_eq!(analysis.replacement_range.start.col, 8);
+    assert_eq!(analysis.replacement_range.end.col, 15);
+  }
+
+  #[test]
+  fn acceptance_reuses_open_identifier_quotes_and_closes_them() {
+    let text = "select \"fu";
+    let range = current_replacement_range(
+      text,
+      CursorPosition { row: 0, col: text.chars().count() },
+      Driver::Postgres,
+    );
+    let spaced_column =
+      CompletionCandidate::new("full name", CompletionKind::Column, CompletionSource::Database)
+        .with_insert_text("\"full name\"");
+    assert_eq!(accepted_insert_text(&spaced_column, text, range, Driver::Postgres), "full name\"");
+
+    let function = CompletionCandidate::new(
+      "function_name(integer)",
+      CompletionKind::Function,
+      CompletionSource::Database,
+    )
+    .with_insert_text("function_name(");
+    assert_eq!(accepted_insert_text(&function, text, range, Driver::Postgres), "function_name\"(");
+  }
+
+  #[test]
+  fn mysql_acceptance_reuses_an_open_backtick() {
+    let text = "select `ord";
+    let range = current_replacement_range(
+      text,
+      CursorPosition { row: 0, col: text.chars().count() },
+      Driver::MySql,
+    );
+    let table =
+      CompletionCandidate::new("order details", CompletionKind::Table, CompletionSource::Database)
+        .with_insert_text("`order details`");
+
+    assert_eq!(accepted_insert_text(&table, text, range, Driver::MySql), "order details`");
+  }
+
+  #[test]
+  fn identifier_quotes_inside_string_literals_do_not_change_identifier_replacement() {
+    let analysis = analyze(&request("select '\"', na"));
+
+    assert_eq!(analysis.prefix, "na");
+    assert_eq!(analysis.replacement_range.start.col, 12);
   }
 
   #[test]
