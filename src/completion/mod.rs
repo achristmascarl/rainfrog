@@ -31,11 +31,16 @@ pub struct CompletionClient {
   pub response_rx: mpsc::UnboundedReceiver<CompletionUiEvent>,
 }
 
+struct CompletionWorkerResult {
+  response: CompletionResponse,
+  mentioned_tables: Vec<TableRef>,
+}
+
 pub struct CompletionCoordinator {
   command_rx: mpsc::UnboundedReceiver<CompletionCommand>,
   response_tx: mpsc::UnboundedSender<CompletionUiEvent>,
-  worker_tx: mpsc::UnboundedSender<CompletionResponse>,
-  worker_rx: mpsc::UnboundedReceiver<CompletionResponse>,
+  worker_tx: mpsc::UnboundedSender<CompletionWorkerResult>,
+  worker_rx: mpsc::UnboundedReceiver<CompletionWorkerResult>,
   table_discovery_tx: mpsc::UnboundedSender<Vec<TableRef>>,
   table_discovery_rx: mpsc::UnboundedReceiver<Vec<TableRef>>,
   table_discovery_tasks: Vec<JoinHandle<()>>,
@@ -99,7 +104,6 @@ impl CompletionCoordinator {
     while let Ok(command) = self.command_rx.try_recv() {
       match command {
         CompletionCommand::Request(request) => {
-          self.queue_columns_for_text(request.text.clone());
           self.latest_generation = request.generation;
           if request.manual {
             self.dismissed_generation = None;
@@ -119,10 +123,14 @@ impl CompletionCoordinator {
       }
     }
 
-    while let Ok(response) = self.worker_rx.try_recv() {
+    while let Ok(result) = self.worker_rx.try_recv() {
+      let response = result.response;
       if response.generation == self.latest_generation
         && self.dismissed_generation != Some(response.generation)
       {
+        if self.catalog_loaded {
+          self.queue_missing_columns(result.mentioned_tables);
+        }
         self.missing_columns.extend(
           response
             .missing_columns
@@ -197,22 +205,30 @@ impl CompletionCoordinator {
         && !matches!(analysis.context, CompletionContext::StringLiteral { .. })
         && analysis.prefix.chars().count() < trigger_length
       {
-        let _ = worker_tx.send(CompletionResponse {
-          generation: request.generation,
-          replacement_range: analysis.replacement_range,
-          candidates: Vec::new(),
-          missing_columns: Vec::new(),
+        let _ = worker_tx.send(CompletionWorkerResult {
+          response: CompletionResponse {
+            generation: request.generation,
+            replacement_range: analysis.replacement_range,
+            candidates: Vec::new(),
+            missing_columns: Vec::new(),
+          },
+          mentioned_tables: Vec::new(),
         });
         return;
       }
+      let discover_tables = request.manual || analysis.prefix.chars().count() >= trigger_length;
       let path_candidates = path_candidates(&analysis).await;
-      let response = tokio::task::spawn_blocking(move || {
+      let result = tokio::task::spawn_blocking(move || {
         let catalog = catalog.read().unwrap_or_else(|poisoned| poisoned.into_inner());
-        complete(&request, &catalog, path_candidates)
+        let mentioned_tables =
+          if discover_tables { mentioned_table_refs(&request.text, &catalog) } else { Vec::new() };
+        let response =
+          complete_with_analysis(&request, &catalog, path_candidates, analysis, &mentioned_tables);
+        CompletionWorkerResult { response, mentioned_tables }
       })
       .await;
-      if let Ok(response) = response {
-        let _ = worker_tx.send(response);
+      if let Ok(result) = result {
+        let _ = worker_tx.send(result);
       }
     }));
   }
@@ -230,9 +246,6 @@ impl CompletionCoordinator {
     while self.table_discovery_rx.try_recv().is_ok() {}
     self.catalog_loaded = false;
     self.pending_discovery_texts.clear();
-    if let Some(request) = &self.latest_request {
-      self.pending_discovery_texts.insert(request.text.clone());
-    }
     self.missing_columns.clear();
     self.in_flight_columns.clear();
     self.failed_columns.clear();
@@ -656,6 +669,22 @@ pub fn complete(
   path_candidates: Vec<CompletionCandidate>,
 ) -> CompletionResponse {
   let analysis = analyze(request);
+  let mentioned_tables =
+    if matches!(analysis.context, CompletionContext::Expression | CompletionContext::Generic) {
+      mentioned_table_refs(&request.text, catalog)
+    } else {
+      Vec::new()
+    };
+  complete_with_analysis(request, catalog, path_candidates, analysis, &mentioned_tables)
+}
+
+fn complete_with_analysis(
+  request: &CompletionRequest,
+  catalog: &CompletionCatalog,
+  path_candidates: Vec<CompletionCandidate>,
+  analysis: Analysis,
+  mentioned_tables: &[TableRef],
+) -> CompletionResponse {
   let mut candidates = Vec::new();
   let mut missing_columns = Vec::new();
   let mut preferred_column_details = HashSet::new();
@@ -710,7 +739,7 @@ pub fn complete(
     CompletionContext::Expression => {
       let mut tables: HashSet<_> =
         analysis.referenced_tables.iter().map(|table| resolved_table_ref(table, catalog)).collect();
-      tables.extend(mentioned_table_refs(&request.text, catalog));
+      tables.extend(mentioned_tables.iter().cloned());
       add_unqualified_columns(
         &mut candidates,
         &mut missing_columns,
@@ -731,7 +760,7 @@ pub fn complete(
         &mut missing_columns,
         &mut preferred_column_details,
         catalog,
-        mentioned_table_refs(&request.text, catalog).into_iter().collect(),
+        mentioned_tables.iter().cloned().collect(),
         request.driver,
       );
       add_keywords(&mut candidates);
@@ -1978,8 +2007,8 @@ mod tests {
     );
   }
 
-  #[tokio::test]
-  async fn table_discovery_survives_completion_dismissal() {
+  #[tokio::test(start_paused = true)]
+  async fn table_discovery_is_cancelled_before_the_debounce_elapses() {
     let (mut coordinator, client) = CompletionCoordinator::new();
     coordinator.catalog_loaded = true;
     coordinator.catalog.write().unwrap().objects.push(CatalogObject {
@@ -1988,22 +2017,85 @@ mod tests {
       kind: CompletionKind::Table,
     });
 
-    let mut completion_request = request("-- users");
+    let mut completion_request = request("select users us");
     completion_request.generation = 1;
     client.command_tx.send(CompletionCommand::Request(completion_request)).unwrap();
+    coordinator.poll(Duration::from_millis(200), 2);
     client.command_tx.send(CompletionCommand::Cancel { generation: 1 }).unwrap();
+    coordinator.poll(Duration::from_millis(200), 2);
 
+    tokio::time::advance(Duration::from_millis(200)).await;
+    tokio::task::yield_now().await;
+    coordinator.poll(Duration::from_millis(200), 2);
+
+    assert!(coordinator.missing_columns.is_empty());
+  }
+
+  #[tokio::test]
+  async fn table_discovery_only_scans_the_latest_debounced_request() {
+    let (mut coordinator, mut client) = CompletionCoordinator::new();
+    coordinator.catalog_loaded = true;
+    coordinator.catalog.write().unwrap().objects.extend([
+      CatalogObject { schema: "public".into(), name: "users".into(), kind: CompletionKind::Table },
+      CatalogObject { schema: "public".into(), name: "orders".into(), kind: CompletionKind::Table },
+    ]);
+
+    let mut first = request("select users us");
+    first.generation = 1;
+    client.command_tx.send(CompletionCommand::Request(first)).unwrap();
+    coordinator.poll(Duration::from_millis(20), 2);
+
+    let mut second = request("select orders or");
+    second.generation = 2;
+    client.command_tx.send(CompletionCommand::Request(second)).unwrap();
+    coordinator.poll(Duration::from_millis(20), 2);
+    tokio::time::sleep(Duration::from_millis(25)).await;
+
+    let mut delivered_generation = None;
     for _ in 0..200 {
-      coordinator.poll(Duration::from_millis(200), 2);
-      if coordinator
+      coordinator.poll(Duration::from_millis(20), 2);
+      if let Ok(CompletionUiEvent::Response(response)) = client.response_rx.try_recv() {
+        delivered_generation = Some(response.generation);
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+
+    assert_eq!(delivered_generation, Some(2));
+    assert!(
+      coordinator
+        .missing_columns
+        .contains(&TableRef { schema: "public".into(), table: "orders".into() })
+    );
+    assert!(
+      !coordinator
         .missing_columns
         .contains(&TableRef { schema: "public".into(), table: "users".into() })
-      {
-        return;
-      }
+    );
+  }
+
+  #[tokio::test(start_paused = true)]
+  async fn table_discovery_skips_automatic_requests_below_the_trigger_length() {
+    let (mut coordinator, client) = CompletionCoordinator::new();
+    coordinator.catalog_loaded = true;
+    coordinator.catalog.write().unwrap().objects.push(CatalogObject {
+      schema: "public".into(),
+      name: "users".into(),
+      kind: CompletionKind::Table,
+    });
+
+    let mut completion_request = request("select users u");
+    completion_request.generation = 1;
+    client.command_tx.send(CompletionCommand::Request(completion_request)).unwrap();
+    coordinator.poll(Duration::from_millis(200), 2);
+    tokio::task::yield_now().await;
+    tokio::time::advance(Duration::from_millis(200)).await;
+    for _ in 0..20 {
       tokio::task::yield_now().await;
+      coordinator.poll(Duration::from_millis(200), 2);
     }
-    panic!("dismissed completion did not queue mentioned table columns");
+
+    assert!(coordinator.missing_columns.is_empty());
   }
 
   #[tokio::test(start_paused = true)]
