@@ -92,7 +92,26 @@ jobs:
       - name: init db for docker test
         run: |
           make ci-db-up
-          sleep 10 # wait for db container
+          sleep 15 # wait for db container
+      - name: docker run sqlite
+        run: |
+          docker run -dit --name rainfrog_test_sqlite \
+            --add-host host.docker.internal:host-gateway \
+            -v /home/runner/work/rainfrog/rainfrog/dev/rainfrog.sqlite3:/rainfrog.sqlite3 \
+            rainfrog_test \
+            rainfrog --url sqlite:///rainfrog.sqlite3
+          sleep 5  # wait for container
+      - name: check sqlite container status
+        run: |
+          container_status=$(docker ps -f name=rainfrog_test_sqlite --format "{{.Status}}")
+          if [[ "$container_status" == "Up"* ]]; then
+            echo "container started"
+          else
+            echo "container did not start"
+            echo "logs: "
+            docker logs -t rainfrog_test_sqlite
+            exit 1
+          fi
       - name: docker run postgres
         run: |
           docker run -dit --name rainfrog_test_postgres \
@@ -135,25 +154,6 @@ jobs:
             echo "container did not start"
             echo "logs: "
             docker logs -t rainfrog_test_mysql
-            exit 1
-          fi
-      - name: docker run sqlite
-        run: |
-          docker run -dit --name rainfrog_test_sqlite \
-            --add-host host.docker.internal:host-gateway \
-            -v /home/runner/work/rainfrog/rainfrog/dev/rainfrog.sqlite3:/rainfrog.sqlite3 \
-            rainfrog_test \
-            rainfrog --url sqlite:///rainfrog.sqlite3
-          sleep 5  # wait for container
-      - name: check sqlite container status
-        run: |
-          container_status=$(docker ps -f name=rainfrog_test_sqlite --format "{{.Status}}")
-          if [[ "$container_status" == "Up"* ]]; then
-            echo "container started"
-          else
-            echo "container did not start"
-            echo "logs: "
-            docker logs -t rainfrog_test_sqlite
             exit 1
           fi
 
