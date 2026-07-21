@@ -858,12 +858,22 @@ fn identifier_insert_text(identifier: &str, driver: Driver) -> String {
 }
 
 fn database_object_candidate(object: &CatalogObject, driver: Driver) -> CompletionCandidate {
-  let candidate = if matches!(object.kind, CompletionKind::Table | CompletionKind::View) {
-    identifier_candidate(&object.name, object.kind, CompletionSource::Database, driver)
-  } else {
-    CompletionCandidate::new(&object.name, object.kind, CompletionSource::Database)
+  let candidate = match object.kind {
+    CompletionKind::Table | CompletionKind::View => {
+      identifier_candidate(&object.name, object.kind, CompletionSource::Database, driver)
+    },
+    CompletionKind::Function => {
+      CompletionCandidate::new(&object.name, CompletionKind::Function, CompletionSource::Database)
+        .with_insert_text(function_insert_text(&object.name, driver))
+    },
+    _ => CompletionCandidate::new(&object.name, object.kind, CompletionSource::Database),
   };
   candidate.with_detail(&object.schema)
+}
+
+fn function_insert_text(signature: &str, driver: Driver) -> String {
+  let name = signature.split_once('(').map_or(signature, |(name, _)| name).trim_end();
+  format!("{}(", identifier_insert_text(name, driver))
 }
 
 fn column_candidate(column: &Column, table: &TableRef, driver: Driver) -> CompletionCandidate {
@@ -992,7 +1002,11 @@ fn rank_candidates(
           .as_ref()
           .is_none_or(|detail| !preferred_column_details.contains(detail)),
     );
-    let key = candidate.insert_text.to_lowercase();
+    let key = if candidate.kind == CompletionKind::Function {
+      candidate.label.to_lowercase()
+    } else {
+      candidate.insert_text.to_lowercase()
+    };
     let score = (source_tier, preferred_tier, match_tier);
     if best
       .get(&key)
@@ -1022,15 +1036,23 @@ fn source_priority(kind: CompletionKind, context: &CompletionContext) -> u8 {
     },
     CompletionContext::Expression => match kind {
       CompletionKind::Column => 0,
-      CompletionKind::BufferWord => 1,
-      CompletionKind::Keyword => 2,
-      _ => 3,
+      CompletionKind::Schema
+      | CompletionKind::Table
+      | CompletionKind::View
+      | CompletionKind::Function => 1,
+      CompletionKind::BufferWord => 2,
+      CompletionKind::Keyword => 3,
+      _ => 4,
     },
     CompletionContext::Generic => match kind {
       CompletionKind::Column => 0,
-      CompletionKind::Keyword => 1,
-      CompletionKind::BufferWord => 2,
-      _ => 3,
+      CompletionKind::Schema
+      | CompletionKind::Table
+      | CompletionKind::View
+      | CompletionKind::Function => 1,
+      CompletionKind::Keyword => 2,
+      CompletionKind::BufferWord => 3,
+      _ => 4,
     },
     CompletionContext::Comment => 9,
   }
@@ -1349,6 +1371,84 @@ mod tests {
       vec!["users", "other_users"]
     );
     assert_eq!(ranked[0].kind, CompletionKind::Table);
+  }
+
+  #[test]
+  fn ranks_database_schema_candidates_above_buffer_words() {
+    let candidates = vec![
+      CompletionCandidate::new("a_buffer", CompletionKind::BufferWord, CompletionSource::Buffer),
+      CompletionCandidate::new("z_schema", CompletionKind::Schema, CompletionSource::Database),
+      CompletionCandidate::new("z_table", CompletionKind::Table, CompletionSource::Database),
+      CompletionCandidate::new("z_view", CompletionKind::View, CompletionSource::Database),
+      CompletionCandidate::new(
+        "z_function()",
+        CompletionKind::Function,
+        CompletionSource::Database,
+      )
+      .with_insert_text("z_function("),
+      CompletionCandidate::new("z_column", CompletionKind::Column, CompletionSource::Database),
+    ];
+
+    for context in [CompletionContext::Expression, CompletionContext::Generic] {
+      let ranked = rank_candidates(candidates.clone(), "", &context, &HashSet::new());
+      let buffer_index =
+        ranked.iter().position(|candidate| candidate.kind == CompletionKind::BufferWord).unwrap();
+      for kind in [
+        CompletionKind::Column,
+        CompletionKind::Schema,
+        CompletionKind::Table,
+        CompletionKind::View,
+        CompletionKind::Function,
+      ] {
+        assert!(ranked.iter().position(|candidate| candidate.kind == kind).unwrap() < buffer_index);
+      }
+    }
+  }
+
+  #[test]
+  fn function_candidates_render_signatures_but_insert_only_the_call_prefix() {
+    let catalog = CompletionCatalog {
+      objects: vec![
+        CatalogObject {
+          schema: "public".into(),
+          name: "calculate(integer)".into(),
+          kind: CompletionKind::Function,
+        },
+        CatalogObject {
+          schema: "public".into(),
+          name: "calculate(text)".into(),
+          kind: CompletionKind::Function,
+        },
+      ],
+      ..CompletionCatalog::default()
+    };
+
+    let response = complete(&request("select cal"), &catalog, Vec::new());
+    let functions: Vec<_> = response
+      .candidates
+      .iter()
+      .filter(|candidate| candidate.kind == CompletionKind::Function)
+      .map(|candidate| (candidate.label.as_str(), candidate.insert_text.as_str()))
+      .collect();
+
+    assert_eq!(
+      functions,
+      vec![("calculate(integer)", "calculate("), ("calculate(text)", "calculate(")]
+    );
+  }
+
+  #[test]
+  fn function_candidates_without_catalog_arguments_also_insert_an_open_parenthesis() {
+    let object = CatalogObject {
+      schema: "app".into(),
+      name: "calculate".into(),
+      kind: CompletionKind::Function,
+    };
+
+    let candidate = database_object_candidate(&object, Driver::MySql);
+
+    assert_eq!(candidate.label, "calculate");
+    assert_eq!(candidate.insert_text, "calculate(");
   }
 
   #[test]
