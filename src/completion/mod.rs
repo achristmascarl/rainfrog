@@ -237,20 +237,6 @@ impl CompletionCoordinator {
     if let Some(task) = self.menu_task.take() {
       task.abort();
     }
-    if let Some(task) = self.column_task.take() {
-      task.abort();
-    }
-    for task in self.table_discovery_tasks.drain(..) {
-      task.abort();
-    }
-    while self.table_discovery_rx.try_recv().is_ok() {}
-    self.catalog_loaded = false;
-    self.pending_discovery_texts.clear();
-    self.missing_columns.clear();
-    self.in_flight_columns.clear();
-    self.failed_columns.clear();
-    *self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner()) =
-      CompletionCatalog::default();
     self.menu_task = Some(database.start_load_menu()?);
     Ok(())
   }
@@ -271,6 +257,20 @@ impl CompletionCoordinator {
       let task = self.menu_task.take().unwrap();
       match task.await {
         Ok(Ok(rows)) => {
+          if let Some(task) = self.column_task.take() {
+            task.abort();
+          }
+          for task in self.table_discovery_tasks.drain(..) {
+            task.abort();
+          }
+          while self.table_discovery_rx.try_recv().is_ok() {}
+          if let Some(task) = self.pending.take() {
+            task.abort();
+          }
+          while self.worker_rx.try_recv().is_ok() {}
+          self.missing_columns.clear();
+          self.in_flight_columns.clear();
+          self.failed_columns.clear();
           let catalog = catalog_from_menu_rows(&rows);
           *self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = catalog;
           self.catalog_loaded = true;
@@ -488,7 +488,7 @@ pub struct CompletionCatalog {
 impl CompletionCatalog {
   pub fn schemas(&self) -> impl Iterator<Item = &str> {
     let mut seen = HashSet::new();
-    self.objects.iter().filter_map(move |object| {
+    self.objects.iter().filter(|object| !object.schema.is_empty()).filter_map(move |object| {
       seen.insert(object.schema.as_str()).then_some(object.schema.as_str())
     })
   }
@@ -1966,6 +1966,106 @@ mod tests {
     assert_eq!(columns.table, table);
     assert_eq!(columns.columns[0], Column { name: "id".into(), type_name: "integer".into() });
     assert_eq!(columns.columns[1].name, "name");
+  }
+
+  #[test]
+  fn excludes_empty_schema_names_from_completion_candidates() {
+    let catalog = CompletionCatalog {
+      objects: vec![
+        CatalogObject {
+          schema: String::new(),
+          name: "sqlite_table".into(),
+          kind: CompletionKind::Table,
+        },
+        CatalogObject {
+          schema: "main".into(),
+          name: "main_table".into(),
+          kind: CompletionKind::Table,
+        },
+      ],
+      ..CompletionCatalog::default()
+    };
+
+    assert_eq!(catalog.schemas().collect::<Vec<_>>(), vec!["main"]);
+    let response = complete(&request("select * from "), &catalog, Vec::new());
+    assert!(
+      response
+        .candidates
+        .iter()
+        .all(|candidate| candidate.kind != CompletionKind::Schema || !candidate.label.is_empty())
+    );
+  }
+
+  #[tokio::test]
+  async fn failed_catalog_refresh_preserves_the_existing_catalog_and_column_cache() {
+    let (mut coordinator, _) = CompletionCoordinator::new();
+    let table = TableRef { schema: "public".into(), table: "users".into() };
+    coordinator.catalog_loaded = true;
+    {
+      let mut catalog = coordinator.catalog.write().unwrap();
+      catalog.objects.push(CatalogObject {
+        schema: table.schema.clone(),
+        name: table.table.clone(),
+        kind: CompletionKind::Table,
+      });
+      catalog.insert_columns(
+        table.clone(),
+        vec![Column { name: "id".into(), type_name: "integer".into() }],
+      );
+    }
+    coordinator.failed_columns.insert(table.clone());
+    coordinator.menu_task =
+      Some(tokio::spawn(async { Err(color_eyre::eyre::eyre!("catalog refresh failed")) }));
+    tokio::task::yield_now().await;
+
+    assert!(coordinator.poll_database().await.is_empty());
+
+    let catalog = coordinator.catalog.read().unwrap();
+    assert_eq!(catalog.objects[0].name, "users");
+    assert_eq!(catalog.columns[&table][0].name, "id");
+    assert!(coordinator.catalog_loaded);
+    assert!(coordinator.failed_columns.contains(&table));
+  }
+
+  #[tokio::test]
+  async fn successful_catalog_refresh_atomically_replaces_and_invalidates_the_old_catalog() {
+    let (mut coordinator, _) = CompletionCoordinator::new();
+    let old_table = TableRef { schema: "public".into(), table: "users".into() };
+    coordinator.catalog_loaded = true;
+    {
+      let mut catalog = coordinator.catalog.write().unwrap();
+      catalog.objects.push(CatalogObject {
+        schema: old_table.schema.clone(),
+        name: old_table.table.clone(),
+        kind: CompletionKind::Table,
+      });
+      catalog.insert_columns(
+        old_table.clone(),
+        vec![Column { name: "id".into(), type_name: "integer".into() }],
+      );
+    }
+    coordinator.missing_columns.insert(old_table.clone());
+    coordinator.in_flight_columns.insert(old_table.clone());
+    coordinator.failed_columns.insert(old_table);
+    coordinator.menu_task = Some(tokio::spawn(async {
+      Ok(Rows {
+        headers: Vec::new(),
+        rows: vec![vec!["main".into(), "orders".into(), "table".into()]],
+        rows_affected: None,
+      })
+    }));
+    tokio::task::yield_now().await;
+
+    let events = coordinator.poll_database().await;
+
+    assert_eq!(events.len(), 1);
+    let catalog = coordinator.catalog.read().unwrap();
+    assert_eq!(catalog.objects.len(), 1);
+    assert_eq!(catalog.objects[0].name, "orders");
+    assert!(catalog.columns.is_empty());
+    assert!(coordinator.missing_columns.is_empty());
+    assert!(coordinator.in_flight_columns.is_empty());
+    assert!(coordinator.failed_columns.is_empty());
   }
 
   #[test]
