@@ -36,6 +36,11 @@ pub struct CompletionCoordinator {
   response_tx: mpsc::UnboundedSender<CompletionUiEvent>,
   worker_tx: mpsc::UnboundedSender<CompletionResponse>,
   worker_rx: mpsc::UnboundedReceiver<CompletionResponse>,
+  table_discovery_tx: mpsc::UnboundedSender<Vec<TableRef>>,
+  table_discovery_rx: mpsc::UnboundedReceiver<Vec<TableRef>>,
+  table_discovery_tasks: Vec<JoinHandle<()>>,
+  pending_discovery_texts: HashSet<String>,
+  catalog_loaded: bool,
   pending: Option<JoinHandle<()>>,
   latest_generation: u64,
   dismissed_generation: Option<u64>,
@@ -58,12 +63,18 @@ impl CompletionCoordinator {
     let (command_tx, command_rx) = mpsc::unbounded_channel();
     let (response_tx, response_rx) = mpsc::unbounded_channel();
     let (worker_tx, worker_rx) = mpsc::unbounded_channel();
+    let (table_discovery_tx, table_discovery_rx) = mpsc::unbounded_channel();
     (
       Self {
         command_rx,
         response_tx,
         worker_tx,
         worker_rx,
+        table_discovery_tx,
+        table_discovery_rx,
+        table_discovery_tasks: Vec::new(),
+        pending_discovery_texts: HashSet::new(),
+        catalog_loaded: false,
         pending: None,
         latest_generation: 0,
         dismissed_generation: None,
@@ -88,6 +99,7 @@ impl CompletionCoordinator {
     while let Ok(command) = self.command_rx.try_recv() {
       match command {
         CompletionCommand::Request(request) => {
+          self.queue_columns_for_text(request.text.clone());
           self.latest_generation = request.generation;
           if request.manual {
             self.dismissed_generation = None;
@@ -123,6 +135,48 @@ impl CompletionCoordinator {
         let _ = self.response_tx.send(CompletionUiEvent::Response(response));
       }
     }
+
+    while let Ok(tables) = self.table_discovery_rx.try_recv() {
+      self.queue_missing_columns(tables);
+    }
+    self.table_discovery_tasks.retain(|task| !task.is_finished());
+  }
+
+  /// Finds every catalog table or view mentioned anywhere in raw query text and queues its
+  /// columns. This intentionally ignores SQL lexical context, so comments and strings count too.
+  pub fn queue_columns_for_text(&mut self, text: String) {
+    if text.trim().is_empty() {
+      return;
+    }
+    if !self.catalog_loaded {
+      self.pending_discovery_texts.insert(text);
+      return;
+    }
+    let catalog = self.catalog.clone();
+    let result_tx = self.table_discovery_tx.clone();
+    self.table_discovery_tasks.push(tokio::spawn(async move {
+      let result = tokio::task::spawn_blocking(move || {
+        let catalog = catalog.read().unwrap_or_else(|poisoned| poisoned.into_inner());
+        mentioned_table_refs(&text, &catalog)
+      })
+      .await;
+      if let Ok(tables) = result {
+        let _ = result_tx.send(tables);
+      }
+    }));
+  }
+
+  fn queue_missing_columns(&mut self, tables: Vec<TableRef>) {
+    let catalog = self.catalog.read().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let missing: Vec<_> = tables
+      .into_iter()
+      .filter(|table| !catalog.columns.contains_key(table))
+      .filter(|table| {
+        !self.in_flight_columns.contains(table) && !self.failed_columns.contains(table)
+      })
+      .collect();
+    drop(catalog);
+    self.missing_columns.extend(missing);
   }
 
   fn spawn_completion(
@@ -170,6 +224,15 @@ impl CompletionCoordinator {
     if let Some(task) = self.column_task.take() {
       task.abort();
     }
+    for task in self.table_discovery_tasks.drain(..) {
+      task.abort();
+    }
+    while self.table_discovery_rx.try_recv().is_ok() {}
+    self.catalog_loaded = false;
+    self.pending_discovery_texts.clear();
+    if let Some(request) = &self.latest_request {
+      self.pending_discovery_texts.insert(request.text.clone());
+    }
     self.missing_columns.clear();
     self.in_flight_columns.clear();
     self.failed_columns.clear();
@@ -197,7 +260,11 @@ impl CompletionCoordinator {
         Ok(Ok(rows)) => {
           let catalog = catalog_from_menu_rows(&rows);
           *self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = catalog;
+          self.catalog_loaded = true;
           events.push(CompletionDatabaseEvent::MenuLoaded(rows));
+          for text in std::mem::take(&mut self.pending_discovery_texts) {
+            self.queue_columns_for_text(text);
+          }
           self.refresh_latest_completion();
         },
         Ok(Err(error)) => log::error!("failed to load completion catalog: {error}"),
@@ -254,6 +321,9 @@ impl CompletionCoordinator {
       task.abort();
     }
     if let Some(task) = self.column_task.take() {
+      task.abort();
+    }
+    for task in self.table_discovery_tasks.drain(..) {
       task.abort();
     }
   }
@@ -433,6 +503,33 @@ pub fn catalog_from_menu_rows(rows: &Rows) -> CompletionCatalog {
   CompletionCatalog { objects, columns: HashMap::new() }
 }
 
+pub fn mentioned_table_refs(text: &str, catalog: &CompletionCatalog) -> Vec<TableRef> {
+  let text = text.to_lowercase();
+  let mut tables = HashSet::new();
+  for object in &catalog.objects {
+    if !matches!(object.kind, CompletionKind::Table | CompletionKind::View) {
+      continue;
+    }
+    let name = object.name.to_lowercase();
+    if name.is_empty() {
+      continue;
+    }
+    let mentioned = text.match_indices(&name).any(|(start, _)| {
+      let end = start + name.len();
+      let before = text[..start].chars().next_back();
+      let after = text[end..].chars().next();
+      before.is_none_or(|ch| !is_identifier_char(ch))
+        && after.is_none_or(|ch| !is_identifier_char(ch))
+    });
+    if mentioned {
+      tables.insert(TableRef { schema: object.schema.clone(), table: object.name.clone() });
+    }
+  }
+  let mut tables: Vec<_> = tables.into_iter().collect();
+  tables.sort();
+  tables
+}
+
 pub fn table_columns_from_rows(table: TableRef, rows: Rows) -> TableColumns {
   let header_index = |names: &[&str]| {
     rows
@@ -601,6 +698,13 @@ pub fn complete(
       candidates.extend(catalog.objects.iter().map(database_object_candidate));
     },
     CompletionContext::Generic => {
+      for table in mentioned_table_refs(&request.text, catalog) {
+        if let Some(columns) = catalog.columns.get(&table) {
+          candidates.extend(columns.iter().map(|column| column_candidate(column, &table)));
+        } else if !missing_columns.contains(&table) {
+          missing_columns.push(table);
+        }
+      }
       add_keywords(&mut candidates);
       add_buffer_words(&mut candidates, &request.text);
       candidates.extend(catalog.objects.iter().map(database_object_candidate));
@@ -820,9 +924,10 @@ fn source_priority(kind: CompletionKind, context: &CompletionContext) -> u8 {
       _ => 3,
     },
     CompletionContext::Generic => match kind {
-      CompletionKind::Keyword => 0,
-      CompletionKind::BufferWord => 1,
-      _ => 2,
+      CompletionKind::Column => 0,
+      CompletionKind::Keyword => 1,
+      CompletionKind::BufferWord => 2,
+      _ => 3,
     },
     CompletionContext::Comment => 9,
   }
@@ -1188,6 +1293,39 @@ mod tests {
   }
 
   #[test]
+  fn returns_mentioned_table_columns_in_generic_context() {
+    let users = TableRef { schema: "public".into(), table: "users".into() };
+    let orders = TableRef { schema: "public".into(), table: "orders".into() };
+    let mut catalog = CompletionCatalog {
+      objects: vec![
+        CatalogObject {
+          schema: users.schema.clone(),
+          name: users.table.clone(),
+          kind: CompletionKind::Table,
+        },
+        CatalogObject {
+          schema: orders.schema.clone(),
+          name: orders.table.clone(),
+          kind: CompletionKind::Table,
+        },
+      ],
+      ..CompletionCatalog::default()
+    };
+    catalog.insert_columns(users, vec![Column { name: "name".into(), type_name: "text".into() }]);
+    catalog
+      .insert_columns(orders, vec![Column { name: "number".into(), type_name: "integer".into() }]);
+
+    let response = complete(&request("users; na"), &catalog, Vec::new());
+    assert!(
+      response
+        .candidates
+        .iter()
+        .any(|candidate| { candidate.label == "name" && candidate.kind == CompletionKind::Column })
+    );
+    assert!(!response.candidates.iter().any(|candidate| candidate.label == "number"));
+  }
+
+  #[test]
   fn buffer_candidates_do_not_include_external_text() {
     let response =
       complete(&request("select local_word where lo"), &CompletionCatalog::default(), Vec::new());
@@ -1224,6 +1362,73 @@ mod tests {
     assert_eq!(columns.table, table);
     assert_eq!(columns.columns[0], Column { name: "id".into(), type_name: "integer".into() });
     assert_eq!(columns.columns[1].name, "name");
+  }
+
+  #[test]
+  fn finds_catalog_tables_anywhere_in_raw_text() {
+    let catalog = CompletionCatalog {
+      objects: vec![
+        CatalogObject {
+          schema: "public".into(),
+          name: "users".into(),
+          kind: CompletionKind::Table,
+        },
+        CatalogObject { schema: "audit".into(), name: "users".into(), kind: CompletionKind::View },
+        CatalogObject { schema: "public".into(), name: "user".into(), kind: CompletionKind::Table },
+        CatalogObject {
+          schema: "public".into(),
+          name: "order details".into(),
+          kind: CompletionKind::Table,
+        },
+        CatalogObject {
+          schema: "public".into(),
+          name: "users".into(),
+          kind: CompletionKind::Function,
+        },
+      ],
+      ..CompletionCatalog::default()
+    };
+
+    let tables = mentioned_table_refs(
+      "select superusers, 'order details'; -- USERS is only mentioned in a comment",
+      &catalog,
+    );
+    assert_eq!(
+      tables,
+      vec![
+        TableRef { schema: "audit".into(), table: "users".into() },
+        TableRef { schema: "public".into(), table: "order details".into() },
+        TableRef { schema: "public".into(), table: "users".into() },
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn table_discovery_survives_completion_dismissal() {
+    let (mut coordinator, client) = CompletionCoordinator::new();
+    coordinator.catalog_loaded = true;
+    coordinator.catalog.write().unwrap().objects.push(CatalogObject {
+      schema: "public".into(),
+      name: "users".into(),
+      kind: CompletionKind::Table,
+    });
+
+    let mut completion_request = request("-- users");
+    completion_request.generation = 1;
+    client.command_tx.send(CompletionCommand::Request(completion_request)).unwrap();
+    client.command_tx.send(CompletionCommand::Cancel { generation: 1 }).unwrap();
+
+    for _ in 0..200 {
+      coordinator.poll(Duration::from_millis(200), 2);
+      if coordinator
+        .missing_columns
+        .contains(&TableRef { schema: "public".into(), table: "users".into() })
+      {
+        return;
+      }
+      tokio::task::yield_now().await;
+    }
+    panic!("dismissed completion did not queue mentioned table columns");
   }
 
   #[tokio::test(start_paused = true)]

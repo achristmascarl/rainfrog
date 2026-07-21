@@ -444,7 +444,8 @@ impl App {
             match execution_info {
               Ok((ExecutionType::Transaction, _)) => {
                 self.components.data.set_loading();
-                database.start_tx(query_string).await?;
+                database.start_tx(query_string.clone()).await?;
+                self.completion.queue_columns_for_text(query_string);
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },
@@ -453,7 +454,8 @@ impl App {
               },
               Ok((ExecutionType::Normal, _)) => {
                 self.components.data.set_loading();
-                database.start_query(query_string, *bypass).await?;
+                database.start_query(query_string.clone(), *bypass).await?;
+                self.completion.queue_columns_for_text(query_string);
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },
