@@ -358,8 +358,8 @@ export RAINFROG_CONFIG=~/.config/rainfrog
 | data_compact_columns | `true` | whether column widths should be dynamic based on the length of the contents of each column. there is still a max column width that won't be exceeded, so this will save some space by compressing the widths of columns with shorter strings. |
 | data_row_spacer | `false` | whether rows will have a space separating them to make the data table less visually dense.                    |
 | autocomplete_enabled | `true` | whether completions are requested while editing SQL. |
-| autocomplete_debounce_ms | `200` | how long edit-triggered completion waits before refreshing or hiding the menu. |
-| autocomplete_trigger_len | `2` | minimum identifier length for automatic completion; `Ctrl+Space` bypasses it. |
+| autocomplete_debounce_ms | `100` | how long edit-triggered completion waits before refreshing or hiding the menu. |
+| autocomplete_trigger_len | `1` | minimum identifier length for automatic completion; `Ctrl+Space` bypasses it. |
 
 <!-- TOC --><a name="database-connections"></a>
 ### database connections
