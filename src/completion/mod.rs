@@ -11,7 +11,6 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use crate::database::{Database, Rows};
 use crate::{cli::Driver, database::get_dialect};
 
-#[path = "completion/render.rs"]
 pub mod render;
 
 pub const MAX_CANDIDATES: usize = 50;
