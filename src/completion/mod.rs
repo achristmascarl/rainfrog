@@ -1230,38 +1230,77 @@ fn permissive_tokens(statement: &str) -> Vec<String> {
 fn extract_tables(tokens: &[String]) -> (HashMap<String, TableRef>, Vec<TableRef>) {
   let mut aliases = HashMap::new();
   let mut tables = Vec::new();
+  let mut from_depths = Vec::new();
+  let mut depth: usize = 0;
   let mut i = 0;
   while i < tokens.len() {
-    if !matches!(tokens[i].to_ascii_uppercase().as_str(), "FROM" | "JOIN" | "UPDATE" | "INTO") {
+    if is_from_clause_terminator(&tokens[i]) {
+      from_depths.retain(|from_depth| *from_depth != depth);
       i += 1;
       continue;
     }
-    i += 1;
-    let Some(first) = tokens.get(i).filter(|token| is_identifier(token)) else { continue };
-    let mut schema = String::new();
-    let mut table = first.clone();
-    if tokens.get(i + 1).is_some_and(|token| token == ".")
-      && let Some(name) = tokens.get(i + 2).filter(|token| is_identifier(token))
-    {
-      schema = table;
-      table = name.clone();
-      i += 2;
-    }
-    let table_ref = TableRef { schema, table };
-    if !tables.contains(&table_ref) {
-      tables.push(table_ref.clone());
-    }
-    i += 1;
-    if tokens.get(i).is_some_and(|token| token.eq_ignore_ascii_case("AS")) {
-      i += 1;
-    }
-    if let Some(alias) = tokens.get(i).filter(|token| is_identifier(token))
-      && !is_clause_keyword(alias)
-    {
-      aliases.insert(alias.to_ascii_lowercase(), table_ref);
+
+    match tokens[i].to_ascii_uppercase().as_str() {
+      "(" => {
+        depth += 1;
+        i += 1;
+      },
+      ")" => {
+        depth = depth.saturating_sub(1);
+        from_depths.retain(|from_depth| *from_depth <= depth);
+        i += 1;
+      },
+      "FROM" => {
+        if !from_depths.contains(&depth) {
+          from_depths.push(depth);
+        }
+        i = record_table_reference(tokens, i + 1, &mut aliases, &mut tables).unwrap_or(i + 1);
+      },
+      "JOIN" | "UPDATE" | "INTO" => {
+        i = record_table_reference(tokens, i + 1, &mut aliases, &mut tables).unwrap_or(i + 1);
+      },
+      "," if from_depths.contains(&depth) => {
+        i = record_table_reference(tokens, i + 1, &mut aliases, &mut tables).unwrap_or(i + 1);
+      },
+      _ => i += 1,
     }
   }
   (aliases, tables)
+}
+
+fn record_table_reference(
+  tokens: &[String],
+  start: usize,
+  aliases: &mut HashMap<String, TableRef>,
+  tables: &mut Vec<TableRef>,
+) -> Option<usize> {
+  let first = tokens.get(start).filter(|token| is_identifier(token))?;
+  let mut schema = String::new();
+  let mut table = first.clone();
+  let mut i = start + 1;
+  if tokens.get(i).is_some_and(|token| token == ".")
+    && let Some(name) = tokens.get(i + 1).filter(|token| is_identifier(token))
+  {
+    schema = table;
+    table = name.clone();
+    i += 2;
+  }
+
+  let table_ref = TableRef { schema, table };
+  if !tables.contains(&table_ref) {
+    tables.push(table_ref.clone());
+  }
+
+  if tokens.get(i).is_some_and(|token| token.eq_ignore_ascii_case("AS")) {
+    i += 1;
+  }
+  if let Some(alias) =
+    tokens.get(i).filter(|token| is_identifier(token) && !is_table_alias_boundary(token))
+  {
+    aliases.insert(alias.to_ascii_lowercase(), table_ref);
+    i += 1;
+  }
+  Some(i)
 }
 
 fn extract_ctes(tokens: &[String]) -> Vec<String> {
@@ -1450,6 +1489,33 @@ fn is_identifier(token: &str) -> bool {
   !token.is_empty() && token.chars().all(is_identifier_char)
 }
 
+fn is_table_alias_boundary(token: &str) -> bool {
+  is_clause_keyword(token)
+    || is_from_clause_terminator(token)
+    || matches!(token.to_ascii_uppercase().as_str(), "USING" | "TABLESAMPLE" | "PIVOT" | "UNPIVOT")
+}
+
+fn is_from_clause_terminator(token: &str) -> bool {
+  matches!(
+    token.to_ascii_uppercase().as_str(),
+    "WHERE"
+      | "GROUP"
+      | "ORDER"
+      | "LIMIT"
+      | "OFFSET"
+      | "FETCH"
+      | "HAVING"
+      | "QUALIFY"
+      | "WINDOW"
+      | "RETURNING"
+      | "SET"
+      | "VALUES"
+      | "UNION"
+      | "EXCEPT"
+      | "INTERSECT"
+  )
+}
+
 fn is_clause_keyword(token: &str) -> bool {
   matches!(
     token.to_ascii_uppercase().as_str(),
@@ -1506,6 +1572,40 @@ mod tests {
     assert_eq!(analysis.context, CompletionContext::Qualified { qualifier: "u".into() });
     assert_eq!(analysis.aliases["u"].table, "users");
     assert_eq!(analysis.aliases["u"].schema, "public");
+  }
+
+  #[test]
+  fn extracts_comma_separated_table_aliases() {
+    let analysis =
+      analyze(&request("select * from users u, sales.orders as o where o.order_number"));
+
+    assert_eq!(analysis.aliases["u"], TableRef { schema: String::new(), table: "users".into() });
+    assert_eq!(analysis.aliases["o"], TableRef { schema: "sales".into(), table: "orders".into() });
+    assert_eq!(
+      analysis.referenced_tables,
+      vec![
+        TableRef { schema: String::new(), table: "users".into() },
+        TableRef { schema: "sales".into(), table: "orders".into() },
+      ]
+    );
+  }
+
+  #[test]
+  fn tracks_from_list_commas_by_parenthesis_depth() {
+    let analysis = analyze(&request(
+      "select * from users u join orders o on coalesce(u.id, o.user_id) = 1, line_items li \
+       where li.id in (1, 2) order by li.id, o.id",
+    ));
+
+    assert_eq!(analysis.aliases["u"].table, "users");
+    assert_eq!(analysis.aliases["o"].table, "orders");
+    assert_eq!(analysis.aliases["li"].table, "line_items");
+    assert_eq!(analysis.referenced_tables.len(), 3);
+    assert!(
+      !analysis
+        .referenced_tables
+        .contains(&TableRef { schema: "o".into(), table: "user_id".into() })
+    );
   }
 
   #[test]
@@ -1779,6 +1879,30 @@ mod tests {
     assert_eq!(response.candidates[0].label, "name");
     assert_eq!(response.candidates[0].kind, CompletionKind::Column);
     assert_eq!(response.candidates[0].detail.as_deref(), Some("text · public.users"));
+  }
+
+  #[test]
+  fn returns_columns_for_a_comma_separated_table_alias() {
+    let orders = TableRef { schema: "sales".into(), table: "orders".into() };
+    let mut catalog = CompletionCatalog {
+      objects: vec![CatalogObject {
+        schema: orders.schema.clone(),
+        name: orders.table.clone(),
+        kind: CompletionKind::Table,
+      }],
+      ..CompletionCatalog::default()
+    };
+    catalog.insert_columns(
+      orders,
+      vec![Column { name: "order_number".into(), type_name: "text".into() }],
+    );
+
+    let response =
+      complete(&request("select * from users u, sales.orders o where o.ord"), &catalog, Vec::new());
+
+    assert_eq!(response.candidates.len(), 1);
+    assert_eq!(response.candidates[0].label, "order_number");
+    assert_eq!(response.candidates[0].detail.as_deref(), Some("text · sales.orders"));
   }
 
   #[test]
