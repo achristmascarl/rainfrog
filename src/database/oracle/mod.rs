@@ -14,6 +14,8 @@ use crate::cli::Driver;
 use super::{Database, DbTaskResult, Header, QueryResultsWithMetadata, QueryTask, Rows};
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
+const BUILTIN_FUNCTIONS: &[&str] = &[];
+
 type ConnectionTask = JoinHandle<Result<Arc<Connection>>>;
 type TransactionTask = JoinHandle<Result<QueryResultsWithMetadata>>;
 enum OracleTask {
@@ -51,6 +53,10 @@ impl OracleDriver {
 
 #[async_trait(?Send)]
 impl Database for OracleDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    BUILTIN_FUNCTIONS
+  }
+
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let connection_opts = OracleConnectOptions::build_connection_opts(args)?;
 

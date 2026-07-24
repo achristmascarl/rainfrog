@@ -189,6 +189,7 @@ impl App {
       #[cfg(feature = "duckdb")]
       Driver::DuckDb => Box::new(database::DuckDbDriver::new()),
     };
+    self.completion.set_builtin_functions(database.builtin_functions());
     let default_title = database.init(args.clone()).await?;
     let terminal_title = args.connection_name.clone().unwrap_or(default_title);
     tracing::Span::current().record("conn", terminal_title.as_str());

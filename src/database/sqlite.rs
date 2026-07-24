@@ -22,6 +22,8 @@ use super::{
 };
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
+const BUILTIN_FUNCTIONS: &[&str] = &[];
+
 type SqliteTransaction = sqlx::Transaction<'static, Sqlite>;
 type TransactionAcquireTask = tokio::task::JoinHandle<Result<SqliteTransaction>>;
 type TransactionTask = tokio::task::JoinHandle<(QueryResultsWithMetadata, SqliteTransaction)>;
@@ -45,6 +47,10 @@ pub struct SqliteDriver {
 
 #[async_trait(?Send)]
 impl Database for SqliteDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    BUILTIN_FUNCTIONS
+  }
+
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let opts = super::sqlite::SqliteDriver::build_connection_opts(args)?;
     let pool =

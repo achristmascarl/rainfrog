@@ -104,6 +104,9 @@ pub enum DbTaskResult {
 
 #[async_trait(?Send)]
 pub trait Database {
+  /// Returns the built-in functions available for completion for this driver.
+  fn builtin_functions(&self) -> &'static [&'static str];
+
   /// Initialize the database connection. Should handle create
   /// a pool or connection that's reused for other operations.
   /// Must be called to actually connect to the database (just
@@ -407,6 +410,16 @@ pub trait HasRowsAffected {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn builtin_function_providers_are_placeholders() {
+    assert!(PostgresDriver::new().builtin_functions().is_empty());
+    assert!(MySqlDriver::new().builtin_functions().is_empty());
+    assert!(SqliteDriver::new().builtin_functions().is_empty());
+    assert!(OracleDriver::new().builtin_functions().is_empty());
+    #[cfg(feature = "duckdb")]
+    assert!(DuckDbDriver::new().builtin_functions().is_empty());
+  }
 
   #[test]
   fn cte_wrapped_writes_use_write_execution_type() {

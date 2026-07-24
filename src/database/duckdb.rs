@@ -18,6 +18,8 @@ use crate::cli::{Cli, Driver};
 use super::{Database, DbTaskResult, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows};
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
+const BUILTIN_FUNCTIONS: &[&str] = &[];
+
 enum DuckDbTask {
   Query(QueryTask),
 }
@@ -30,6 +32,10 @@ pub struct DuckDbDriver {
 
 #[async_trait(?Send)]
 impl Database for DuckDbDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    BUILTIN_FUNCTIONS
+  }
+
   async fn init(&mut self, args: Cli) -> Result<String> {
     let (path, config) = super::DuckDbDriver::build_connection_opts(args)?;
     let conn = Connection::open_with_flags(path.clone(), config)?;

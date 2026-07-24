@@ -100,6 +100,23 @@ impl CompletionCoordinator {
     self.catalog.clone()
   }
 
+  pub fn set_builtin_functions(&mut self, functions: &[&str]) {
+    let mut builtin_functions = Vec::new();
+    for function in functions.iter().filter(|function| !function.is_empty()) {
+      if !builtin_functions.iter().any(|existing: &String| existing.eq_ignore_ascii_case(function))
+      {
+        builtin_functions.push((*function).to_owned());
+      }
+    }
+    let mut catalog = self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if catalog.builtin_functions == builtin_functions {
+      return;
+    }
+    catalog.builtin_functions = builtin_functions;
+    drop(catalog);
+    self.refresh_latest_completion();
+  }
+
   pub fn add_result_rows(&mut self, rows: Option<&Rows>) {
     let Some(rows) = rows.filter(|rows| !rows.rows.is_empty()) else {
       return;
@@ -297,6 +314,7 @@ impl CompletionCoordinator {
           let mut current_catalog =
             self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner());
           catalog.result_columns = std::mem::take(&mut current_catalog.result_columns);
+          catalog.builtin_functions = std::mem::take(&mut current_catalog.builtin_functions);
           *current_catalog = catalog;
           drop(current_catalog);
           self.catalog_loaded = true;
@@ -407,6 +425,7 @@ pub enum CompletionSource {
   FileSystem,
   Buffer,
   Database,
+  Builtin,
   Result,
 }
 
@@ -510,6 +529,7 @@ pub struct CatalogObject {
 pub struct CompletionCatalog {
   pub objects: Vec<CatalogObject>,
   pub columns: HashMap<TableRef, Vec<Column>>,
+  pub builtin_functions: Vec<String>,
   pub result_columns: Vec<Column>,
 }
 
@@ -764,6 +784,7 @@ fn complete_with_analysis(
         identifier_candidate(cte, CompletionKind::Table, CompletionSource::Buffer, request.driver)
           .with_detail("CTE")
       }));
+      add_builtin_functions(&mut candidates, &catalog.builtin_functions, request.driver);
       add_keywords(&mut candidates);
     },
     CompletionContext::Expression => {
@@ -776,6 +797,7 @@ fn complete_with_analysis(
         &catalog.result_columns,
         request.driver,
       );
+      add_builtin_functions(&mut candidates, &catalog.builtin_functions, request.driver);
       add_unqualified_columns(
         &mut candidates,
         &mut missing_columns,
@@ -799,6 +821,7 @@ fn complete_with_analysis(
         catalog,
         mentioned_tables,
       );
+      add_builtin_functions(&mut candidates, &catalog.builtin_functions, request.driver);
     },
   }
 
@@ -994,6 +1017,20 @@ fn database_object_candidate(object: &CatalogObject, driver: Driver) -> Completi
 fn function_insert_text(signature: &str, driver: Driver) -> String {
   let name = signature.split_once('(').map_or(signature, |(name, _)| name).trim_end();
   format!("{}(", identifier_insert_text(name, driver))
+}
+
+fn builtin_function_candidate(signature: &str, driver: Driver) -> CompletionCandidate {
+  CompletionCandidate::new(signature, CompletionKind::Function, CompletionSource::Builtin)
+    .with_insert_text(function_insert_text(signature, driver))
+    .with_detail("built-in function")
+}
+
+fn add_builtin_functions(
+  candidates: &mut Vec<CompletionCandidate>,
+  functions: &[String],
+  driver: Driver,
+) {
+  candidates.extend(functions.iter().map(|function| builtin_function_candidate(function, driver)));
 }
 
 fn column_candidate(column: &Column, table: &TableRef, driver: Driver) -> CompletionCandidate {
@@ -1628,6 +1665,52 @@ mod tests {
     let analysis = analyze(&request("select * from us"));
     assert_eq!(analysis.context, CompletionContext::Table);
     assert_eq!(analysis.prefix, "us");
+  }
+
+  #[test]
+  fn builtins_are_available_in_table_expression_and_generic_contexts() {
+    let catalog = CompletionCatalog {
+      builtin_functions: vec!["COALESCE(text, text)".into()],
+      ..CompletionCatalog::default()
+    };
+
+    for (text, context) in [
+      ("select * from co", CompletionContext::Table),
+      ("select co", CompletionContext::Expression),
+      ("co", CompletionContext::Generic),
+    ] {
+      assert_eq!(analyze(&request(text)).context, context);
+      let response = complete(&request(text), &catalog, Vec::new());
+      let candidate = response
+        .candidates
+        .iter()
+        .find(|candidate| candidate.label == "COALESCE(text, text)")
+        .unwrap();
+      assert_eq!(candidate.kind, CompletionKind::Function);
+      assert_eq!(candidate.source, CompletionSource::Builtin);
+      assert_eq!(candidate.insert_text, "COALESCE(");
+      assert_eq!(candidate.detail.as_deref(), Some("built-in function"));
+    }
+  }
+
+  #[test]
+  fn builtins_are_not_available_in_qualified_contexts() {
+    let catalog = CompletionCatalog {
+      builtin_functions: vec!["COALESCE(text, text)".into()],
+      ..CompletionCatalog::default()
+    };
+    let completion_request = request("select value.co");
+
+    assert_eq!(
+      analyze(&completion_request).context,
+      CompletionContext::Qualified { qualifier: "value".into() }
+    );
+    assert!(
+      complete(&completion_request, &catalog, Vec::new())
+        .candidates
+        .iter()
+        .all(|candidate| candidate.source != CompletionSource::Builtin)
+    );
   }
 
   #[test]
@@ -2403,6 +2486,7 @@ mod tests {
       );
       catalog.result_columns =
         vec![Column { name: "renamed_id".into(), type_name: "integer".into() }];
+      catalog.builtin_functions = vec!["COUNT".into()];
     }
     coordinator.missing_columns.insert(old_table.clone());
     coordinator.in_flight_columns.insert(old_table.clone());
@@ -2424,6 +2508,7 @@ mod tests {
     assert_eq!(catalog.objects[0].name, "orders");
     assert!(catalog.columns.is_empty());
     assert_eq!(catalog.result_columns[0].name, "renamed_id");
+    assert_eq!(catalog.builtin_functions, vec!["COUNT"]);
     assert!(coordinator.missing_columns.is_empty());
     assert!(coordinator.in_flight_columns.is_empty());
     assert!(coordinator.failed_columns.is_empty());

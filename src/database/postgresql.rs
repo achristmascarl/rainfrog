@@ -26,6 +26,8 @@ use super::{
 };
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
+const BUILTIN_FUNCTIONS: &[&str] = &[];
+
 type PostgresTransaction = sqlx::Transaction<'static, Postgres>;
 type ConnectionTask = JoinHandle<Result<(Arc<Mutex<PoolConnection<Postgres>>>, i32)>>;
 type TransactionAcquireTask = JoinHandle<Result<(PostgresTransaction, i32)>>;
@@ -94,6 +96,10 @@ pub struct PostgresDriver {
 
 #[async_trait(?Send)]
 impl Database for PostgresDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    BUILTIN_FUNCTIONS
+  }
+
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let opts = super::postgresql::PostgresDriver::build_connection_opts(args)?;
     let pool = Arc::new(PgPoolOptions::new().max_connections(3).connect_with(opts.clone()).await?);
