@@ -12,8 +12,9 @@ use crate::{
   completion::{
     CompletionCandidate, CompletionClient, CompletionCommand, CompletionKind, CompletionRequest,
     CompletionResponse, CompletionUiEvent, CursorPosition, accepted_insert_text,
-    current_replacement_range,
+    current_replacement_range, identifier_quote,
     render::{ViewportState, cursor_anchor, render_dropdown},
+    replacement_starts_inside_open_identifier_quote,
   },
   config::Config,
   database::get_keywords,
@@ -21,6 +22,9 @@ use crate::{
   tui::Event,
   vim::{Mode, Transition, Vim},
 };
+
+const AUTOPAIRS: [(char, char); 6] =
+  [('\'', '\''), ('"', '"'), ('[', ']'), ('{', '}'), ('(', ')'), ('`', '`')];
 
 fn keyword_regex() -> String {
   format!("(?i)(^|[^a-zA-Z0-9\'\"`._]+)({})($|[^a-zA-Z0-9\'\"`._]+)", get_keywords().join("|"))
@@ -231,9 +235,16 @@ impl Editor<'_> {
       app_state.driver,
     );
     let insert_text = accepted_insert_text(&candidate, &text, range, app_state.driver);
+    let consume_closing_quote =
+      replacement_starts_inside_open_identifier_quote(&text, range, app_state.driver)
+        && self.textarea.lines()[cursor.0].chars().nth(cursor.1)
+          == Some(identifier_quote(app_state.driver));
     if range.start.row == cursor.0 && range.end.row == cursor.0 && range.start.col <= cursor.1 {
+      if consume_closing_quote {
+        self.textarea.move_cursor(CursorMove::Forward);
+      }
       self.textarea.start_selection();
-      for _ in range.start.col..cursor.1 {
+      for _ in range.start.col..cursor.1 + usize::from(consume_closing_quote) {
         self.textarea.move_cursor(CursorMove::Back);
       }
       self.textarea.insert_str(insert_text);
@@ -242,8 +253,51 @@ impl Editor<'_> {
     self.completion.hide();
   }
 
+  fn handle_autopair_input(&mut self, input: &Input) -> bool {
+    if !self.config.settings.autopairs_enabled.unwrap_or(true)
+      || self.vim_state.mode != Mode::Insert
+      || self.textarea.is_selecting()
+    {
+      return false;
+    }
+
+    let cursor = self.textarea.cursor();
+    let (row, col) = (cursor.0, cursor.1);
+    let line = &self.textarea.lines()[row];
+    let previous = col.checked_sub(1).and_then(|index| line.chars().nth(index));
+    let next = line.chars().nth(col);
+
+    match input {
+      Input { key: Key::Backspace, .. }
+        if AUTOPAIRS.iter().any(|&(open, close)| previous == Some(open) && next == Some(close)) =>
+      {
+        self.textarea.move_cursor(CursorMove::Back);
+        self.textarea.delete_str(2);
+        true
+      },
+      Input { key: Key::Char(c), ctrl: false, alt: false, .. }
+        if AUTOPAIRS.iter().any(|&(_, close)| *c == close) && next == Some(*c) =>
+      {
+        self.textarea.move_cursor(CursorMove::Forward);
+        true
+      },
+      Input { key: Key::Char(c), ctrl: false, alt: false, .. } => {
+        let Some((_, close)) = AUTOPAIRS.iter().find(|&&(open, _)| open == *c) else {
+          return false;
+        };
+        self.textarea.insert_str(format!("{c}{close}"));
+        self.textarea.move_cursor(CursorMove::Back);
+        true
+      },
+      _ => false,
+    }
+  }
+
   pub fn transition_vim_state(&mut self, input: Input, app_state: &AppState) -> Result<()> {
     if self.handle_completion_input(input.clone(), app_state) {
+      return Ok(());
+    }
+    if self.handle_autopair_input(&input) {
       return Ok(());
     }
     let previous_mode = self.vim_state.mode;
@@ -502,6 +556,70 @@ mod tests {
     }
   }
 
+  fn char_input(c: char) -> Input {
+    Input { key: Key::Char(c), ctrl: false, alt: false, shift: false }
+  }
+
+  fn backspace_input() -> Input {
+    Input { key: Key::Backspace, ctrl: false, alt: false, shift: false }
+  }
+
+  #[test]
+  fn autopairs_supported_opening_characters() {
+    let app_state = app_state_with_focus(Focus::Editor);
+
+    for (open, close) in AUTOPAIRS {
+      let mut editor = Editor::new();
+      editor.vim_state = Vim::new(Mode::Insert);
+
+      editor.transition_vim_state(char_input(open), &app_state).unwrap();
+
+      assert_eq!(editor.textarea.lines(), &[format!("{open}{close}")], "opening {open:?}");
+      assert_eq!(editor.textarea.cursor(), (0, 1), "opening {open:?}");
+    }
+  }
+
+  #[test]
+  fn autopairs_skips_an_adjacent_closing_character() {
+    let mut editor = Editor::new();
+    editor.vim_state = Vim::new(Mode::Insert);
+    let app_state = app_state_with_focus(Focus::Editor);
+
+    editor.transition_vim_state(char_input('('), &app_state).unwrap();
+    editor.transition_vim_state(char_input(')'), &app_state).unwrap();
+
+    assert_eq!(editor.textarea.lines(), &["()"]);
+    assert_eq!(editor.textarea.cursor(), (0, 2));
+  }
+
+  #[test]
+  fn autopairs_backspace_removes_both_halves() {
+    let app_state = app_state_with_focus(Focus::Editor);
+
+    for (open, _) in AUTOPAIRS {
+      let mut editor = Editor::new();
+      editor.vim_state = Vim::new(Mode::Insert);
+      editor.transition_vim_state(char_input(open), &app_state).unwrap();
+
+      editor.transition_vim_state(backspace_input(), &app_state).unwrap();
+
+      assert_eq!(editor.textarea.lines(), &[""], "opening {open:?}");
+      assert_eq!(editor.textarea.cursor(), (0, 0), "opening {open:?}");
+    }
+  }
+
+  #[test]
+  fn autopairs_can_be_disabled() {
+    let mut editor = Editor::new();
+    editor.config.settings.autopairs_enabled = Some(false);
+    editor.vim_state = Vim::new(Mode::Insert);
+
+    editor.transition_vim_state(char_input('('), &app_state_with_focus(Focus::Editor)).unwrap();
+
+    assert_eq!(editor.textarea.lines(), &["("]);
+    assert_eq!(editor.textarea.cursor(), (0, 1));
+  }
+
   #[test]
   fn paste_keeps_multiline_editor_input() {
     let mut editor = Editor::new();
@@ -578,6 +696,89 @@ mod tests {
       .unwrap();
 
     assert_eq!(editor.textarea.lines(), &["select \"full name\""]);
+  }
+
+  #[test]
+  fn completion_replaces_an_autopaired_identifier_quote() {
+    let mut editor = Editor::new();
+    editor.vim_state = Vim::new(Mode::Insert);
+    editor.textarea.insert_str("select ");
+    let app_state = app_state_with_focus(Focus::Editor);
+    editor.transition_vim_state(char_input('"'), &app_state).unwrap();
+    editor.transition_vim_state(char_input('f'), &app_state).unwrap();
+    editor.transition_vim_state(char_input('u'), &app_state).unwrap();
+    let mut completion_response = response(&[]);
+    completion_response.candidates.push(
+      CompletionCandidate::new("full name", CompletionKind::Column, CompletionSource::Database)
+        .with_insert_text("\"full name\""),
+    );
+    editor.apply_completion_response(completion_response);
+
+    editor
+      .transition_vim_state(
+        Input { key: Key::Tab, ctrl: false, alt: false, shift: false },
+        &app_state,
+      )
+      .unwrap();
+
+    assert_eq!(editor.textarea.lines(), &["select \"full name\""]);
+  }
+
+  #[test]
+  fn function_completion_replaces_an_autopaired_identifier_quote() {
+    let mut editor = Editor::new();
+    editor.vim_state = Vim::new(Mode::Insert);
+    editor.textarea.insert_str("select ");
+    let app_state = app_state_with_focus(Focus::Editor);
+    editor.transition_vim_state(char_input('"'), &app_state).unwrap();
+    editor.transition_vim_state(char_input('f'), &app_state).unwrap();
+    editor.transition_vim_state(char_input('u'), &app_state).unwrap();
+    let mut completion_response = response(&[]);
+    completion_response.candidates.push(
+      CompletionCandidate::new(
+        "function_name(integer)",
+        CompletionKind::Function,
+        CompletionSource::Database,
+      )
+      .with_insert_text("function_name("),
+    );
+    editor.apply_completion_response(completion_response);
+
+    editor
+      .transition_vim_state(
+        Input { key: Key::Tab, ctrl: false, alt: false, shift: false },
+        &app_state,
+      )
+      .unwrap();
+
+    assert_eq!(editor.textarea.lines(), &["select \"function_name\"("]);
+  }
+
+  #[test]
+  fn mysql_completion_replaces_an_autopaired_backtick() {
+    let mut editor = Editor::new();
+    editor.vim_state = Vim::new(Mode::Insert);
+    editor.textarea.insert_str("select ");
+    let mut app_state = app_state_with_focus(Focus::Editor);
+    app_state.driver = crate::cli::Driver::MySql;
+    editor.transition_vim_state(char_input('`'), &app_state).unwrap();
+    editor.transition_vim_state(char_input('o'), &app_state).unwrap();
+    editor.transition_vim_state(char_input('r'), &app_state).unwrap();
+    let mut completion_response = response(&[]);
+    completion_response.candidates.push(
+      CompletionCandidate::new("order details", CompletionKind::Table, CompletionSource::Database)
+        .with_insert_text("`order details`"),
+    );
+    editor.apply_completion_response(completion_response);
+
+    editor
+      .transition_vim_state(
+        Input { key: Key::Tab, ctrl: false, alt: false, shift: false },
+        &app_state,
+      )
+      .unwrap();
+
+    assert_eq!(editor.textarea.lines(), &["select `order details`"]);
   }
 
   #[test]

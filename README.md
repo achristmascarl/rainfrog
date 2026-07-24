@@ -360,6 +360,7 @@ export RAINFROG_CONFIG=~/.config/rainfrog
 | autocomplete_enabled | `true` | whether completions are requested while editing SQL. |
 | autocomplete_debounce_ms | `100` | how long edit-triggered completion waits before refreshing or hiding the menu. |
 | autocomplete_trigger_len | `1` | minimum identifier length for automatic completion; `Ctrl+Space` bypasses it. |
+| autopairs_enabled | `true` | whether insert mode automatically closes single quotes, double quotes, brackets, braces, parentheses, and backticks; skips an adjacent closing half; and removes both halves when backspacing an empty pair. |
 
 <!-- TOC --><a name="database-connections"></a>
 ### database connections

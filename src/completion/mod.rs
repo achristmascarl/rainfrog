@@ -824,12 +824,7 @@ pub fn accepted_insert_text(
   range: TextRange,
   driver: Driver,
 ) -> String {
-  let before_cursor = text_before_cursor(text, range.end.row, range.end.col);
-  let open_quote = open_identifier_quote_position(&before_cursor, driver);
-  let opens_current_token = open_quote.is_some_and(|position| {
-    position.row == range.start.row && position.col.saturating_add(1) == range.start.col
-  });
-  if !opens_current_token {
+  if !replacement_starts_inside_open_identifier_quote(text, range, driver) {
     return candidate.insert_text.clone();
   }
 
@@ -843,6 +838,18 @@ pub fn accepted_insert_text(
     return format!("{function_name}{quote}(");
   }
   format!("{}{quote}", candidate.insert_text)
+}
+
+pub fn replacement_starts_inside_open_identifier_quote(
+  text: &str,
+  range: TextRange,
+  driver: Driver,
+) -> bool {
+  let before_cursor = text_before_cursor(text, range.end.row, range.end.col);
+  let open_quote = open_identifier_quote_position(&before_cursor, driver);
+  open_quote.is_some_and(|position| {
+    position.row == range.start.row && position.col.saturating_add(1) == range.start.col
+  })
 }
 
 async fn path_candidates(analysis: &Analysis) -> Vec<CompletionCandidate> {

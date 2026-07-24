@@ -5,6 +5,7 @@ data_row_spacer = false
 autocomplete_enabled = true
 autocomplete_debounce_ms = 100
 autocomplete_trigger_len = 1
+autopairs_enabled = true
 
 [db]
 # you can add frequently used database connections here. example:

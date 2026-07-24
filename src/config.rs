@@ -193,6 +193,9 @@ impl Config {
     if cfg.settings.autocomplete_trigger_len.is_none() {
       cfg.settings.autocomplete_trigger_len = default_config.settings.autocomplete_trigger_len;
     }
+    if cfg.settings.autopairs_enabled.is_none() {
+      cfg.settings.autopairs_enabled = default_config.settings.autopairs_enabled;
+    }
 
     Ok(cfg)
   }
@@ -415,6 +418,7 @@ pub struct Settings {
   pub autocomplete_enabled: Option<bool>,
   pub autocomplete_debounce_ms: Option<u64>,
   pub autocomplete_trigger_len: Option<usize>,
+  pub autopairs_enabled: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deref, DerefMut)]
@@ -603,6 +607,7 @@ mod tests {
     assert_eq!(c.settings.autocomplete_enabled, Some(true));
     assert_eq!(c.settings.autocomplete_debounce_ms, Some(100));
     assert_eq!(c.settings.autocomplete_trigger_len, Some(1));
+    assert_eq!(c.settings.autopairs_enabled, Some(true));
     Ok(())
   }
 
