@@ -100,6 +100,45 @@ impl CompletionCoordinator {
     self.catalog.clone()
   }
 
+  pub fn set_builtin_functions(&mut self, functions: &[&str]) {
+    let mut builtin_functions = Vec::new();
+    for function in functions.iter().filter(|function| !function.is_empty()) {
+      if !builtin_functions.iter().any(|existing: &String| existing.eq_ignore_ascii_case(function))
+      {
+        builtin_functions.push((*function).to_owned());
+      }
+    }
+    let mut catalog = self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if catalog.builtin_functions == builtin_functions {
+      return;
+    }
+    catalog.builtin_functions = builtin_functions;
+    drop(catalog);
+    self.refresh_latest_completion();
+  }
+
+  pub fn add_result_rows(&mut self, rows: Option<&Rows>) {
+    let Some(rows) = rows.filter(|rows| !rows.rows.is_empty()) else {
+      return;
+    };
+    let mut catalog = self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut changed = false;
+    for header in rows.headers.iter().filter(|header| !header.name.is_empty()) {
+      if catalog.result_columns.iter().any(|column| column.name.eq_ignore_ascii_case(&header.name))
+      {
+        continue;
+      }
+      catalog
+        .result_columns
+        .push(Column { name: header.name.clone(), type_name: header.type_name.clone() });
+      changed = true;
+    }
+    drop(catalog);
+    if changed {
+      self.refresh_latest_completion();
+    }
+  }
+
   pub fn poll(&mut self, debounce: Duration, trigger_length: usize) {
     while let Ok(command) = self.command_rx.try_recv() {
       match command {
@@ -271,8 +310,13 @@ impl CompletionCoordinator {
           self.missing_columns.clear();
           self.in_flight_columns.clear();
           self.failed_columns.clear();
-          let catalog = catalog_from_menu_rows(&rows);
-          *self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = catalog;
+          let mut catalog = catalog_from_menu_rows(&rows);
+          let mut current_catalog =
+            self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+          catalog.result_columns = std::mem::take(&mut current_catalog.result_columns);
+          catalog.builtin_functions = std::mem::take(&mut current_catalog.builtin_functions);
+          *current_catalog = catalog;
+          drop(current_catalog);
           self.catalog_loaded = true;
           events.push(CompletionDatabaseEvent::MenuLoaded(rows));
           for text in std::mem::take(&mut self.pending_discovery_texts) {
@@ -381,6 +425,8 @@ pub enum CompletionSource {
   FileSystem,
   Buffer,
   Database,
+  Builtin,
+  Result,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -483,6 +529,8 @@ pub struct CatalogObject {
 pub struct CompletionCatalog {
   pub objects: Vec<CatalogObject>,
   pub columns: HashMap<TableRef, Vec<Column>>,
+  pub builtin_functions: Vec<String>,
+  pub result_columns: Vec<Column>,
 }
 
 impl CompletionCatalog {
@@ -513,7 +561,7 @@ pub fn catalog_from_menu_rows(rows: &Rows) -> CompletionCatalog {
       Some(CatalogObject { schema, name, kind })
     })
     .collect();
-  CompletionCatalog { objects, columns: HashMap::new() }
+  CompletionCatalog { objects, ..CompletionCatalog::default() }
 }
 
 pub fn mentioned_table_refs(text: &str, catalog: &CompletionCatalog) -> Vec<TableRef> {
@@ -736,12 +784,20 @@ fn complete_with_analysis(
         identifier_candidate(cte, CompletionKind::Table, CompletionSource::Buffer, request.driver)
           .with_detail("CTE")
       }));
+      add_builtin_functions(&mut candidates, &catalog.builtin_functions, request.driver);
       add_keywords(&mut candidates);
     },
     CompletionContext::Expression => {
       let mut tables: HashSet<_> =
         analysis.referenced_tables.iter().map(|table| resolved_table_ref(table, catalog)).collect();
       tables.extend(mentioned_tables.iter().cloned());
+      add_result_columns(
+        &mut candidates,
+        &mut preferred_column_details,
+        &catalog.result_columns,
+        request.driver,
+      );
+      add_builtin_functions(&mut candidates, &catalog.builtin_functions, request.driver);
       add_unqualified_columns(
         &mut candidates,
         &mut missing_columns,
@@ -765,6 +821,7 @@ fn complete_with_analysis(
         catalog,
         mentioned_tables,
       );
+      add_builtin_functions(&mut candidates, &catalog.builtin_functions, request.driver);
     },
   }
 
@@ -824,12 +881,7 @@ pub fn accepted_insert_text(
   range: TextRange,
   driver: Driver,
 ) -> String {
-  let before_cursor = text_before_cursor(text, range.end.row, range.end.col);
-  let open_quote = open_identifier_quote_position(&before_cursor, driver);
-  let opens_current_token = open_quote.is_some_and(|position| {
-    position.row == range.start.row && position.col.saturating_add(1) == range.start.col
-  });
-  if !opens_current_token {
+  if !replacement_starts_inside_open_identifier_quote(text, range, driver) {
     return candidate.insert_text.clone();
   }
 
@@ -837,12 +889,19 @@ pub fn accepted_insert_text(
   if let Some(without_duplicate_open) = candidate.insert_text.strip_prefix(quote) {
     return without_duplicate_open.to_owned();
   }
-  if candidate.kind == CompletionKind::Function
-    && let Some(function_name) = candidate.insert_text.strip_suffix('(')
-  {
-    return format!("{function_name}{quote}(");
-  }
   format!("{}{quote}", candidate.insert_text)
+}
+
+pub fn replacement_starts_inside_open_identifier_quote(
+  text: &str,
+  range: TextRange,
+  driver: Driver,
+) -> bool {
+  let before_cursor = text_before_cursor(text, range.end.row, range.end.col);
+  let open_quote = open_identifier_quote_position(&before_cursor, driver);
+  open_quote.is_some_and(|position| {
+    position.row == range.start.row && position.col.saturating_add(1) == range.start.col
+  })
 }
 
 async fn path_candidates(analysis: &Analysis) -> Vec<CompletionCandidate> {
@@ -952,7 +1011,21 @@ fn database_object_candidate(object: &CatalogObject, driver: Driver) -> Completi
 
 fn function_insert_text(signature: &str, driver: Driver) -> String {
   let name = signature.split_once('(').map_or(signature, |(name, _)| name).trim_end();
-  format!("{}(", identifier_insert_text(name, driver))
+  identifier_insert_text(name, driver)
+}
+
+fn builtin_function_candidate(signature: &str, driver: Driver) -> CompletionCandidate {
+  CompletionCandidate::new(signature, CompletionKind::Function, CompletionSource::Builtin)
+    .with_insert_text(function_insert_text(signature, driver))
+    .with_detail("built-in function")
+}
+
+fn add_builtin_functions(
+  candidates: &mut Vec<CompletionCandidate>,
+  functions: &[String],
+  driver: Driver,
+) {
+  candidates.extend(functions.iter().map(|function| builtin_function_candidate(function, driver)));
 }
 
 fn column_candidate(column: &Column, table: &TableRef, driver: Driver) -> CompletionCandidate {
@@ -963,6 +1036,31 @@ fn column_candidate(column: &Column, table: &TableRef, driver: Driver) -> Comple
   };
   identifier_candidate(&column.name, CompletionKind::Column, CompletionSource::Database, driver)
     .with_detail(detail)
+}
+
+fn result_column_candidate(column: &Column, driver: Driver) -> CompletionCandidate {
+  let detail = if column.type_name.is_empty() {
+    "query result".to_owned()
+  } else {
+    format!("{} · query result", column.type_name)
+  };
+  identifier_candidate(&column.name, CompletionKind::Column, CompletionSource::Result, driver)
+    .with_detail(detail)
+}
+
+fn add_result_columns(
+  candidates: &mut Vec<CompletionCandidate>,
+  preferred_column_details: &mut HashSet<String>,
+  columns: &[Column],
+  driver: Driver,
+) {
+  for column in columns {
+    let candidate = result_column_candidate(column, driver);
+    if let Some(detail) = &candidate.detail {
+      preferred_column_details.insert(detail.clone());
+    }
+    candidates.push(candidate);
+  }
 }
 
 fn add_unqualified_columns(
@@ -1008,6 +1106,7 @@ fn add_generic_candidates(
   catalog: &CompletionCatalog,
   mentioned_tables: &[TableRef],
 ) {
+  add_result_columns(candidates, preferred_column_details, &catalog.result_columns, request.driver);
   add_unqualified_columns(
     candidates,
     missing_columns,
@@ -1564,6 +1663,52 @@ mod tests {
   }
 
   #[test]
+  fn builtins_are_available_in_table_expression_and_generic_contexts() {
+    let catalog = CompletionCatalog {
+      builtin_functions: vec!["COALESCE(text, text)".into()],
+      ..CompletionCatalog::default()
+    };
+
+    for (text, context) in [
+      ("select * from co", CompletionContext::Table),
+      ("select co", CompletionContext::Expression),
+      ("co", CompletionContext::Generic),
+    ] {
+      assert_eq!(analyze(&request(text)).context, context);
+      let response = complete(&request(text), &catalog, Vec::new());
+      let candidate = response
+        .candidates
+        .iter()
+        .find(|candidate| candidate.label == "COALESCE(text, text)")
+        .unwrap();
+      assert_eq!(candidate.kind, CompletionKind::Function);
+      assert_eq!(candidate.source, CompletionSource::Builtin);
+      assert_eq!(candidate.insert_text, "COALESCE");
+      assert_eq!(candidate.detail.as_deref(), Some("built-in function"));
+    }
+  }
+
+  #[test]
+  fn builtins_are_not_available_in_qualified_contexts() {
+    let catalog = CompletionCatalog {
+      builtin_functions: vec!["COALESCE(text, text)".into()],
+      ..CompletionCatalog::default()
+    };
+    let completion_request = request("select value.co");
+
+    assert_eq!(
+      analyze(&completion_request).context,
+      CompletionContext::Qualified { qualifier: "value".into() }
+    );
+    assert!(
+      complete(&completion_request, &catalog, Vec::new())
+        .candidates
+        .iter()
+        .all(|candidate| candidate.source != CompletionSource::Builtin)
+    );
+  }
+
+  #[test]
   fn detects_alias_qualified_columns() {
     let analysis = analyze(&request("select u.na from public.users as u"));
     assert_eq!(analysis.context, CompletionContext::Expression);
@@ -1664,8 +1809,8 @@ mod tests {
       CompletionKind::Function,
       CompletionSource::Database,
     )
-    .with_insert_text("function_name(");
-    assert_eq!(accepted_insert_text(&function, text, range, Driver::Postgres), "function_name\"(");
+    .with_insert_text("function_name");
+    assert_eq!(accepted_insert_text(&function, text, range, Driver::Postgres), "function_name\"");
   }
 
   #[test]
@@ -1744,7 +1889,7 @@ mod tests {
   }
 
   #[test]
-  fn function_candidates_render_signatures_but_insert_only_the_call_prefix() {
+  fn function_candidates_render_signatures_but_insert_only_the_name() {
     let catalog = CompletionCatalog {
       objects: vec![
         CatalogObject {
@@ -1771,12 +1916,12 @@ mod tests {
 
     assert_eq!(
       functions,
-      vec![("calculate(integer)", "calculate("), ("calculate(text)", "calculate(")]
+      vec![("calculate(integer)", "calculate"), ("calculate(text)", "calculate")]
     );
   }
 
   #[test]
-  fn function_candidates_without_catalog_arguments_also_insert_an_open_parenthesis() {
+  fn function_candidates_without_catalog_arguments_insert_only_the_name() {
     let object = CatalogObject {
       schema: "app".into(),
       name: "calculate".into(),
@@ -1786,7 +1931,7 @@ mod tests {
     let candidate = database_object_candidate(&object, Driver::MySql);
 
     assert_eq!(candidate.label, "calculate");
-    assert_eq!(candidate.insert_text, "calculate(");
+    assert_eq!(candidate.insert_text, "calculate");
   }
 
   #[test]
@@ -2114,6 +2259,29 @@ mod tests {
   }
 
   #[test]
+  fn returns_columns_from_the_current_result_table() {
+    let catalog = CompletionCatalog {
+      result_columns: vec![
+        Column { name: "renamed_total".into(), type_name: "numeric".into() },
+        Column { name: "external value".into(), type_name: String::new() },
+      ],
+      ..CompletionCatalog::default()
+    };
+
+    let renamed = complete(&request("select renamed"), &catalog, Vec::new());
+    let candidate =
+      renamed.candidates.iter().find(|candidate| candidate.label == "renamed_total").unwrap();
+    assert_eq!(candidate.source, CompletionSource::Result);
+    assert_eq!(candidate.detail.as_deref(), Some("numeric · query result"));
+
+    let external = complete(&request("select external"), &catalog, Vec::new());
+    let candidate =
+      external.candidates.iter().find(|candidate| candidate.label == "external value").unwrap();
+    assert_eq!(candidate.insert_text, "\"external value\"");
+    assert_eq!(candidate.detail.as_deref(), Some("query result"));
+  }
+
+  #[test]
   fn returns_columns_from_table_mentioned_after_cursor_in_expression_context() {
     let users = TableRef { schema: "public".into(), table: "users".into() };
     let mut catalog = CompletionCatalog {
@@ -2311,6 +2479,9 @@ mod tests {
         old_table.clone(),
         vec![Column { name: "id".into(), type_name: "integer".into() }],
       );
+      catalog.result_columns =
+        vec![Column { name: "renamed_id".into(), type_name: "integer".into() }];
+      catalog.builtin_functions = vec!["COUNT".into()];
     }
     coordinator.missing_columns.insert(old_table.clone());
     coordinator.in_flight_columns.insert(old_table.clone());
@@ -2331,9 +2502,45 @@ mod tests {
     assert_eq!(catalog.objects.len(), 1);
     assert_eq!(catalog.objects[0].name, "orders");
     assert!(catalog.columns.is_empty());
+    assert_eq!(catalog.result_columns[0].name, "renamed_id");
+    assert_eq!(catalog.builtin_functions, vec!["COUNT"]);
     assert!(coordinator.missing_columns.is_empty());
     assert!(coordinator.in_flight_columns.is_empty());
     assert!(coordinator.failed_columns.is_empty());
+  }
+
+  #[test]
+  fn result_columns_accumulate_across_data_tables() {
+    let (mut coordinator, _) = CompletionCoordinator::new();
+
+    coordinator.add_result_rows(Some(&Rows {
+      headers: vec![Header { name: "aliased_value".into(), type_name: "text".into() }],
+      rows: vec![vec!["value".into()]],
+      rows_affected: None,
+    }));
+    coordinator.add_result_rows(Some(&Rows {
+      headers: vec![
+        Header { name: "ALIASED_VALUE".into(), type_name: "varchar".into() },
+        Header { name: "calculated_value".into(), type_name: "numeric".into() },
+      ],
+      rows: vec![vec!["value".into(), "2".into()]],
+      rows_affected: None,
+    }));
+    coordinator.add_result_rows(Some(&Rows {
+      headers: vec![Header { name: "ignored_empty_result".into(), type_name: "text".into() }],
+      rows: Vec::new(),
+      rows_affected: None,
+    }));
+    coordinator.add_result_rows(None);
+
+    let catalog = coordinator.catalog.read().unwrap();
+    assert_eq!(
+      catalog.result_columns,
+      vec![
+        Column { name: "aliased_value".into(), type_name: "text".into() },
+        Column { name: "calculated_value".into(), type_name: "numeric".into() },
+      ]
+    );
   }
 
   #[test]

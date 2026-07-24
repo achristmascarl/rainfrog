@@ -14,6 +14,7 @@ use tokio::task::JoinHandle;
 use crate::cli::{Cli, Driver};
 use crate::completion::{TableColumns, TableRef};
 
+mod builtin_functions;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 mod mysql;
@@ -104,6 +105,9 @@ pub enum DbTaskResult {
 
 #[async_trait(?Send)]
 pub trait Database {
+  /// Returns the built-in functions available for completion for this driver.
+  fn builtin_functions(&self) -> &'static [&'static str];
+
   /// Initialize the database connection. Should handle create
   /// a pool or connection that's reused for other operations.
   /// Must be called to actually connect to the database (just
@@ -407,6 +411,45 @@ pub trait HasRowsAffected {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn builtin_function_providers_expose_documented_functions() {
+    fn assert_sorted_and_unique(functions: &[&str]) {
+      assert!(!functions.is_empty());
+      assert!(
+        functions.windows(2).all(|pair| pair[0] < pair[1]),
+        "built-in function lists must be sorted and deduplicated"
+      );
+    }
+
+    let postgres = PostgresDriver::new().builtin_functions();
+    assert_sorted_and_unique(postgres);
+    assert!(postgres.contains(&"GENERATE_SERIES"));
+    assert!(postgres.contains(&"JSONB_BUILD_OBJECT"));
+
+    let mysql = MySqlDriver::new().builtin_functions();
+    assert_sorted_and_unique(mysql);
+    assert!(mysql.contains(&"DATE_FORMAT"));
+    assert!(mysql.contains(&"JSON_EXTRACT"));
+
+    let sqlite = SqliteDriver::new().builtin_functions();
+    assert_sorted_and_unique(sqlite);
+    assert!(sqlite.contains(&"JSON_EXTRACT"));
+    assert!(sqlite.contains(&"JULIANDAY"));
+
+    let oracle = OracleDriver::new().builtin_functions();
+    assert_sorted_and_unique(oracle);
+    assert!(oracle.contains(&"NVL"));
+    assert!(oracle.contains(&"TO_CHAR"));
+
+    #[cfg(feature = "duckdb")]
+    {
+      let duckdb = DuckDbDriver::new().builtin_functions();
+      assert_sorted_and_unique(duckdb);
+      assert!(duckdb.contains(&"LIST_TRANSFORM"));
+      assert!(duckdb.contains(&"READ_PARQUET"));
+    }
+  }
 
   #[test]
   fn cte_wrapped_writes_use_write_execution_type() {

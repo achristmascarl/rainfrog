@@ -18,7 +18,8 @@ use sqlx::{
 use tracing::Instrument;
 
 use super::{
-  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows,
+  Value, builtin_functions,
 };
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
@@ -45,6 +46,10 @@ pub struct SqliteDriver {
 
 #[async_trait(?Send)]
 impl Database for SqliteDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    builtin_functions::SQLITE
+  }
+
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let opts = super::sqlite::SqliteDriver::build_connection_opts(args)?;
     let pool =

@@ -22,7 +22,7 @@ use tracing::Instrument;
 
 use super::{
   Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows,
-  Value, vec_to_string,
+  Value, builtin_functions, vec_to_string,
 };
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
@@ -94,6 +94,10 @@ pub struct PostgresDriver {
 
 #[async_trait(?Send)]
 impl Database for PostgresDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    builtin_functions::POSTGRESQL
+  }
+
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let opts = super::postgresql::PostgresDriver::build_connection_opts(args)?;
     let pool = Arc::new(PgPoolOptions::new().max_connections(3).connect_with(opts.clone()).await?);

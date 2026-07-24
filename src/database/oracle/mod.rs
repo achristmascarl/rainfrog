@@ -11,7 +11,9 @@ use tokio::task::{self, JoinHandle};
 
 use crate::cli::Driver;
 
-use super::{Database, DbTaskResult, Header, QueryResultsWithMetadata, QueryTask, Rows};
+use super::{
+  Database, DbTaskResult, Header, QueryResultsWithMetadata, QueryTask, Rows, builtin_functions,
+};
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
 type ConnectionTask = JoinHandle<Result<Arc<Connection>>>;
@@ -51,6 +53,10 @@ impl OracleDriver {
 
 #[async_trait(?Send)]
 impl Database for OracleDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    builtin_functions::ORACLE
+  }
+
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let connection_opts = OracleConnectOptions::build_connection_opts(args)?;
 

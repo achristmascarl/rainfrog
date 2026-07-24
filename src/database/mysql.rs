@@ -19,7 +19,8 @@ use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::Instrument;
 
 use super::{
-  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows,
+  Value, builtin_functions,
 };
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
@@ -85,6 +86,10 @@ pub struct MySqlDriver {
 
 #[async_trait(?Send)]
 impl Database for MySqlDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    builtin_functions::MYSQL
+  }
+
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let opts = super::mysql::MySqlDriver::build_connection_opts(args)?;
     let pool =

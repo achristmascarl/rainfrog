@@ -15,7 +15,10 @@ use tracing::Instrument;
 
 use crate::cli::{Cli, Driver};
 
-use super::{Database, DbTaskResult, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows};
+use super::{
+  Database, DbTaskResult, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows,
+  builtin_functions,
+};
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
 enum DuckDbTask {
@@ -30,6 +33,10 @@ pub struct DuckDbDriver {
 
 #[async_trait(?Send)]
 impl Database for DuckDbDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    builtin_functions::DUCKDB
+  }
+
   async fn init(&mut self, args: Cli) -> Result<String> {
     let (path, config) = super::DuckDbDriver::build_connection_opts(args)?;
     let conn = Connection::open_with_flags(path.clone(), config)?;

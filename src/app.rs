@@ -126,6 +126,23 @@ impl App {
     self.state.history = vec![];
   }
 
+  fn set_data_state(&mut self, data: Option<Result<Rows>>, statement_type: Option<Statement>) {
+    let result_rows = data
+      .as_ref()
+      .and_then(|result| result.as_ref().ok())
+      .filter(|_| !matches!(statement_type.as_ref(), Some(Statement::Explain { .. })));
+    self.completion.add_result_rows(result_rows);
+    self.components.data.set_data_state(data, statement_type);
+  }
+
+  fn set_data_loading(&mut self) {
+    self.components.data.set_loading();
+  }
+
+  fn set_data_cancelled(&mut self) {
+    self.components.data.set_cancelled();
+  }
+
   fn set_focus(&mut self, focus: Focus) {
     self.state.focus = focus;
     if focus != Focus::PopUp {
@@ -172,6 +189,7 @@ impl App {
       #[cfg(feature = "duckdb")]
       Driver::DuckDb => Box::new(database::DuckDbDriver::new()),
     };
+    self.completion.set_builtin_functions(database.builtin_functions());
     let default_title = database.init(args.clone()).await?;
     let terminal_title = args.connection_name.clone().unwrap_or(default_title);
     tracing::Span::current().record("conn", terminal_title.as_str());
@@ -229,7 +247,7 @@ impl App {
       match database.get_query_results().await? {
         DbTaskResult::Finished(results) => {
           let statement_type = results.data_statement_type();
-          self.components.data.set_data_state(Some(results.results), statement_type);
+          self.set_data_state(Some(results.results), statement_type);
           self.state.last_query_end = Some(chrono::Utc::now());
           self.state.query_task_running = false;
         },
@@ -271,7 +289,7 @@ impl App {
                 let payload = popup.handle_key_events(key, &mut self.state)?;
                 match payload {
                   Some(PopUpPayload::SetDataTable(result, statement)) => {
-                    self.components.data.set_data_state(result, statement);
+                    self.set_data_state(result, statement);
                     self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmQuery(query)) => {
@@ -309,14 +327,14 @@ impl App {
                     self.state.last_query_end = Some(chrono::Utc::now());
                     if let Some(results) = response {
                       let statement_type = results.data_statement_type();
-                      self.components.data.set_data_state(Some(results.results), statement_type);
+                      self.set_data_state(Some(results.results), statement_type);
                       self.set_focus(Focus::Editor);
                     }
                   },
                   Some(PopUpPayload::RollbackTx) => {
                     database.rollback_tx().await?;
                     self.state.last_query_end = Some(chrono::Utc::now());
-                    self.components.data.set_data_state(
+                    self.set_data_state(
                       Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
                       Some(Statement::Rollback { chain: false, savepoint: None }),
                     );
@@ -443,7 +461,7 @@ impl App {
             };
             match execution_info {
               Ok((ExecutionType::Transaction, _)) => {
-                self.components.data.set_loading();
+                self.set_data_loading();
                 database.start_tx(query_string.clone()).await?;
                 self.completion.queue_columns_for_text(query_string);
                 self.state.last_query_start = Some(chrono::Utc::now());
@@ -453,27 +471,27 @@ impl App {
                 self.set_popup(Box::new(ConfirmQuery::new(query_string.clone(), statement_type)));
               },
               Ok((ExecutionType::Normal, _)) => {
-                self.components.data.set_loading();
+                self.set_data_loading();
                 database.start_query(query_string.clone(), *bypass).await?;
                 self.completion.queue_columns_for_text(query_string);
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },
-              Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
-              _ => self
-                .components
-                .data
-                .set_data_state(Some(Err(eyre!("Missing statement type but not bypass"))), None),
+              Err(e) => self.set_data_state(Some(Err(e)), None),
+              _ => {
+                self
+                  .set_data_state(Some(Err(eyre!("Missing statement type but not bypass"))), None);
+              },
             }
           },
           Action::AbortQuery => match database.abort_query().await {
             Ok(true) => {
-              self.components.data.set_cancelled();
+              self.set_data_cancelled();
               self.state.last_query_end = Some(chrono::Utc::now());
             },
             Ok(false) => {},
             Err(e) => {
-              self.components.data.set_data_state(Some(Err(e)), None);
+              self.set_data_state(Some(Err(e)), None);
             },
           },
           Action::MenuPreview(preview_type, target) => {
