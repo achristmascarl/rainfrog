@@ -22,11 +22,9 @@ use tracing::Instrument;
 
 use super::{
   Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows,
-  Value, vec_to_string,
+  Value, builtin_functions, vec_to_string,
 };
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
-
-const BUILTIN_FUNCTIONS: &[&str] = &[];
 
 type PostgresTransaction = sqlx::Transaction<'static, Postgres>;
 type ConnectionTask = JoinHandle<Result<(Arc<Mutex<PoolConnection<Postgres>>>, i32)>>;
@@ -97,7 +95,7 @@ pub struct PostgresDriver {
 #[async_trait(?Send)]
 impl Database for PostgresDriver {
   fn builtin_functions(&self) -> &'static [&'static str] {
-    BUILTIN_FUNCTIONS
+    builtin_functions::POSTGRESQL
   }
 
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {

@@ -18,11 +18,10 @@ use sqlx::{
 use tracing::Instrument;
 
 use super::{
-  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows,
+  Value, builtin_functions,
 };
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
-
-const BUILTIN_FUNCTIONS: &[&str] = &[];
 
 type SqliteTransaction = sqlx::Transaction<'static, Sqlite>;
 type TransactionAcquireTask = tokio::task::JoinHandle<Result<SqliteTransaction>>;
@@ -48,7 +47,7 @@ pub struct SqliteDriver {
 #[async_trait(?Send)]
 impl Database for SqliteDriver {
   fn builtin_functions(&self) -> &'static [&'static str] {
-    BUILTIN_FUNCTIONS
+    builtin_functions::SQLITE
   }
 
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {

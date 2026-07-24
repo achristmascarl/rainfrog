@@ -889,11 +889,6 @@ pub fn accepted_insert_text(
   if let Some(without_duplicate_open) = candidate.insert_text.strip_prefix(quote) {
     return without_duplicate_open.to_owned();
   }
-  if candidate.kind == CompletionKind::Function
-    && let Some(function_name) = candidate.insert_text.strip_suffix('(')
-  {
-    return format!("{function_name}{quote}(");
-  }
   format!("{}{quote}", candidate.insert_text)
 }
 
@@ -1016,7 +1011,7 @@ fn database_object_candidate(object: &CatalogObject, driver: Driver) -> Completi
 
 fn function_insert_text(signature: &str, driver: Driver) -> String {
   let name = signature.split_once('(').map_or(signature, |(name, _)| name).trim_end();
-  format!("{}(", identifier_insert_text(name, driver))
+  identifier_insert_text(name, driver)
 }
 
 fn builtin_function_candidate(signature: &str, driver: Driver) -> CompletionCandidate {
@@ -1688,7 +1683,7 @@ mod tests {
         .unwrap();
       assert_eq!(candidate.kind, CompletionKind::Function);
       assert_eq!(candidate.source, CompletionSource::Builtin);
-      assert_eq!(candidate.insert_text, "COALESCE(");
+      assert_eq!(candidate.insert_text, "COALESCE");
       assert_eq!(candidate.detail.as_deref(), Some("built-in function"));
     }
   }
@@ -1814,8 +1809,8 @@ mod tests {
       CompletionKind::Function,
       CompletionSource::Database,
     )
-    .with_insert_text("function_name(");
-    assert_eq!(accepted_insert_text(&function, text, range, Driver::Postgres), "function_name\"(");
+    .with_insert_text("function_name");
+    assert_eq!(accepted_insert_text(&function, text, range, Driver::Postgres), "function_name\"");
   }
 
   #[test]
@@ -1894,7 +1889,7 @@ mod tests {
   }
 
   #[test]
-  fn function_candidates_render_signatures_but_insert_only_the_call_prefix() {
+  fn function_candidates_render_signatures_but_insert_only_the_name() {
     let catalog = CompletionCatalog {
       objects: vec![
         CatalogObject {
@@ -1921,12 +1916,12 @@ mod tests {
 
     assert_eq!(
       functions,
-      vec![("calculate(integer)", "calculate("), ("calculate(text)", "calculate(")]
+      vec![("calculate(integer)", "calculate"), ("calculate(text)", "calculate")]
     );
   }
 
   #[test]
-  fn function_candidates_without_catalog_arguments_also_insert_an_open_parenthesis() {
+  fn function_candidates_without_catalog_arguments_insert_only_the_name() {
     let object = CatalogObject {
       schema: "app".into(),
       name: "calculate".into(),
@@ -1936,7 +1931,7 @@ mod tests {
     let candidate = database_object_candidate(&object, Driver::MySql);
 
     assert_eq!(candidate.label, "calculate");
-    assert_eq!(candidate.insert_text, "calculate(");
+    assert_eq!(candidate.insert_text, "calculate");
   }
 
   #[test]

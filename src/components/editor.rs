@@ -740,7 +740,7 @@ mod tests {
         CompletionKind::Function,
         CompletionSource::Database,
       )
-      .with_insert_text("function_name("),
+      .with_insert_text("function_name"),
     );
     editor.apply_completion_response(completion_response);
 
@@ -751,7 +751,7 @@ mod tests {
       )
       .unwrap();
 
-    assert_eq!(editor.textarea.lines(), &["select \"function_name\"("]);
+    assert_eq!(editor.textarea.lines(), &["select \"function_name\""]);
   }
 
   #[test]
