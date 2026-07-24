@@ -100,6 +100,28 @@ impl CompletionCoordinator {
     self.catalog.clone()
   }
 
+  pub fn add_result_rows(&mut self, rows: Option<&Rows>) {
+    let Some(rows) = rows.filter(|rows| !rows.rows.is_empty()) else {
+      return;
+    };
+    let mut catalog = self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut changed = false;
+    for header in rows.headers.iter().filter(|header| !header.name.is_empty()) {
+      if catalog.result_columns.iter().any(|column| column.name.eq_ignore_ascii_case(&header.name))
+      {
+        continue;
+      }
+      catalog
+        .result_columns
+        .push(Column { name: header.name.clone(), type_name: header.type_name.clone() });
+      changed = true;
+    }
+    drop(catalog);
+    if changed {
+      self.refresh_latest_completion();
+    }
+  }
+
   pub fn poll(&mut self, debounce: Duration, trigger_length: usize) {
     while let Ok(command) = self.command_rx.try_recv() {
       match command {
@@ -271,8 +293,12 @@ impl CompletionCoordinator {
           self.missing_columns.clear();
           self.in_flight_columns.clear();
           self.failed_columns.clear();
-          let catalog = catalog_from_menu_rows(&rows);
-          *self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = catalog;
+          let mut catalog = catalog_from_menu_rows(&rows);
+          let mut current_catalog =
+            self.catalog.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+          catalog.result_columns = std::mem::take(&mut current_catalog.result_columns);
+          *current_catalog = catalog;
+          drop(current_catalog);
           self.catalog_loaded = true;
           events.push(CompletionDatabaseEvent::MenuLoaded(rows));
           for text in std::mem::take(&mut self.pending_discovery_texts) {
@@ -381,6 +407,7 @@ pub enum CompletionSource {
   FileSystem,
   Buffer,
   Database,
+  Result,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -483,6 +510,7 @@ pub struct CatalogObject {
 pub struct CompletionCatalog {
   pub objects: Vec<CatalogObject>,
   pub columns: HashMap<TableRef, Vec<Column>>,
+  pub result_columns: Vec<Column>,
 }
 
 impl CompletionCatalog {
@@ -513,7 +541,7 @@ pub fn catalog_from_menu_rows(rows: &Rows) -> CompletionCatalog {
       Some(CatalogObject { schema, name, kind })
     })
     .collect();
-  CompletionCatalog { objects, columns: HashMap::new() }
+  CompletionCatalog { objects, ..CompletionCatalog::default() }
 }
 
 pub fn mentioned_table_refs(text: &str, catalog: &CompletionCatalog) -> Vec<TableRef> {
@@ -742,6 +770,12 @@ fn complete_with_analysis(
       let mut tables: HashSet<_> =
         analysis.referenced_tables.iter().map(|table| resolved_table_ref(table, catalog)).collect();
       tables.extend(mentioned_tables.iter().cloned());
+      add_result_columns(
+        &mut candidates,
+        &mut preferred_column_details,
+        &catalog.result_columns,
+        request.driver,
+      );
       add_unqualified_columns(
         &mut candidates,
         &mut missing_columns,
@@ -972,6 +1006,31 @@ fn column_candidate(column: &Column, table: &TableRef, driver: Driver) -> Comple
     .with_detail(detail)
 }
 
+fn result_column_candidate(column: &Column, driver: Driver) -> CompletionCandidate {
+  let detail = if column.type_name.is_empty() {
+    "query result".to_owned()
+  } else {
+    format!("{} · query result", column.type_name)
+  };
+  identifier_candidate(&column.name, CompletionKind::Column, CompletionSource::Result, driver)
+    .with_detail(detail)
+}
+
+fn add_result_columns(
+  candidates: &mut Vec<CompletionCandidate>,
+  preferred_column_details: &mut HashSet<String>,
+  columns: &[Column],
+  driver: Driver,
+) {
+  for column in columns {
+    let candidate = result_column_candidate(column, driver);
+    if let Some(detail) = &candidate.detail {
+      preferred_column_details.insert(detail.clone());
+    }
+    candidates.push(candidate);
+  }
+}
+
 fn add_unqualified_columns(
   candidates: &mut Vec<CompletionCandidate>,
   missing_columns: &mut Vec<TableRef>,
@@ -1015,6 +1074,7 @@ fn add_generic_candidates(
   catalog: &CompletionCatalog,
   mentioned_tables: &[TableRef],
 ) {
+  add_result_columns(candidates, preferred_column_details, &catalog.result_columns, request.driver);
   add_unqualified_columns(
     candidates,
     missing_columns,
@@ -2121,6 +2181,29 @@ mod tests {
   }
 
   #[test]
+  fn returns_columns_from_the_current_result_table() {
+    let catalog = CompletionCatalog {
+      result_columns: vec![
+        Column { name: "renamed_total".into(), type_name: "numeric".into() },
+        Column { name: "external value".into(), type_name: String::new() },
+      ],
+      ..CompletionCatalog::default()
+    };
+
+    let renamed = complete(&request("select renamed"), &catalog, Vec::new());
+    let candidate =
+      renamed.candidates.iter().find(|candidate| candidate.label == "renamed_total").unwrap();
+    assert_eq!(candidate.source, CompletionSource::Result);
+    assert_eq!(candidate.detail.as_deref(), Some("numeric · query result"));
+
+    let external = complete(&request("select external"), &catalog, Vec::new());
+    let candidate =
+      external.candidates.iter().find(|candidate| candidate.label == "external value").unwrap();
+    assert_eq!(candidate.insert_text, "\"external value\"");
+    assert_eq!(candidate.detail.as_deref(), Some("query result"));
+  }
+
+  #[test]
   fn returns_columns_from_table_mentioned_after_cursor_in_expression_context() {
     let users = TableRef { schema: "public".into(), table: "users".into() };
     let mut catalog = CompletionCatalog {
@@ -2318,6 +2401,8 @@ mod tests {
         old_table.clone(),
         vec![Column { name: "id".into(), type_name: "integer".into() }],
       );
+      catalog.result_columns =
+        vec![Column { name: "renamed_id".into(), type_name: "integer".into() }];
     }
     coordinator.missing_columns.insert(old_table.clone());
     coordinator.in_flight_columns.insert(old_table.clone());
@@ -2338,9 +2423,44 @@ mod tests {
     assert_eq!(catalog.objects.len(), 1);
     assert_eq!(catalog.objects[0].name, "orders");
     assert!(catalog.columns.is_empty());
+    assert_eq!(catalog.result_columns[0].name, "renamed_id");
     assert!(coordinator.missing_columns.is_empty());
     assert!(coordinator.in_flight_columns.is_empty());
     assert!(coordinator.failed_columns.is_empty());
+  }
+
+  #[test]
+  fn result_columns_accumulate_across_data_tables() {
+    let (mut coordinator, _) = CompletionCoordinator::new();
+
+    coordinator.add_result_rows(Some(&Rows {
+      headers: vec![Header { name: "aliased_value".into(), type_name: "text".into() }],
+      rows: vec![vec!["value".into()]],
+      rows_affected: None,
+    }));
+    coordinator.add_result_rows(Some(&Rows {
+      headers: vec![
+        Header { name: "ALIASED_VALUE".into(), type_name: "varchar".into() },
+        Header { name: "calculated_value".into(), type_name: "numeric".into() },
+      ],
+      rows: vec![vec!["value".into(), "2".into()]],
+      rows_affected: None,
+    }));
+    coordinator.add_result_rows(Some(&Rows {
+      headers: vec![Header { name: "ignored_empty_result".into(), type_name: "text".into() }],
+      rows: Vec::new(),
+      rows_affected: None,
+    }));
+    coordinator.add_result_rows(None);
+
+    let catalog = coordinator.catalog.read().unwrap();
+    assert_eq!(
+      catalog.result_columns,
+      vec![
+        Column { name: "aliased_value".into(), type_name: "text".into() },
+        Column { name: "calculated_value".into(), type_name: "numeric".into() },
+      ]
+    );
   }
 
   #[test]
