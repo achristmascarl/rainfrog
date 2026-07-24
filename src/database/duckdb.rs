@@ -47,7 +47,13 @@ impl Database for DuckDbDriver {
   // since it's possible for raw_sql to execute multiple queries in a single string,
   // we only execute the first one and then drop the rest.
   async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()> {
-    let (first_query, statement_type) = super::get_first_query(query.clone(), Driver::DuckDb)?;
+    let (first_query, statement_type) = match bypass_parser {
+      true => (query, None),
+      false => {
+        let (first, stmt) = super::get_first_query(query, Driver::DuckDb)?;
+        (first, Some(stmt))
+      },
+    };
     // since Connection isn't Send/Sync, we need to clone it for each query:
     // https://github.com/duckdb/duckdb-rs/issues/378
     let connection = self.connection.as_ref().unwrap().try_clone()?;
@@ -55,8 +61,8 @@ impl Database for DuckDbDriver {
       async move {
         let results = run_query(connection, first_query);
         match results {
-          Ok(rows) => QueryResultsWithMetadata::new(Ok(rows), Some(statement_type)),
-          Err(e) => QueryResultsWithMetadata::new(Err(e), Some(statement_type)),
+          Ok(rows) => QueryResultsWithMetadata::new(Ok(rows), statement_type),
+          Err(e) => QueryResultsWithMetadata::new(Err(e), statement_type),
         }
       }
       .in_current_span(),
@@ -385,6 +391,21 @@ mod tests {
       columns[0].columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
       vec!["id", "name"]
     );
+  }
+
+  #[tokio::test]
+  async fn bypass_parser_sends_raw_query_to_duckdb() {
+    let connection = Connection::open_in_memory().unwrap();
+    let mut driver = DuckDbDriver { connection: Some(connection), task: None };
+
+    driver.start_query("SELEC 1".to_owned(), true).await.unwrap();
+
+    let Some(DuckDbTask::Query(handle)) = driver.task.take() else {
+      panic!("expected DuckDB query task");
+    };
+    let result = handle.await.unwrap();
+    assert!(result.results.is_err());
+    assert!(result.statement_type.is_none());
   }
 
   #[test]
