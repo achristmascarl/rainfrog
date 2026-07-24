@@ -60,13 +60,9 @@ Ctrl+J
 Sleep 1s
 Type "dd"
 Sleep 1s
-Type "p"
-Sleep 2s
-Type "dd"
-Sleep 1s
 Type "i"
 Sleep 500ms
-Type@100ms "select * from public.user where email ilike '%atreides%'"
+Type@200ms "select * from public.user where email ilike '%atreides%'"
 Sleep 500ms
 Alt+Enter
 Sleep 4s
