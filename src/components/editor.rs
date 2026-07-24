@@ -285,6 +285,9 @@ impl Editor<'_> {
         let Some((_, close)) = AUTOPAIRS.iter().find(|&&(open, _)| open == *c) else {
           return false;
         };
+        if next.is_some_and(|next| !next.is_whitespace()) {
+          return false;
+        }
         self.textarea.insert_str(format!("{c}{close}"));
         self.textarea.move_cursor(CursorMove::Back);
         true
@@ -575,6 +578,44 @@ mod tests {
       editor.transition_vim_state(char_input(open), &app_state).unwrap();
 
       assert_eq!(editor.textarea.lines(), &[format!("{open}{close}")], "opening {open:?}");
+      assert_eq!(editor.textarea.cursor(), (0, 1), "opening {open:?}");
+    }
+  }
+
+  #[test]
+  fn autopairs_before_whitespace() {
+    let app_state = app_state_with_focus(Focus::Editor);
+
+    for (open, close) in AUTOPAIRS {
+      let mut editor = Editor::new();
+      editor.vim_state = Vim::new(Mode::Insert);
+      editor.textarea.insert_str(" suffix");
+      for _ in 0.." suffix".chars().count() {
+        editor.textarea.move_cursor(CursorMove::Back);
+      }
+
+      editor.transition_vim_state(char_input(open), &app_state).unwrap();
+
+      assert_eq!(editor.textarea.lines(), &[format!("{open}{close} suffix")], "opening {open:?}");
+      assert_eq!(editor.textarea.cursor(), (0, 1), "opening {open:?}");
+    }
+  }
+
+  #[test]
+  fn autopairs_do_not_close_before_non_whitespace() {
+    let app_state = app_state_with_focus(Focus::Editor);
+
+    for (open, _) in AUTOPAIRS {
+      let mut editor = Editor::new();
+      editor.vim_state = Vim::new(Mode::Insert);
+      editor.textarea.insert_str("suffix");
+      for _ in 0.."suffix".chars().count() {
+        editor.textarea.move_cursor(CursorMove::Back);
+      }
+
+      editor.transition_vim_state(char_input(open), &app_state).unwrap();
+
+      assert_eq!(editor.textarea.lines(), &[format!("{open}suffix")], "opening {open:?}");
       assert_eq!(editor.textarea.cursor(), (0, 1), "opening {open:?}");
     }
   }
