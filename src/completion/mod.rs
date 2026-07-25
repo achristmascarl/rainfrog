@@ -1250,11 +1250,8 @@ fn source_priority(kind: CompletionKind, context: &CompletionContext) -> u8 {
     },
     CompletionContext::Generic => match kind {
       CompletionKind::Column => 0,
-      CompletionKind::Schema
-      | CompletionKind::Table
-      | CompletionKind::View
-      | CompletionKind::Function => 1,
-      CompletionKind::Keyword => 2,
+      CompletionKind::Schema | CompletionKind::Table | CompletionKind::View => 1,
+      CompletionKind::Function | CompletionKind::Keyword => 2,
       CompletionKind::BufferWord => 3,
       _ => 4,
     },
@@ -1886,6 +1883,21 @@ mod tests {
         assert!(ranked.iter().position(|candidate| candidate.kind == kind).unwrap() < buffer_index);
       }
     }
+  }
+
+  #[test]
+  fn ranks_functions_and_keywords_equally_in_generic_contexts() {
+    let candidates = vec![
+      CompletionCandidate::new("z_function", CompletionKind::Function, CompletionSource::Builtin),
+      CompletionCandidate::new("a_keyword", CompletionKind::Keyword, CompletionSource::SqlSyntax),
+    ];
+
+    let ranked = rank_candidates(candidates, "", &CompletionContext::Generic, &HashSet::new());
+
+    assert_eq!(
+      ranked.iter().map(|candidate| candidate.label.as_str()).collect::<Vec<_>>(),
+      vec!["a_keyword", "z_function"]
+    );
   }
 
   #[test]
