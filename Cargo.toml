@@ -107,8 +107,8 @@ keyring = { version = "3.6.2", features = [
 
 [build-dependencies]
 anyhow = "1.0.93"
-vergen = { version = "10.0.1", features = ["build", "cargo", "rustc", "si"] }
-vergen-git2 = { version = "10.0.1", features = [
+vergen = { version = "9.1.0", features = ["build", "cargo", "rustc", "si"] }
+vergen-git2 = { version = "9.1.0", features = [
   "build",
   "cargo",
   "rustc",
