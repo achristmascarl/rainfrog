@@ -13,7 +13,6 @@ use sqlparser::ast::Statement;
 use sqlx::{
   Column, Either, Row, ValueRef,
   sqlite::{Sqlite, SqliteConnectOptions, SqlitePoolOptions},
-  types::uuid,
 };
 use tracing::Instrument;
 
@@ -474,43 +473,10 @@ fn parse_value(
       Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
       |received| Value { parse_error: false, string: received.to_string(), is_null: false },
     )),
-    "TEXT" => {
-      // Try parsing as different types that might be stored as TEXT
-      match row.try_get::<chrono::NaiveDateTime, _>(col.ordinal()) {
-        Ok(dt) => Some(Value { parse_error: false, string: dt.to_string(), is_null: false }),
-        _ => match row.try_get::<chrono::DateTime<chrono::Utc>, _>(col.ordinal()) {
-          Ok(dt) => Some(Value { parse_error: false, string: dt.to_string(), is_null: false }),
-          _ => match row.try_get::<chrono::NaiveDate, _>(col.ordinal()) {
-            Ok(date) => {
-              Some(Value { parse_error: false, string: date.to_string(), is_null: false })
-            },
-            _ => match row.try_get::<chrono::NaiveTime, _>(col.ordinal()) {
-              Ok(time) => {
-                Some(Value { parse_error: false, string: time.to_string(), is_null: false })
-              },
-              _ => match row.try_get::<uuid::Uuid, _>(col.ordinal()) {
-                Ok(uuid) => {
-                  Some(Value { parse_error: false, string: uuid.to_string(), is_null: false })
-                },
-                _ => match row.try_get::<serde_json::Value, _>(col.ordinal()) {
-                  Ok(json) => {
-                    Some(Value { parse_error: false, string: json.to_string(), is_null: false })
-                  },
-                  _ => match row.try_get::<String, _>(col.ordinal()) {
-                    Ok(string) => Some(Value { parse_error: false, string, is_null: false }),
-                    _ => Some(Value {
-                      parse_error: true,
-                      string: "_ERROR_".to_string(),
-                      is_null: false,
-                    }),
-                  },
-                },
-              },
-            },
-          },
-        },
-      }
-    },
+    "TEXT" => Some(row.try_get::<String, usize>(col.ordinal()).map_or(
+      Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+      |received| Value { parse_error: false, string: received, is_null: false },
+    )),
     "BLOB" => Some(row.try_get::<Vec<u8>, usize>(col.ordinal()).map_or(
       Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
       |received| {
@@ -594,6 +560,33 @@ mod tests {
     assert_eq!(
       columns[0].columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
       vec!["id", "name"]
+    );
+  }
+
+  #[tokio::test]
+  async fn declared_text_values_are_preserved() {
+    let pool = Arc::new(
+      SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap(),
+    );
+    sqlx::query("create table repro(value text)").execute(pool.as_ref()).await.unwrap();
+    sqlx::query("insert into repro values (?), (?), (?)")
+      .bind("abcdefghijklmnop")
+      .bind("abcdefghijklmnopq")
+      .bind(r#"{"key": "value"}"#)
+      .execute(pool.as_ref())
+      .await
+      .unwrap();
+
+    let rows =
+      query_with_pool(pool, "select value from repro order by rowid".into()).await.unwrap();
+
+    assert_eq!(
+      rows.rows,
+      vec![
+        vec!["abcdefghijklmnop".to_owned()],
+        vec!["abcdefghijklmnopq".to_owned()],
+        vec![r#"{"key": "value"}"#.to_owned()],
+      ]
     );
   }
 
