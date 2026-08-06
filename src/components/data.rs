@@ -68,6 +68,10 @@ pub struct Data<'a> {
   explain_max_y_offset: u16,
 }
 
+fn error_text(error: &eyre::Report) -> String {
+  format!("{error:#}")
+}
+
 impl Data<'_> {
   pub fn new() -> Self {
     Data {
@@ -488,7 +492,7 @@ impl Component for Data<'_> {
           self.command_tx.clone().unwrap().send(Action::CopyData(text.to_string()))?;
           self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
         } else if let DataState::Error(err) = &self.data_state {
-          self.command_tx.clone().unwrap().send(Action::CopyData(err.to_string()))?;
+          self.command_tx.clone().unwrap().send(Action::CopyData(error_text(err)))?;
           self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
         }
       },
@@ -676,7 +680,7 @@ impl Component for Data<'_> {
       },
       DataState::Error(e) => {
         f.render_widget(
-          Paragraph::new(e.to_string())
+          Paragraph::new(error_text(e))
             .style(Style::default().fg(Color::Red))
             .wrap(Wrap { trim: true })
             .block(block),
@@ -793,6 +797,20 @@ impl TableForYank {
         col
       })
       .collect()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn error_text_includes_os_error() {
+    let os_error = std::io::Error::from_raw_os_error(2);
+    let os_message = os_error.to_string();
+    let error = eyre::Report::new(os_error).wrap_err("Failed to launch external editor 'vi'");
+
+    assert_eq!(error_text(&error), format!("Failed to launch external editor 'vi': {os_message}"));
   }
 }
 

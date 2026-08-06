@@ -453,6 +453,14 @@ impl Component for Editor<'_> {
     }
     match action {
       Action::TriggerCompletion => self.request_completion(app_state, true),
+      Action::RequestExternalEditor => {
+        self.completion.dismiss();
+        self.cancel_completion();
+        self.pending_request_snapshot = None;
+        if let Some(sender) = &self.command_tx {
+          sender.send(Action::EditQueryExternally(self.textarea.lines().to_vec()))?;
+        }
+      },
       Action::SubmitEditorQueryBypassParser => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::Query(self.textarea.lines().to_vec(), false, true))?;
@@ -842,6 +850,21 @@ mod tests {
     assert_eq!(action_rx.try_recv().unwrap(), Action::Query(vec!["sel".into()], false, false));
     assert_eq!(editor.vim_state.mode, Mode::Normal);
     assert!(!editor.completion.is_visible());
+  }
+
+  #[test]
+  fn external_editor_request_forwards_current_query() {
+    let mut editor = Editor::new();
+    editor.textarea = TextArea::from(["select 1;".to_string(), "select 2;".to_string()]);
+    let (action_tx, mut action_rx) = mpsc::unbounded_channel();
+    editor.register_action_handler(action_tx).unwrap();
+
+    editor.update(Action::RequestExternalEditor, &app_state_with_focus(Focus::Editor)).unwrap();
+
+    assert_eq!(
+      action_rx.try_recv().unwrap(),
+      Action::EditQueryExternally(vec!["select 1;".into(), "select 2;".into()])
+    );
   }
 
   #[test]

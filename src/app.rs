@@ -28,6 +28,7 @@ use crate::{
   },
   config::Config,
   database::{self, Database, DbTaskResult, ExecutionType, Rows},
+  external_editor,
   focus::Focus,
   popups::{
     PopUp, PopUpPayload, confirm_bypass::ConfirmBypass, confirm_export::ConfirmExport,
@@ -441,6 +442,25 @@ impl App {
           Action::LoadMenu => {
             self.completion.start_menu_load(database.as_ref())?;
           },
+          Action::EditQueryExternally(lines) => {
+            let query = lines.join("\n");
+            tui.exit()?;
+            let edit_result = external_editor::edit_query(&query);
+            let resume_result = tui.enter();
+            resume_result?;
+
+            match edit_result {
+              Ok(edited) => {
+                action_tx.send(Action::QueryToEditor(external_editor::query_lines(&edited)))?;
+              },
+              Err(error) => {
+                self.set_data_state(
+                  Some(Err(error.wrap_err("Failed to edit query externally"))),
+                  None,
+                );
+              },
+            }
+          },
           Action::Query(query_lines, confirmed, bypass) => 'query_action: {
             if self.state.query_task_running {
               break 'query_action;
@@ -723,7 +743,7 @@ impl App {
         Focus::Menu =>
           "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [y] copy name [/] search [g] top [G] bottom",
         Focus::Editor if !self.state.query_task_running =>
-          "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
+          "[<alt + enter>|<f5>] execute query [<alt + e>] external editor [<ctrl + f>|<alt + f>] save query to favorites",
         Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
         Focus::Favorites =>
           "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",

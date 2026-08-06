@@ -1,4 +1,4 @@
-use std::{env, path::Path, process::Command};
+use std::{env, fs, io::Write, path::Path, process::Command};
 
 use color_eyre::eyre::{Result, WrapErr, bail, eyre};
 
@@ -34,6 +34,30 @@ fn run_editor(command: &EditorCommand, path: &Path) -> Result<()> {
     bail!("External editor '{}' exited with {status}", command.program);
   }
   Ok(())
+}
+
+pub fn edit_query(query: &str) -> Result<String> {
+  edit_query_with(query, open_editor)
+}
+
+fn edit_query_with<F>(query: &str, launch: F) -> Result<String>
+where
+  F: FnOnce(&Path) -> Result<()>,
+{
+  let mut file = tempfile::Builder::new()
+    .prefix("rainfrog-query-")
+    .suffix(".sql")
+    .tempfile()
+    .wrap_err("Failed to create temporary query file")?;
+  file.write_all(query.as_bytes()).wrap_err("Failed to write query to temporary file")?;
+  file.flush().wrap_err("Failed to flush query to temporary file")?;
+  launch(file.path())?;
+  fs::read_to_string(file.path()).wrap_err("Failed to read query from temporary file")
+}
+
+pub fn query_lines(text: &str) -> Vec<String> {
+  let lines = text.lines().map(str::to_string).collect::<Vec<_>>();
+  if lines.is_empty() { vec![String::new()] } else { lines }
 }
 
 #[cfg(test)]
@@ -76,6 +100,44 @@ mod tests {
 
     assert_eq!(command.program, "code");
     assert_eq!(command.args, ["--wait"]);
+  }
+
+  #[test]
+  fn empty_query_stays_as_one_editor_line() {
+    assert_eq!(query_lines(""), [""]);
+  }
+
+  #[test]
+  fn multiline_query_is_split_into_editor_lines() {
+    assert_eq!(query_lines("select 1;\n\nselect 2;\n"), ["select 1;", "", "select 2;"]);
+  }
+
+  #[test]
+  fn edit_query_round_trips_sql_through_a_temporary_file() {
+    let edited = edit_query_with("select 1;", |path| {
+      assert_eq!(path.extension().and_then(|value| value.to_str()), Some("sql"));
+      assert_eq!(fs::read_to_string(path)?, "select 1;");
+      fs::write(path, "select * from robot;")?;
+      Ok(())
+    })
+    .unwrap();
+
+    assert_eq!(edited, "select * from robot;");
+  }
+
+  #[test]
+  fn read_error_identifies_the_temporary_file_operation() {
+    let error = edit_query_with("select 1;", |path| {
+      fs::write(path, [0xff])?;
+      Ok(())
+    })
+    .unwrap_err();
+
+    assert_eq!(
+      error.downcast_ref::<std::io::Error>().map(std::io::Error::kind),
+      Some(std::io::ErrorKind::InvalidData)
+    );
+    assert!(format!("{error:#}").starts_with("Failed to read query from temporary file: "));
   }
 
   #[test]
