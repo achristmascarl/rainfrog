@@ -36,23 +36,27 @@ fn run_editor(command: &EditorCommand, path: &Path) -> Result<()> {
   Ok(())
 }
 
-pub fn edit_query(query: &str) -> Result<String> {
-  edit_query_with(query, open_editor)
+pub async fn edit_query(query: String) -> Result<String> {
+  edit_query_with(query, open_editor).await
 }
 
-fn edit_query_with<F>(query: &str, launch: F) -> Result<String>
+async fn edit_query_with<F>(query: String, launch: F) -> Result<String>
 where
-  F: FnOnce(&Path) -> Result<()>,
+  F: FnOnce(&Path) -> Result<()> + Send + 'static,
 {
-  let mut file = tempfile::Builder::new()
-    .prefix("rainfrog-query-")
-    .suffix(".sql")
-    .tempfile()
-    .wrap_err("Failed to create temporary query file")?;
-  file.write_all(query.as_bytes()).wrap_err("Failed to write query to temporary file")?;
-  file.flush().wrap_err("Failed to flush query to temporary file")?;
-  launch(file.path())?;
-  fs::read_to_string(file.path()).wrap_err("Failed to read query from temporary file")
+  tokio::task::spawn_blocking(move || {
+    let mut file = tempfile::Builder::new()
+      .prefix("rainfrog-query-")
+      .suffix(".sql")
+      .tempfile()
+      .wrap_err("Failed to create temporary query file")?;
+    file.write_all(query.as_bytes()).wrap_err("Failed to write query to temporary file")?;
+    file.flush().wrap_err("Failed to flush query to temporary file")?;
+    launch(file.path())?;
+    fs::read_to_string(file.path()).wrap_err("Failed to read query from temporary file")
+  })
+  .await
+  .wrap_err("External editor task failed")?
 }
 
 pub fn query_lines(text: &str) -> Vec<String> {
@@ -112,25 +116,50 @@ mod tests {
     assert_eq!(query_lines("select 1;\n\nselect 2;\n"), ["select 1;", "", "select 2;"]);
   }
 
-  #[test]
-  fn edit_query_round_trips_sql_through_a_temporary_file() {
-    let edited = edit_query_with("select 1;", |path| {
+  #[tokio::test]
+  async fn edit_query_round_trips_sql_through_a_temporary_file() {
+    let edited = edit_query_with("select 1;".to_string(), |path| {
       assert_eq!(path.extension().and_then(|value| value.to_str()), Some("sql"));
       assert_eq!(fs::read_to_string(path)?, "select 1;");
       fs::write(path, "select * from robot;")?;
       Ok(())
     })
+    .await
     .unwrap();
 
     assert_eq!(edited, "select * from robot;");
   }
 
-  #[test]
-  fn read_error_identifies_the_temporary_file_operation() {
-    let error = edit_query_with("select 1;", |path| {
+  #[tokio::test(flavor = "current_thread")]
+  async fn editing_query_keeps_async_runtime_responsive() {
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+
+    let edit = edit_query_with("select 1;".to_string(), move |path| {
+      started_tx.send(()).unwrap();
+      release_rx
+        .recv_timeout(std::time::Duration::from_secs(1))
+        .wrap_err("Async runtime did not progress while the editor was open")?;
+      fs::write(path, "select * from robot;")?;
+      Ok(())
+    });
+    let release_editor = async move {
+      started_rx.await.unwrap();
+      release_tx.send(()).unwrap();
+    };
+
+    let (edited, ()) = tokio::join!(edit, release_editor);
+
+    assert_eq!(edited.unwrap(), "select * from robot;");
+  }
+
+  #[tokio::test]
+  async fn read_error_identifies_the_temporary_file_operation() {
+    let error = edit_query_with("select 1;".to_string(), |path| {
       fs::write(path, [0xff])?;
       Ok(())
     })
+    .await
     .unwrap_err();
 
     assert_eq!(

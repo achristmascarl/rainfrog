@@ -445,7 +445,7 @@ impl App {
           Action::EditQueryExternally(lines) => {
             let query = lines.join("\n");
             tui.exit()?;
-            let edit_result = external_editor::edit_query(&query);
+            let edit_result = external_editor::edit_query(query).await;
             let resume_result = tui.enter();
             resume_result?;
 
