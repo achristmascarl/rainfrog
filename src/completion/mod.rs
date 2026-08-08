@@ -989,7 +989,9 @@ fn identifier_insert_text(identifier: &str, driver: Driver) -> String {
 pub const fn identifier_quote(driver: Driver) -> char {
   match driver {
     Driver::MySql => '`',
-    Driver::Postgres | Driver::Sqlite | Driver::Oracle => '"',
+    Driver::Postgres | Driver::Sqlite => '"',
+    #[cfg(feature = "oracle")]
+    Driver::Oracle => '"',
     #[cfg(feature = "duckdb")]
     Driver::DuckDb => '"',
   }

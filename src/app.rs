@@ -186,6 +186,7 @@ impl App {
       Driver::Postgres => Box::new(database::PostgresDriver::new()),
       Driver::MySql => Box::new(database::MySqlDriver::new()),
       Driver::Sqlite => Box::new(database::SqliteDriver::new()),
+      #[cfg(feature = "oracle")]
       Driver::Oracle => Box::new(database::OracleDriver::new()),
       #[cfg(feature = "duckdb")]
       Driver::DuckDb => Box::new(database::DuckDbDriver::new()),

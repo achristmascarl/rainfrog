@@ -2,10 +2,12 @@ use async_trait::async_trait;
 use color_eyre::eyre::Result;
 #[cfg(feature = "duckdb")]
 use sqlparser::dialect::DuckDbDialect;
+#[cfg(feature = "oracle")]
+use sqlparser::dialect::GenericDialect;
 
 use sqlparser::{
   ast::{Query, SetExpr, Statement},
-  dialect::{Dialect, GenericDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
+  dialect::{Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
   keywords,
   parser::{Parser, ParserError},
 };
@@ -18,6 +20,7 @@ mod builtin_functions;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 mod mysql;
+#[cfg(feature = "oracle")]
 mod oracle;
 mod postgresql;
 mod sqlite;
@@ -25,6 +28,7 @@ mod sqlite;
 #[cfg(feature = "duckdb")]
 pub use duckdb::DuckDbDriver;
 pub use mysql::MySqlDriver;
+#[cfg(feature = "oracle")]
 pub use oracle::OracleDriver;
 pub use postgresql::PostgresDriver;
 pub use sqlite::SqliteDriver;
@@ -398,6 +402,7 @@ pub fn get_dialect(driver: Driver) -> Box<dyn Dialect + Send + Sync> {
     Driver::Postgres => Box::new(PostgreSqlDialect {}),
     Driver::MySql => Box::new(MySqlDialect {}),
     Driver::Sqlite => Box::new(SQLiteDialect {}),
+    #[cfg(feature = "oracle")]
     Driver::Oracle => Box::new(GenericDialect {}),
     #[cfg(feature = "duckdb")]
     Driver::DuckDb => Box::new(DuckDbDialect {}),
@@ -437,10 +442,13 @@ mod tests {
     assert!(sqlite.contains(&"JSON_EXTRACT"));
     assert!(sqlite.contains(&"JULIANDAY"));
 
-    let oracle = OracleDriver::new().builtin_functions();
-    assert_sorted_and_unique(oracle);
-    assert!(oracle.contains(&"NVL"));
-    assert!(oracle.contains(&"TO_CHAR"));
+    #[cfg(feature = "oracle")]
+    {
+      let oracle = OracleDriver::new().builtin_functions();
+      assert_sorted_and_unique(oracle);
+      assert!(oracle.contains(&"NVL"));
+      assert!(oracle.contains(&"TO_CHAR"));
+    }
 
     #[cfg(feature = "duckdb")]
     {

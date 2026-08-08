@@ -1183,6 +1183,7 @@ pub const SQLITE: &[&str] = &[
 ];
 
 /// Oracle AI Database 26ai SQL functions.
+#[cfg(feature = "oracle")]
 pub const ORACLE: &[&str] = &[
   "ABS",
   "ACOS",
