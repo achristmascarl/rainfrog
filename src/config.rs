@@ -611,6 +611,14 @@ mod tests {
         .unwrap(),
       &Action::RequestExternalEditor
     );
+    assert_eq!(
+      c.keybindings
+        .get(&Focus::Editor)
+        .unwrap()
+        .get(&parse_key_sequence("<F6>").unwrap_or_default())
+        .unwrap(),
+      &Action::RequestExternalEditor
+    );
     assert_eq!(c.settings.mouse_mode, Some(true));
     assert_eq!(c.settings.autocomplete_enabled, Some(true));
     assert_eq!(c.settings.autocomplete_debounce_ms, Some(100));

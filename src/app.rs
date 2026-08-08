@@ -743,7 +743,7 @@ impl App {
         Focus::Menu =>
           "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [y] copy name [/] search [g] top [G] bottom",
         Focus::Editor if !self.state.query_task_running =>
-          "[<alt + enter>|<f5>] execute query [<alt + e>] external editor [<ctrl + f>|<alt + f>] save query to favorites",
+          "[<alt + enter>|<f5>] execute query [<alt + e>|<f6>] external editor [<ctrl + f>|<alt + f>] save query to favorites",
         Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
         Focus::Favorites =>
           "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
