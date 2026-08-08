@@ -119,6 +119,7 @@ impl StructuredConnection {
         self.username, encoded_password, self.host, self.port, self.database
       )),
       Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
+      #[cfg(feature = "oracle")]
       Driver::Oracle => Ok(format!(
         "jdbc:oracle:thin:{}/{}@//{}:{}/{}",
         self.username, encoded_password, self.host, self.port, self.database

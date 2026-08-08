@@ -47,7 +47,12 @@ async fn run_app(mut args: Cli, config: Config, driver: Driver) -> Result<()> {
 }
 
 fn supports_ssl_required(driver: Driver) -> bool {
-  matches!(driver, Driver::Postgres | Driver::MySql | Driver::Oracle)
+  match driver {
+    Driver::Postgres | Driver::MySql => true,
+    #[cfg(feature = "oracle")]
+    Driver::Oracle => true,
+    _ => false,
+  }
 }
 
 fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
@@ -178,7 +183,13 @@ async fn main() -> Result<()> {
 
 pub fn prompt_for_driver() -> Result<Driver> {
   let mut driver = String::new();
-  print!("Database driver (postgres, mysql, sqlite, oracle, duckdb): ");
+  #[allow(unused_mut)]
+  let mut drivers = vec!["postgres", "mysql", "sqlite"];
+  #[cfg(feature = "oracle")]
+  drivers.push("oracle");
+  #[cfg(feature = "duckdb")]
+  drivers.push("duckdb");
+  print!("Database driver ({}): ", drivers.join(", "));
   io::stdout().flush()?;
   io::stdin().read_line(&mut driver)?;
   driver.trim().to_lowercase().parse()
@@ -192,6 +203,7 @@ mod tests {
   fn ssl_required_support_matches_tls_capable_drivers() {
     assert!(supports_ssl_required(Driver::Postgres));
     assert!(supports_ssl_required(Driver::MySql));
+    #[cfg(feature = "oracle")]
     assert!(supports_ssl_required(Driver::Oracle));
     assert!(!supports_ssl_required(Driver::Sqlite));
     #[cfg(feature = "duckdb")]

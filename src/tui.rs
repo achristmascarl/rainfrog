@@ -31,7 +31,12 @@ pub type Frame<'a> = ratatui::Frame<'a>;
 fn clear_terminal_for_full_redraw<B: ratatui::backend::Backend>(
   terminal: &mut ratatui::Terminal<B>,
 ) -> std::result::Result<(), B::Error> {
-  terminal.clear()
+  // Terminal::clear() queries the cursor position first, but detached PTYs (such as Docker's
+  // `-t`) have no terminal emulator to answer that query.
+  terminal.backend_mut().clear_region(ratatui::backend::ClearType::All)?;
+  terminal.current_buffer_mut().reset();
+  terminal.swap_buffers();
+  Ok(())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

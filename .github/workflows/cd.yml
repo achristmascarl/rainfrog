@@ -53,31 +53,31 @@ jobs:
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
-            features: --features arboard --no-default-features
+            features: --features arboard,oracle --no-default-features
           - os: ubuntu-latest
             target: i686-unknown-linux-musl
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
-            features: --features arboard --no-default-features
+            features: --features arboard,oracle --no-default-features
           - os: ubuntu-latest
             target: aarch64-linux-android
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
-            features: --no-default-features
+            features: --features oracle --no-default-features
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
-            features: --features arboard --no-default-features
+            features: --features arboard,oracle --no-default-features
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             binary-postfix: ""
             use-cross: true
             binary-name: rainfrog
-            features: --features arboard --no-default-features
+            features: --features arboard,oracle --no-default-features
 
     steps:
       - name: Checkout repository
