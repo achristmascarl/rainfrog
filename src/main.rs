@@ -9,6 +9,7 @@ pub mod completion;
 pub mod components;
 pub mod config;
 pub mod database;
+pub mod external_editor;
 pub mod focus;
 pub mod keyring;
 pub mod popups;
@@ -21,7 +22,6 @@ use std::{
   env, fs,
   io::{self, Write},
   path::Path,
-  process::Command,
 };
 
 use clap::Parser;
@@ -119,27 +119,10 @@ fn ensure_config_file(path: &Path) -> Result<()> {
   Ok(())
 }
 
-fn open_editor(path: &Path) -> Result<()> {
-  let editor = env::var("VISUAL")
-    .ok()
-    .filter(|value| !value.trim().is_empty())
-    .or_else(|| env::var("EDITOR").ok().filter(|value| !value.trim().is_empty()))
-    .unwrap_or_else(|| "vi".to_string());
-
-  let mut parts = editor.split_whitespace();
-  let program =
-    parts.next().ok_or_else(|| color_eyre::eyre::eyre!("Could not parse editor command"))?;
-  let status = Command::new(program).args(parts).arg(path).status()?;
-  if !status.success() {
-    color_eyre::eyre::bail!("Editor exited with status code {:?}", status.code());
-  }
-  Ok(())
-}
-
 fn edit_config_file() -> Result<()> {
   let config_path = existing_config_path().unwrap_or_else(preferred_config_path);
   ensure_config_file(&config_path)?;
-  open_editor(&config_path)
+  external_editor::open_editor(&config_path)
 }
 
 async fn tokio_main() -> Result<()> {

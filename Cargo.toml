@@ -68,6 +68,7 @@ sqlx = { version = "0.8.6", features = [
 ] }
 strip-ansi-escapes = "0.2.0"
 strum = { version = "0.27.1", features = ["derive"] }
+tempfile = "3.21.0"
 tokio = { version = "1.43.1", features = ["full"] }
 tokio-util = "0.7.9"
 toml = "0.8.19"

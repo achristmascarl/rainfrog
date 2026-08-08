@@ -32,6 +32,8 @@ autopairs_enabled = true
 [keybindings.Editor]
 "<Ctrl-space>" = "TriggerCompletion"
 "<Alt-q>" = "AbortQuery"
+"<Alt-e>" = "RequestExternalEditor"
+"<F6>" = "RequestExternalEditor"
 "<F5>" = "SubmitEditorQuery"
 "<F7>" = "SubmitEditorQueryBypassParser"
 "<Alt-1>" = "FocusMenu"

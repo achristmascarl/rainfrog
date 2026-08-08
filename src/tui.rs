@@ -28,6 +28,12 @@ pub fn io() -> IO {
 }
 pub type Frame<'a> = ratatui::Frame<'a>;
 
+fn clear_terminal_for_full_redraw<B: ratatui::backend::Backend>(
+  terminal: &mut ratatui::Terminal<B>,
+) -> std::result::Result<(), B::Error> {
+  terminal.clear()
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Event {
   Init,
@@ -202,6 +208,7 @@ impl Tui {
       crossterm::execute!(io(), SetTitle(title))?;
     }
     crossterm::execute!(io(), EnterAlternateScreen, cursor::Hide)?;
+    clear_terminal_for_full_redraw(&mut self.terminal)?;
     if self.mouse {
       crossterm::execute!(io(), EnableMouseCapture)?;
     }
@@ -259,5 +266,28 @@ impl DerefMut for Tui {
 impl Drop for Tui {
   fn drop(&mut self) {
     self.exit().unwrap();
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use ratatui::backend::{Backend as _, ClearType, TestBackend};
+
+  #[test]
+  fn resumed_terminal_redraws_an_unchanged_frame() {
+    let mut terminal = ratatui::Terminal::new(TestBackend::new(8, 1)).unwrap();
+    terminal.draw(|frame| frame.render_widget("rainfrog", frame.area())).unwrap();
+    terminal.backend().assert_buffer_lines(["rainfrog"]);
+
+    // Entering a fresh alternate screen clears the physical display without
+    // changing Ratatui's cached previous frame.
+    terminal.backend_mut().clear_region(ClearType::All).unwrap();
+    terminal.backend().assert_buffer_lines(["        "]);
+
+    clear_terminal_for_full_redraw(&mut terminal).unwrap();
+    terminal.draw(|frame| frame.render_widget("rainfrog", frame.area())).unwrap();
+
+    terminal.backend().assert_buffer_lines(["rainfrog"]);
   }
 }

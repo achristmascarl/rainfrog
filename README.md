@@ -452,6 +452,7 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | Keybinding        | Description                            |
 | ----------------- | -------------------------------------- |
 | `Alt+Enter`, `F5` | Execute query                          |
+| `Alt+e`, `F6`     | Edit query in external editor          |
 | `F7`              | Bypass parser to execute query (cannot rollback, no validation) |
 | `Ctrl+Space`      | Show SQL, schema, buffer, or path completions |
 | `Tab`, `Enter`    | Accept the selected completion             |
