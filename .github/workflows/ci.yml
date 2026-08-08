@@ -92,7 +92,7 @@ jobs:
       - name: init db for docker test
         run: |
           make ci-db-up
-          sleep 15 # wait for db container
+          sleep 25 # wait for db container
       - name: docker run sqlite
         run: |
           docker run -dit --name rainfrog_test_sqlite \
