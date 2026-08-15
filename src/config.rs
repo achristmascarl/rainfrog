@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use derive_deref::{Deref, DerefMut};
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use ratatui::style::{Color, Modifier, Style};
-use serde::{Deserialize, de::Deserializer};
+use serde::{Deserialize, de, de::Deserializer};
 
 use crate::{action::Action, cli::Driver, focus::Focus, keyring::Password};
 
@@ -230,11 +230,16 @@ impl<'de> Deserialize<'de> for KeyBindings {
       .map(|(focus, inner_map)| {
         let converted_inner_map = inner_map
           .into_iter()
-          .map(|(key_str, cmd)| (parse_key_sequence(&key_str).unwrap(), cmd))
-          .collect();
-        (focus, converted_inner_map)
+          .map(|(key_str, cmd)| {
+            // a typo in the config file must not abort the process
+            parse_key_sequence(&key_str)
+              .map(|keys| (keys, cmd))
+              .map_err(|e| de::Error::custom(format!("invalid keybinding \"{key_str}\": {e}")))
+          })
+          .collect::<Result<HashMap<_, _>, D::Error>>()?;
+        Ok((focus, converted_inner_map))
       })
-      .collect();
+      .collect::<Result<HashMap<_, _>, D::Error>>()?;
 
     Ok(KeyBindings(keybindings))
   }
@@ -591,6 +596,27 @@ mod tests {
   fn test_parse_color_unknown() {
     let color = parse_color("unknown");
     assert_eq!(color, None);
+  }
+
+  #[test]
+  fn test_invalid_keybinding_is_an_error_not_a_panic() {
+    let toml_src = "[keybindings.Editor]\n\"<bogus-key>\" = \"Quit\"\n";
+    let err = toml::from_str::<Config>(toml_src).unwrap_err();
+    assert!(err.to_string().contains("invalid keybinding \"<bogus-key>\""), "got: {err}");
+  }
+
+  #[test]
+  fn test_valid_keybinding_still_parses() {
+    let toml_src = "[keybindings.Editor]\n\"<Alt-e>\" = \"Quit\"\n";
+    let c: Config = toml::from_str(toml_src).unwrap();
+    assert_eq!(
+      c.keybindings
+        .get(&Focus::Editor)
+        .unwrap()
+        .get(&parse_key_sequence("<Alt-e>").unwrap())
+        .unwrap(),
+      &Action::Quit
+    );
   }
 
   #[test]
