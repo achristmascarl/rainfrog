@@ -503,9 +503,13 @@ fn parse_color(s: &str) -> Option<Color> {
     let c = 232 + s.trim_start_matches("gray").parse::<u8>().unwrap_or_default();
     Some(Color::Indexed(c))
   } else if s.contains("rgb") {
-    let red = (s.as_bytes()[3] as char).to_digit(10).unwrap_or_default() as u8;
-    let green = (s.as_bytes()[4] as char).to_digit(10).unwrap_or_default() as u8;
-    let blue = (s.as_bytes()[5] as char).to_digit(10).unwrap_or_default() as u8;
+    let bytes = s.as_bytes();
+    let digit_at = |i: usize| -> u8 {
+      bytes.get(i).and_then(|b| (*b as char).to_digit(10)).unwrap_or_default() as u8
+    };
+    let red = digit_at(3);
+    let green = digit_at(4);
+    let blue = digit_at(5);
     let c = 16 + red * 36 + green * 6 + blue;
     Some(Color::Indexed(c))
   } else if s == "bold black" {
@@ -589,6 +593,19 @@ mod tests {
   fn test_parse_color_rgb() {
     let color = parse_color("rgb123");
     let expected = 16 + 36 + 2 * 6 + 3;
+    assert_eq!(color, Some(Color::Indexed(expected)));
+  }
+
+  #[test]
+  fn test_parse_color_rgb_malformed_short() {
+    let color = parse_color("rgb");
+    assert_eq!(color, Some(Color::Indexed(16)));
+  }
+
+  #[test]
+  fn test_parse_color_rgb_malformed_one_digit() {
+    let color = parse_color("rgb1");
+    let expected = 16 + 36;
     assert_eq!(color, Some(Color::Indexed(expected)));
   }
 
