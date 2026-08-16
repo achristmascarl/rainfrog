@@ -600,7 +600,7 @@ mod tests {
   #[test]
   fn test_parse_color_rgb_malformed_one_digit() {
     let color = parse_color("rgb1");
-    let expected = 16 + 1 * 36;
+    let expected = 16 + 36;
     assert_eq!(color, Some(Color::Indexed(expected)));
   }
 
