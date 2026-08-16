@@ -11,11 +11,10 @@ a database tool for the terminal
 
 </div>
 
-the goal for rainfrog is to provide a lightweight, terminal-based tool for
-interacting with databases.
-
 ## features
 
+the goal for rainfrog is to provide a lightweight, terminal-based tool for
+interacting with databases.
 - efficient navigation via vim-like keybindings and mouse controls
 - query editor with keyword highlighting, session history, and favorites
 - quickly copy data, filter tables, and switch between schemas
