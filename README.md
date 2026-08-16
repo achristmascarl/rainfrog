@@ -87,7 +87,6 @@ access on a production database.
       + [results](#results)
 - [exports](#exports)
 - [favorites](#favorites)
-- [roadmap](#roadmap)
 - [known issues and limitations](#known-issues-and-limitations)
 - [Contributing](#contributing)
 - [acknowledgements](#acknowledgements)
@@ -588,48 +587,6 @@ to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
 export RAINFROG_FAVORITES=~/.config/rainfrog/favorites
 ```
 
-<!-- TOC --><a name="roadmap"></a>
-## roadmap
-
-<details>
-  <summary><b>🏁 v0.1.0 – alpha</b></summary>
-  
-- [x] scrollable table
-- [x] cancellable async querying (spawn tokio task)
-- [x] menu list with tables and schemas (collapsible)
-- [x] tui-textarea for query editor
-- [x] basic tui-textarea vim keybindings
-- [x] handle custom types / enums
-- [x] display rows affected
-- [x] confirm before delete/drop
-- [x] table selection and yanking
-- [x] multi-line pasting
-- [x] editor os clipboard support
-- [x] handle mouse events
-- [x] keybindings hints at bottom
-- [x] branch protection
-
-</details>
-
-<details>
-  <summary><b>🏁 v0.2.0 – beta</b></summary>
-
-- [x] vhs explainer gifs
-- [x] upgrade ratatui and tui-textarea
-- [x] shortcuts to view indexes, keys, etc.
-- [x] performant syntax highlighting
-- [x] session history
-- [x] changelog, release script
-- [x] handle explain / analyze output
-- [x] show query duration
-- [x] install script for bins
-
-</details>
-
-now that rainfrog is in beta, check out the
-[issues tab](https://github.com/achristmascarl/rainfrog/issues) for planned
-features
-
 <!-- TOC --><a name="known-issues-and-limitations"></a>
 ## known issues and limitations
 
@@ -660,8 +617,7 @@ or creating PRs.
 - [ratatui](https://github.com/ratatui-org/ratatui) (this project used ratatui's
   [component template](https://github.com/ratatui-org/templates/tree/983aa3cb3b8dd743200e8e2a1faa6e7c06aad85e/component/template)
   as a starting point)
-- [tui-textarea](https://github.com/rhysd/tui-textarea) (used in the query
-  editor)
+- [tui-textarea](https://github.com/rhysd/tui-textarea) (originally used in the query editor; now, the [ratatui-textarea](https://github.com/ratatui/ratatui-textarea) fork is used instead)
 - [gobang](https://github.com/TaKO8Ki/gobang) (a rust db tui i drew inspiration
   from)
 - [ricky rainfrog](https://us.jellycat.com/ricky-rain-frog/)
