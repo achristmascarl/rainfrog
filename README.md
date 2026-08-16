@@ -6,7 +6,7 @@ a database tool for the terminal
 
 <div align="center">
 
-[![Crate Badge]][https://crates.io/crates/rainfrog] [![Repo Badge]][https://github.com/achristmascarl/rainfrog] [![License Badge]][License]  \
+[![Crate Badge]][Crate] [![Repo Badge]][Repo] [![License Badge]](./LICENSE) \
 [![CI Badge]][CI] [![Built With Ratatui](https://img.shields.io/badge/Built_With_Ratatui-000?logo=ratatui&logoColor=fff)](https://ratatui.rs/)
 
 </div>
