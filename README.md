@@ -4,8 +4,12 @@ a database tool for the terminal
 
 ![rainfrog demo](vhs/demo.gif)
 
-> [!WARNING]
-> rainfrog is currently in beta
+<div align="center">
+
+[![Crate Badge]][https://crates.io/crates/rainfrog] [![Repo Badge]][https://github.com/achristmascarl/rainfrog] [![License Badge]][License]  \
+[![CI Badge]][CI] [![Built With Ratatui](https://img.shields.io/badge/Built_With_Ratatui-000?logo=ratatui&logoColor=fff)](https://ratatui.rs/)
+
+</div>
 
 the goal for rainfrog is to provide a lightweight, terminal-based tool for
 interacting with databases.
@@ -614,11 +618,16 @@ or creating PRs.
 <!-- TOC --><a name="acknowledgements"></a>
 ## acknowledgements
 
-- [ratatui](https://github.com/ratatui-org/ratatui) (this project used ratatui's
-  [component template](https://github.com/ratatui-org/templates/tree/983aa3cb3b8dd743200e8e2a1faa6e7c06aad85e/component/template)
-  as a starting point)
 - [tui-textarea](https://github.com/rhysd/tui-textarea) (originally used in the query editor; now, the [ratatui-textarea](https://github.com/ratatui/ratatui-textarea) fork is used instead)
 - [gobang](https://github.com/TaKO8Ki/gobang) (a rust db tui i drew inspiration
   from)
 - [ricky rainfrog](https://us.jellycat.com/ricky-rain-frog/)
 - [rainfroggg](https://www.rainfrog.gg/) (my wife's tattoo studio)
+
+[Repo]: https://github.com/achristmascarl/rainfrog
+[Crate]: https://crates.io/crates/rainfrog
+[Crate Badge]: https://img.shields.io/crates/v/rainfrog?logo=rust&style=flat-square&color=E05D44
+[Repo Badge]: https://img.shields.io/badge/repo-achristmascarl/rainfrog-1370D3?style=flat-square&logo=github
+[License Badge]: https://img.shields.io/crates/l/rainfrog?style=flat-square&color=1370D3
+[CI Badge]: https://img.shields.io/github/actions/workflow/status/achristmascarl/rainfrog/ci.yml?style=flat-square&logo=github
+[CI]: https://github.com/achristmascarl/rainfrog/actions/workflows/ci.yml
