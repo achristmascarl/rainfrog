@@ -1,14 +1,17 @@
 # CONTRIBUTING
 
-the codebase is not currently in a great place for delegating issues to external
-contributors, as there aren't that many tests and certain sections are overdue
-for a refactor. that being said, bug reports and feature requests are always
-welcome, and if you see an issue you'd like to work on, you are welcome to make
-a pull request fully addressing it if it's a small enough issue, or you can reach
-out via email to [carl@rainfrog.dev](mailto:carl@rainfrog.dev) or open a draft pull
-request outlining a prototype of how you'd approach it. i'll do my best to work
-with you to get it merged, but i can't make any guarantees given the current
-state of the project.
+## AI-generated contributions
+contributions in any form (code, documentation, issues, PRs, comments, etc.) that use AI/LLM tools should adhere to the following guidelines:
+1. disclose that AI/LLMs were used and how they were used in the contribution
+2. the contributor is responsible for verifying the quality and correctness of the contribution
+3. avoid large AI-generated contributions; each pull request should be scoped with human reviewers in mind
+4. the contributor should be prepared to discuss the rationale behind the contribution and any decisions made in the code
+5. the contributor may be asked to make specific changes to the contribution to ensure it meets the standards of this project
+
+failure to follow these guidelines will result in the contribution being rejected (issue/PR closed) or reverted.
+if AI usage is not disclosed and maintainers are unable to determine whether a contribution was AI-generated (based on
+the contributor's ability to answer questions about the contribution, their contribution history, or any other heuristic
+used by reviewers), maintainers are at liberty to reject the contribution without further discussion.
 
 ## Bug reports
 
