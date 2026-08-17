@@ -7,7 +7,8 @@ use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use ratatui_textarea::{Input, Key};
 use sqlparser::ast::Statement;
 use tokio::sync::mpsc::UnboundedSender;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use super::{
   Frame,
@@ -221,7 +222,16 @@ impl Data<'_> {
   }
 
   fn cell_display_width(value: &str) -> usize {
-    std::cmp::min(value.width(), MAX_COLUMN_WIDTH as usize)
+    // stop once the cap is reached: a TEXT or JSON cell can be far longer than
+    // any column we will ever draw, and only the capped value is used
+    let mut width = 0_usize;
+    for grapheme in value.graphemes(true) {
+      width = width.saturating_add(grapheme.width());
+      if width >= MAX_COLUMN_WIDTH as usize {
+        return MAX_COLUMN_WIDTH as usize;
+      }
+    }
+    width
   }
 
   fn clamp_render_text(value: &str, max_width: usize) -> String {
@@ -229,12 +239,15 @@ impl Data<'_> {
       return String::new();
     }
     let mut width_seen = 0_usize;
-    for (idx, c) in value.char_indices() {
-      let char_width = c.width().unwrap_or(0);
-      if width_seen.saturating_add(char_width) > max_width {
+    // measure per grapheme, not per char: a ZWJ sequence such as a family emoji
+    // is one glyph whose width is less than the sum of its parts, and splitting
+    // it would drop the rest of the value
+    for (idx, grapheme) in value.grapheme_indices(true) {
+      let grapheme_width = grapheme.width();
+      if width_seen.saturating_add(grapheme_width) > max_width {
         return value[..idx].to_owned();
       }
-      width_seen = width_seen.saturating_add(char_width);
+      width_seen = width_seen.saturating_add(grapheme_width);
     }
     value.to_owned()
   }
@@ -840,6 +853,27 @@ mod tests {
     assert_eq!(Data::clamp_render_text("日本語テ", 7), "日本語");
     assert_eq!(Data::clamp_render_text("日本語テ", 8), "日本語テ");
     assert_eq!(Data::clamp_render_text("abcd", 3), "abc");
+  }
+
+  #[test]
+  fn clamp_render_text_keeps_zwj_sequences_whole() {
+    // a family emoji is one glyph of 2 cells, but 7 chars whose widths sum to 8,
+    // so measuring per char would keep only the first man and drop the rest
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}";
+    assert_eq!(Data::cell_display_width(family), 2);
+    assert_eq!(Data::clamp_render_text(family, 2), family);
+    assert_eq!(Data::clamp_render_text(family, 1), "");
+    // a value fitting its own measured width must survive clamping intact
+    let value = format!("{family}ab");
+    assert_eq!(Data::clamp_render_text(&value, Data::cell_display_width(&value)), value);
+  }
+
+  #[test]
+  fn cell_display_width_stops_at_the_maximum() {
+    let long = "x".repeat(100_000);
+    assert_eq!(Data::cell_display_width(&long), MAX_COLUMN_WIDTH as usize);
+    // a value shorter than the cap is still measured exactly
+    assert_eq!(Data::cell_display_width("abc"), 3);
   }
 }
 
