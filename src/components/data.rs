@@ -7,7 +7,7 @@ use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use ratatui_textarea::{Input, Key};
 use sqlparser::ast::Statement;
 use tokio::sync::mpsc::UnboundedSender;
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::{
   Frame,
@@ -221,19 +221,20 @@ impl Data<'_> {
   }
 
   fn cell_display_width(value: &str) -> usize {
-    value.chars().take(MAX_COLUMN_WIDTH as usize).count()
+    std::cmp::min(value.width(), MAX_COLUMN_WIDTH as usize)
   }
 
-  fn clamp_render_text(value: &str, max_chars: usize) -> String {
-    if max_chars == 0 || value.is_empty() {
+  fn clamp_render_text(value: &str, max_width: usize) -> String {
+    if max_width == 0 || value.is_empty() {
       return String::new();
     }
-    let mut chars_seen = 0_usize;
-    for (idx, _) in value.char_indices() {
-      if chars_seen == max_chars {
+    let mut width_seen = 0_usize;
+    for (idx, c) in value.char_indices() {
+      let char_width = c.width().unwrap_or(0);
+      if width_seen.saturating_add(char_width) > max_width {
         return value[..idx].to_owned();
       }
-      chars_seen = chars_seen.saturating_add(1);
+      width_seen = width_seen.saturating_add(char_width);
     }
     value.to_owned()
   }
@@ -807,6 +808,7 @@ impl TableForYank {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::database::Header;
 
   #[test]
   fn error_text_includes_os_error() {
@@ -815,6 +817,29 @@ mod tests {
     let error = eyre::Report::new(os_error).wrap_err("Failed to launch external editor 'vi'");
 
     assert_eq!(error_text(&error), format!("Failed to launch external editor 'vi': {os_message}"));
+  }
+
+  #[test]
+  fn compact_column_widths_use_display_width() {
+    let rows = Rows {
+      headers: vec![
+        Header { name: "id".to_owned(), type_name: "int4".to_owned() },
+        Header { name: "name".to_owned(), type_name: "text".to_owned() },
+      ],
+      rows: vec![vec!["1".to_owned(), "日本語".to_owned()], vec!["2".to_owned(), "ab".to_owned()]],
+      rows_affected: None,
+    };
+
+    // "日本語" is 3 chars but occupies 6 terminal cells, plus 1 cell of padding.
+    assert_eq!(Data::compact_column_widths(&rows), vec![5, 7]);
+  }
+
+  #[test]
+  fn clamp_render_text_never_exceeds_the_column_width() {
+    // 4 wide chars occupy 8 cells, so only 3 of them fit in a 7 cell column.
+    assert_eq!(Data::clamp_render_text("日本語テ", 7), "日本語");
+    assert_eq!(Data::clamp_render_text("日本語テ", 8), "日本語テ");
+    assert_eq!(Data::clamp_render_text("abcd", 3), "abc");
   }
 }
 
