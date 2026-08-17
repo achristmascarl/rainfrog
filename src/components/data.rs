@@ -7,6 +7,7 @@ use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use ratatui_textarea::{Input, Key};
 use sqlparser::ast::Statement;
 use tokio::sync::mpsc::UnboundedSender;
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use super::{
@@ -221,19 +222,32 @@ impl Data<'_> {
   }
 
   fn cell_display_width(value: &str) -> usize {
-    value.chars().take(MAX_COLUMN_WIDTH as usize).count()
+    // stop once the cap is reached: a TEXT or JSON cell can be far longer than
+    // any column we will ever draw, and only the capped value is used
+    let mut width = 0_usize;
+    for grapheme in value.graphemes(true) {
+      width = width.saturating_add(grapheme.width());
+      if width >= MAX_COLUMN_WIDTH as usize {
+        return MAX_COLUMN_WIDTH as usize;
+      }
+    }
+    width
   }
 
-  fn clamp_render_text(value: &str, max_chars: usize) -> String {
-    if max_chars == 0 || value.is_empty() {
+  fn clamp_render_text(value: &str, max_width: usize) -> String {
+    if max_width == 0 || value.is_empty() {
       return String::new();
     }
-    let mut chars_seen = 0_usize;
-    for (idx, _) in value.char_indices() {
-      if chars_seen == max_chars {
+    let mut width_seen = 0_usize;
+    // measure per grapheme, not per char: a ZWJ sequence such as a family emoji
+    // is one glyph whose width is less than the sum of its parts, and splitting
+    // it would drop the rest of the value
+    for (idx, grapheme) in value.grapheme_indices(true) {
+      let grapheme_width = grapheme.width();
+      if width_seen.saturating_add(grapheme_width) > max_width {
         return value[..idx].to_owned();
       }
-      chars_seen = chars_seen.saturating_add(1);
+      width_seen = width_seen.saturating_add(grapheme_width);
     }
     value.to_owned()
   }
@@ -807,6 +821,7 @@ impl TableForYank {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::database::Header;
 
   #[test]
   fn error_text_includes_os_error() {
@@ -815,6 +830,50 @@ mod tests {
     let error = eyre::Report::new(os_error).wrap_err("Failed to launch external editor 'vi'");
 
     assert_eq!(error_text(&error), format!("Failed to launch external editor 'vi': {os_message}"));
+  }
+
+  #[test]
+  fn compact_column_widths_use_display_width() {
+    let rows = Rows {
+      headers: vec![
+        Header { name: "id".to_owned(), type_name: "int4".to_owned() },
+        Header { name: "name".to_owned(), type_name: "text".to_owned() },
+      ],
+      rows: vec![vec!["1".to_owned(), "日本語".to_owned()], vec!["2".to_owned(), "ab".to_owned()]],
+      rows_affected: None,
+    };
+
+    // "日本語" is 3 chars but occupies 6 terminal cells, plus 1 cell of padding.
+    assert_eq!(Data::compact_column_widths(&rows), vec![5, 7]);
+  }
+
+  #[test]
+  fn clamp_render_text_never_exceeds_the_column_width() {
+    // 4 wide chars occupy 8 cells, so only 3 of them fit in a 7 cell column.
+    assert_eq!(Data::clamp_render_text("日本語テ", 7), "日本語");
+    assert_eq!(Data::clamp_render_text("日本語テ", 8), "日本語テ");
+    assert_eq!(Data::clamp_render_text("abcd", 3), "abc");
+  }
+
+  #[test]
+  fn clamp_render_text_keeps_zwj_sequences_whole() {
+    // a family emoji is one glyph of 2 cells, but 7 chars whose widths sum to 8,
+    // so measuring per char would keep only the first man and drop the rest
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}";
+    assert_eq!(Data::cell_display_width(family), 2);
+    assert_eq!(Data::clamp_render_text(family, 2), family);
+    assert_eq!(Data::clamp_render_text(family, 1), "");
+    // a value fitting its own measured width must survive clamping intact
+    let value = format!("{family}ab");
+    assert_eq!(Data::clamp_render_text(&value, Data::cell_display_width(&value)), value);
+  }
+
+  #[test]
+  fn cell_display_width_stops_at_the_maximum() {
+    let long = "x".repeat(100_000);
+    assert_eq!(Data::cell_display_width(&long), MAX_COLUMN_WIDTH as usize);
+    // a value shorter than the cap is still measured exactly
+    assert_eq!(Data::cell_display_width("abc"), 3);
   }
 }
 
