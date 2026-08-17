@@ -7,6 +7,7 @@ use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use ratatui_textarea::{Input, Key};
 use sqlparser::ast::Statement;
 use tokio::sync::mpsc::UnboundedSender;
+use unicode_width::UnicodeWidthStr;
 
 use super::{
   Frame,
@@ -765,12 +766,15 @@ impl TableForYank {
   }
 
   fn format_column(col: &mut VecDeque<String>, index: usize, last_index: usize) {
-    let width = col.iter().map(|s| s.len()).max().unwrap_or(1) + 1;
+    let width = col.iter().map(|s| s.width()).max().unwrap_or(1) + 1;
 
     let format_cell = |s: &str| {
       let prefix = if index == 0 { "" } else { "| " };
-      let padding =
-        if index == last_index { " ".repeat(0) } else { " ".repeat(width.saturating_sub(s.len())) };
+      let padding = if index == last_index {
+        " ".repeat(0)
+      } else {
+        " ".repeat(width.saturating_sub(s.width()))
+      };
       format!("{prefix}{s}{padding}")
     };
 
@@ -849,6 +853,35 @@ mod yank {
     ];
 
     assert_eq!(expected, result)
+  }
+
+  #[test]
+  fn yank_aligns_columns_by_display_width() {
+    let headers = vec!["id".to_string(), "name".to_string(), "age".to_string()];
+    let rows = vec![
+      vec!["1".to_string(), "café".to_string(), "30".to_string()],
+      vec!["2".to_string(), "abcd".to_string(), "40".to_string()],
+      vec!["3".to_string(), "日本語".to_string(), "50".to_string()],
+    ];
+
+    let mut data_to_yank = TableForYank {
+      sql: vec!["select * from t".to_string()],
+      table: TableForYank::to_columns(&headers, &rows),
+    };
+
+    let result = data_to_yank.yank();
+
+    let expected = "\
+select * from t
+
+id | name   | age
+---+--------+-----
+1  | café   | 30
+2  | abcd   | 40
+3  | 日本語 | 50
+";
+
+    assert_eq!(expected, result);
   }
 
   #[test]
