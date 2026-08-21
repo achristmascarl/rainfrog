@@ -396,7 +396,7 @@ impl Component for Menu {
     mouse: crossterm::event::MouseEvent,
     app_state: &AppState,
   ) -> Result<Option<Action>> {
-    if app_state.focus != Focus::Menu {
+    if app_state.focus != Focus::Menu || self.loading {
       return Ok(None);
     }
     self.clear_copied_target();
@@ -410,6 +410,12 @@ impl Component for Menu {
 
   fn handle_key_events(&mut self, key: KeyEvent, app_state: &AppState) -> Result<Option<Action>> {
     if app_state.focus != Focus::Menu {
+      return Ok(None);
+    }
+    if self.loading {
+      if key.code == KeyCode::Char('R') {
+        self.command_tx.as_ref().unwrap().send(Action::LoadMenu)?;
+      }
       return Ok(None);
     }
     self.clear_copied_target();
@@ -512,7 +518,7 @@ impl Component for Menu {
   }
 
   fn handle_paste_events(&mut self, text: &str, app_state: &AppState) -> Result<Option<Action>> {
-    if app_state.focus != Focus::Menu || !self.search_focused {
+    if app_state.focus != Focus::Menu || self.loading || !self.search_focused {
       return Ok(None);
     }
     if let Some(search) = self.search.as_mut() {
@@ -764,8 +770,69 @@ mod tests {
   }
 
   #[test]
+  fn loading_menu_ignores_hidden_inputs_except_refresh() {
+    let mut menu = Menu::new();
+    menu.set_table_list(Some(Ok(Rows {
+      headers: Vec::new(),
+      rows: vec![
+        vec!["public".into(), "users".into(), "table".into()],
+        vec!["public".into(), "orders".into(), "table".into()],
+      ],
+      rows_affected: None,
+    })));
+    let selected = menu.list_state.selected();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    menu.register_action_handler(tx).unwrap();
+    menu.set_table_list(None);
+
+    for code in [KeyCode::Down, KeyCode::Char('/'), KeyCode::Enter, KeyCode::Char('1')] {
+      menu
+        .handle_key_events(
+          KeyEvent::new(code, crossterm::event::KeyModifiers::NONE),
+          &app_state_with_focus(Focus::Menu),
+        )
+        .unwrap();
+    }
+    menu
+      .handle_mouse_events(
+        crossterm::event::MouseEvent {
+          kind: MouseEventKind::ScrollDown,
+          column: 0,
+          row: 0,
+          modifiers: crossterm::event::KeyModifiers::NONE,
+        },
+        &app_state_with_focus(Focus::Menu),
+      )
+      .unwrap();
+
+    assert_eq!(menu.list_state.selected(), selected);
+    assert!(menu.search.is_none());
+    assert!(rx.try_recv().is_err());
+
+    menu
+      .handle_key_events(
+        KeyEvent::new(KeyCode::Char('R'), crossterm::event::KeyModifiers::NONE),
+        &app_state_with_focus(Focus::Menu),
+      )
+      .unwrap();
+    assert_eq!(rx.try_recv().unwrap(), Action::LoadMenu);
+  }
+
+  #[test]
+  fn loading_menu_ignores_paste_into_hidden_search() {
+    let mut menu = Menu::new();
+    menu.search = Some("user".to_owned());
+    menu.search_focused = true;
+
+    menu.handle_paste_events("s", &app_state_with_focus(Focus::Menu)).unwrap();
+
+    assert_eq!(menu.search.as_deref(), Some("user"));
+  }
+
+  #[test]
   fn paste_appends_to_focused_search_and_selects_first_match() {
     let mut menu = Menu::new();
+    menu.loading = false;
     menu.menu_focus = MenuFocus::Tables;
     menu.search = Some("user".to_string());
     menu.search_focused = true;
@@ -792,6 +859,7 @@ mod tests {
   #[test]
   fn paste_is_ignored_when_search_is_not_focused() {
     let mut menu = Menu::new();
+    menu.loading = false;
     menu.search = Some("user".to_string());
 
     menu
