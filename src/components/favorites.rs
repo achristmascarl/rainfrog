@@ -168,10 +168,12 @@ impl Favorites {
     }
   }
 
-  pub fn scroll_down(&mut self) {
+  pub fn scroll_down(&mut self, item_count: usize) {
     let current_selected = self.list_state.selected();
     if let Some(i) = current_selected {
-      self.list_state.select(Some(i.saturating_add(1)));
+      self
+        .list_state
+        .select(Some(std::cmp::min(i.saturating_add(1), item_count.saturating_sub(1))));
     }
   }
 }
@@ -198,7 +200,7 @@ impl Component for Favorites {
     self.copied = false;
     match mouse.kind {
       MouseEventKind::ScrollDown => {
-        self.scroll_down();
+        self.scroll_down(app_state.favorites.filter(self.search.clone()).len());
       },
       MouseEventKind::ScrollUp => {
         self.scroll_up();
@@ -250,7 +252,7 @@ impl Component for Favorites {
         self.list_state = ListState::default().with_selected(Some(0));
       },
       KeyCode::Down | KeyCode::Char('j') => {
-        self.scroll_down();
+        self.scroll_down(filtered.len());
       },
       KeyCode::Up | KeyCode::Char('k') => {
         self.scroll_up();
@@ -259,32 +261,24 @@ impl Component for Favorites {
         self.list_state.select(Some(0));
       },
       KeyCode::Char('D') => {
-        if let Some(i) = current_selected {
-          self
-            .command_tx
-            .as_ref()
-            .unwrap()
-            .send(Action::DeleteFavorite(filtered[i].name.clone()))?;
+        if let Some(entry) = current_selected.and_then(|i| filtered.get(i)) {
+          self.command_tx.as_ref().unwrap().send(Action::DeleteFavorite(entry.name.clone()))?;
         }
       },
       KeyCode::Char('y') => {
-        if let Some(i) = current_selected {
-          self
-            .command_tx
-            .as_ref()
-            .unwrap()
-            .send(Action::CopyData(filtered[i].query_lines.join("\n")))?;
+        if let Some(entry) = current_selected.and_then(|i| filtered.get(i)) {
+          self.command_tx.as_ref().unwrap().send(Action::CopyData(entry.query_lines.join("\n")))?;
           self.copied = true;
         }
       },
       KeyCode::Char('G') => self.list_state.select(Some(filtered.len().saturating_sub(1))),
       KeyCode::Char('I') => {
-        if let Some(i) = current_selected {
+        if let Some(entry) = current_selected.and_then(|i| filtered.get(i)) {
           self
             .command_tx
             .as_ref()
             .unwrap()
-            .send(Action::QueryToEditor(filtered[i].query_lines.clone()))?;
+            .send(Action::QueryToEditor(entry.query_lines.clone()))?;
           self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
         }
       },
@@ -436,5 +430,65 @@ mod tests {
       .unwrap();
 
     assert_eq!(favorites.search.as_deref(), Some("saved"));
+  }
+
+  fn favorites_with_entries(names: &[&str]) -> FavoriteEntries {
+    FavoriteEntries {
+      dir: PathBuf::new(),
+      entries: names
+        .iter()
+        .map(|name| FavoriteEntry {
+          name: (*name).to_string(),
+          query_lines: vec![format!("select '{name}'")],
+        })
+        .collect(),
+    }
+  }
+
+  fn char_key(c: char) -> KeyEvent {
+    KeyEvent::new(KeyCode::Char(c), crossterm::event::KeyModifiers::NONE)
+  }
+
+  #[test]
+  fn scrolling_past_the_last_favorite_does_not_move_the_selection_out_of_range() {
+    // key auto-repeat delivers several [j] events between two renders, and the
+    // list only clamps an out of range selection when it is drawn
+    let mut favorites = Favorites::new();
+    let (action_tx, mut action_rx) = tokio::sync::mpsc::unbounded_channel();
+    favorites.register_action_handler(action_tx).unwrap();
+    favorites.list_state.select(Some(0));
+    let mut app_state = app_state_with_focus(Focus::Favorites);
+    app_state.favorites = favorites_with_entries(&["a", "b"]);
+
+    for _ in 0..4 {
+      favorites.handle_key_events(char_key('j'), &app_state).unwrap();
+    }
+    assert_eq!(favorites.list_state.selected(), Some(1));
+
+    favorites.handle_key_events(char_key('y'), &app_state).unwrap();
+    assert_eq!(action_rx.try_recv().ok(), Some(Action::CopyData("select 'b'".to_string())));
+  }
+
+  #[test]
+  fn acting_on_an_empty_favorites_list_does_not_panic() {
+    // [Esc] selects index 0 even when there is nothing to select
+    let mut favorites = Favorites::new();
+    let (action_tx, mut action_rx) = tokio::sync::mpsc::unbounded_channel();
+    favorites.register_action_handler(action_tx).unwrap();
+    let app_state = app_state_with_focus(Focus::Favorites);
+    assert!(app_state.favorites.is_empty());
+
+    favorites
+      .handle_key_events(
+        KeyEvent::new(KeyCode::Esc, crossterm::event::KeyModifiers::NONE),
+        &app_state,
+      )
+      .unwrap();
+    assert_eq!(favorites.list_state.selected(), Some(0));
+
+    for key in ['y', 'I', 'D'] {
+      favorites.handle_key_events(char_key(key), &app_state).unwrap();
+    }
+    assert!(action_rx.try_recv().is_err());
   }
 }
