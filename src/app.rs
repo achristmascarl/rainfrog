@@ -238,8 +238,8 @@ impl App {
       self.completion.start_missing_columns(database.as_ref())?;
       for event in self.completion.poll_database().await {
         match event {
-          CompletionDatabaseEvent::MenuLoaded(rows) => {
-            self.components.menu.set_table_list(Some(Ok(rows)));
+          CompletionDatabaseEvent::MenuLoadFinished(result) => {
+            self.components.menu.set_table_list(Some(result));
           },
         }
       }
@@ -441,6 +441,7 @@ impl App {
             Focus::PopUp => {},
           },
           Action::LoadMenu => {
+            self.components.menu.set_table_list(None);
             self.completion.start_menu_load(database.as_ref())?;
           },
           Action::EditQueryExternally(lines) => {

@@ -60,7 +60,7 @@ pub struct CompletionCoordinator {
 }
 
 pub enum CompletionDatabaseEvent {
-  MenuLoaded(Rows),
+  MenuLoadFinished(color_eyre::eyre::Result<Rows>),
 }
 
 impl CompletionCoordinator {
@@ -318,15 +318,19 @@ impl CompletionCoordinator {
           *current_catalog = catalog;
           drop(current_catalog);
           self.catalog_loaded = true;
-          events.push(CompletionDatabaseEvent::MenuLoaded(rows));
+          events.push(CompletionDatabaseEvent::MenuLoadFinished(Ok(rows)));
           for text in std::mem::take(&mut self.pending_discovery_texts) {
             self.queue_columns_for_text(text);
           }
           self.refresh_latest_completion();
         },
-        Ok(Err(error)) => log::error!("failed to load completion catalog: {error}"),
+        Ok(Err(error)) => {
+          events.push(CompletionDatabaseEvent::MenuLoadFinished(Err(error)));
+        },
         Err(error) if !error.is_cancelled() => {
-          log::error!("completion catalog task failed: {error}")
+          events.push(CompletionDatabaseEvent::MenuLoadFinished(Err(color_eyre::eyre::eyre!(
+            "completion catalog task failed: {error}"
+          ))));
         },
         Err(_) => {},
       }
@@ -2468,7 +2472,9 @@ mod tests {
       Some(tokio::spawn(async { Err(color_eyre::eyre::eyre!("catalog refresh failed")) }));
     tokio::task::yield_now().await;
 
-    assert!(coordinator.poll_database().await.is_empty());
+    let events = coordinator.poll_database().await;
+    assert_eq!(events.len(), 1);
+    assert!(matches!(events[0], CompletionDatabaseEvent::MenuLoadFinished(Err(_))));
 
     let catalog = coordinator.catalog.read().unwrap();
     assert_eq!(catalog.objects[0].name, "users");

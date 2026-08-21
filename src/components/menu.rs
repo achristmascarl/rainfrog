@@ -60,7 +60,7 @@ pub trait MenuComponent<'a>: Component + SettableTableList<'a> {}
 
 impl<'a, T> MenuComponent<'a> for T where T: Component + SettableTableList<'a> {}
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Menu {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
@@ -71,6 +71,7 @@ pub struct Menu {
   search: Option<String>,
   search_focused: bool,
   copied_target: Option<CopiedMenuTarget>,
+  loading: bool,
 }
 
 impl Menu {
@@ -85,7 +86,28 @@ impl Menu {
       search: None,
       search_focused: false,
       copied_target: None,
+      loading: true,
     }
+  }
+
+  fn draw_loading_skeleton(&self, f: &mut Frame<'_>, area: Rect, focused: bool) {
+    let border_style = if focused { Style::default().fg(Color::Green) } else { Style::new().dim() };
+    let block = Block::default()
+      .title(" 󰦄  loading... <alt+1> (schema) ")
+      .borders(Borders::ALL)
+      .border_style(border_style)
+      .padding(Padding { left: 0, right: 1, top: 0, bottom: 0 });
+    let skeleton = Text::from(vec![
+      Line::styled("─ Tables", Style::default().fg(Color::DarkGray)),
+      Line::styled(" █████████████", Style::default().fg(Color::DarkGray).dim()),
+      Line::styled(" ██████████", Style::default().fg(Color::DarkGray).dim()),
+      Line::styled(" ███████████████", Style::default().fg(Color::DarkGray).dim()),
+      Line::from(""),
+      Line::styled("─ Views", Style::default().fg(Color::DarkGray)),
+      Line::styled(" ███████████", Style::default().fg(Color::DarkGray).dim()),
+      Line::styled(" ██████████████", Style::default().fg(Color::DarkGray).dim()),
+    ]);
+    f.render_widget(Paragraph::new(skeleton).block(block), area);
   }
 
   pub fn change_focus(&mut self, new_focus: MenuFocus) {
@@ -313,15 +335,16 @@ impl Menu {
 impl SettableTableList<'_> for Menu {
   fn set_table_list(&mut self, data: Option<Result<Rows>>) {
     log::info!("setting menu table list");
-    self.table_map = IndexMap::new();
     match data {
       Some(Ok(rows)) => {
+        self.loading = false;
+        let mut table_map: IndexMap<String, MenuSchemaItems> = IndexMap::new();
         rows.rows.iter().for_each(|row| {
           let schema = row.first().cloned().unwrap_or_default();
           let name = row.get(1).cloned().unwrap_or_default();
           let kind =
             row.get(2).map(|value| value.to_lowercase()).unwrap_or_else(|| "table".to_owned());
-          let entry = self.table_map.entry(schema.clone()).or_default();
+          let entry = table_map.entry(schema.clone()).or_default();
           match kind.as_str() {
             "view" => entry.views.push(MenuViewItem { name, materialized: false }),
             "materialized_view" | "materialized view" | "mview" => {
@@ -331,6 +354,7 @@ impl SettableTableList<'_> for Menu {
             _ => entry.tables.push(name),
           }
         });
+        self.table_map = table_map;
         if self.table_map.keys().len() == 1 {
           self.menu_focus = MenuFocus::Tables;
           let entries = self.filtered_entries();
@@ -342,10 +366,17 @@ impl SettableTableList<'_> for Menu {
         }
       },
       Some(Err(e)) => {
+        self.loading = false;
         log::error!("{e}");
       },
-      None => {},
+      None => self.loading = true,
     }
+  }
+}
+
+impl Default for Menu {
+  fn default() -> Self {
+    Self::new()
   }
 }
 
@@ -494,6 +525,10 @@ impl Component for Menu {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Menu;
+    if self.loading {
+      self.draw_loading_skeleton(f, area, focused);
+      return Ok(());
+    }
     let parent_block = Block::default();
     let schema_keys: Vec<String> = self.table_map.keys().cloned().collect();
     let mut constraints: Vec<Constraint> = schema_keys
@@ -692,6 +727,41 @@ impl Component for Menu {
 mod tests {
   use super::*;
   use crate::{components::app_state_with_focus, tui::Event};
+
+  #[test]
+  fn loading_skeleton_is_visible_before_the_menu_loads() {
+    let mut menu = Menu::new();
+    let backend = ratatui::backend::TestBackend::new(40, 12);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal
+      .draw(|frame| {
+        menu.draw(frame, frame.area(), &app_state_with_focus(Focus::Menu)).unwrap();
+      })
+      .unwrap();
+
+    let rendered: String =
+      terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect();
+    assert!(rendered.contains("loading..."));
+    assert!(rendered.contains("██████████"));
+  }
+
+  #[test]
+  fn failed_refresh_hides_skeleton_and_preserves_existing_menu() {
+    let mut menu = Menu::new();
+    menu.set_table_list(Some(Ok(Rows {
+      headers: Vec::new(),
+      rows: vec![vec!["public".into(), "users".into(), "table".into()]],
+      rows_affected: None,
+    })));
+
+    menu.set_table_list(None);
+    assert!(menu.loading);
+    menu.set_table_list(Some(Err(color_eyre::eyre::eyre!("refresh failed"))));
+
+    assert!(!menu.loading);
+    assert_eq!(menu.table_map["public"].tables, vec!["users"]);
+  }
 
   #[test]
   fn paste_appends_to_focused_search_and_selects_first_match() {
