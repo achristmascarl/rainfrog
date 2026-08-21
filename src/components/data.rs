@@ -731,12 +731,9 @@ struct TableForYank {
 
 impl TableForYank {
   fn new(rows: &Rows, app_state: &AppState) -> Self {
-    let sql = app_state
-      .history
-      .first()
-      .expect("expected the last SQL query in history")
-      .query_lines
-      .clone();
+    // history can be empty here: it is cleared with [D] in the history pane
+    // while the results of the last query are still on screen
+    let sql = app_state.history.first().map(|entry| entry.query_lines.clone()).unwrap_or_default();
 
     let headers: &Vec<String> = &rows.headers.iter().map(|h| h.name.clone()).collect();
     let rows = &rows.rows;
@@ -761,7 +758,9 @@ impl TableForYank {
       buff.push('\n');
     }
 
-    buff.push('\n');
+    if !self.sql.is_empty() {
+      buff.push('\n');
+    }
 
     while let Some(col) = self.table.first() {
       if col.is_empty() {
@@ -866,6 +865,33 @@ mod tests {
     // a value fitting its own measured width must survive clamping intact
     let value = format!("{family}ab");
     assert_eq!(Data::clamp_render_text(&value, Data::cell_display_width(&value)), value);
+  }
+
+  #[test]
+  fn yank_all_after_the_history_is_cleared_does_not_panic() {
+    // [D] in the history pane clears the history while the results of the last
+    // query are still displayed, so [Y] must not assume history is non-empty
+    let app_state = crate::components::app_state_with_focus(Focus::Data);
+    assert!(app_state.history.is_empty());
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut data = Data::new();
+    data.register_action_handler(tx).unwrap();
+    data.set_data_state(
+      Some(Ok(Rows {
+        headers: vec![Header { name: "id".to_owned(), type_name: "int4".to_owned() }],
+        rows: vec![vec!["1".to_owned()], vec!["2".to_owned()]],
+        rows_affected: None,
+      })),
+      None,
+    );
+
+    data.update(Action::YankAll, &app_state).unwrap();
+
+    let Some(Action::CopyData(yanked)) = rx.try_recv().ok() else {
+      panic!("expected the yanked table to be copied");
+    };
+    assert_eq!(yanked, "id\n---\n1\n2\n");
   }
 
   #[test]
