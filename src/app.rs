@@ -26,7 +26,7 @@ use crate::{
     history::History,
     menu::{Menu, MenuComponent},
   },
-  config::Config,
+  config::{Config, KeyBindings},
   database::{self, Database, DbTaskResult, ExecutionType, Rows},
   external_editor,
   focus::Focus,
@@ -86,6 +86,68 @@ pub struct App {
   completion: CompletionCoordinator,
   menu_width_percent: u16,
   tabs_height_percent: u16,
+}
+
+fn format_footer_key_hint(hint: &str) -> String {
+  let Some(inner) = hint.strip_prefix('<').and_then(|hint| hint.strip_suffix('>')) else {
+    return hint.to_owned();
+  };
+  if inner.chars().count() == 1 {
+    inner.to_owned()
+  } else {
+    format!("<{}>", inner.replace('+', " + "))
+  }
+}
+
+fn footer_action_hints(keybindings: &KeyBindings, focus: Focus, action: &Action) -> Vec<String> {
+  keybindings
+    .hints_for_action(focus, action)
+    .iter()
+    .map(|hint| format_footer_key_hint(hint))
+    .collect()
+}
+
+fn footer_help_text(config: &Config, focus: Focus, query_task_running: bool) -> String {
+  let abort_hints = footer_action_hints(&config.keybindings, focus, &Action::AbortQuery).join("|");
+  let abort = if query_task_running && focus != Focus::PopUp && !abort_hints.is_empty() {
+    format!("[{abort_hints}] abort ")
+  } else {
+    String::new()
+  };
+
+  let contextual = match focus {
+    Focus::Menu =>
+      "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [y] copy name [/] search [g] top [G] bottom".to_owned(),
+    Focus::Editor if !query_task_running => {
+      let mut execute_hints = vec!["<alt + enter>".to_owned()];
+      for hint in footer_action_hints(&config.keybindings, focus, &Action::SubmitEditorQuery) {
+        if !execute_hints.contains(&hint) {
+          execute_hints.push(hint);
+        }
+      }
+      let execute_hints = execute_hints.join("|");
+      let external_editor_hints =
+        footer_action_hints(&config.keybindings, focus, &Action::RequestExternalEditor).join("|");
+      let external_editor = if external_editor_hints.is_empty() {
+        String::new()
+      } else {
+        format!(" [{external_editor_hints}] external editor")
+      };
+      format!(
+        "[{execute_hints}] execute query{external_editor} [<ctrl + f>|<alt + f>] save query to favorites"
+      )
+    },
+    Focus::History =>
+      "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history".to_owned(),
+    Focus::Favorites =>
+      "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search".to_owned(),
+    Focus::Data if !query_task_running =>
+      "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [Y] copy all [g] top [G] bottom [0] first col [$] last col".to_owned(),
+    Focus::PopUp => "[<esc>] cancel".to_owned(),
+    _ => String::new(),
+  };
+
+  format!("{abort}{contextual}")
 }
 
 impl App {
@@ -788,28 +850,7 @@ impl App {
 
   fn render_hints(&self, frame: &mut Frame, area: Rect) {
     let block = Block::default().style(Style::default().fg(Color::Blue));
-    let help_text = format!(
-      "{}{}",
-      match self.state.query_task_running {
-        false => "",
-        _ if self.state.focus == Focus::Editor => "[<alt + q>] abort ",
-        _ if self.state.focus != Focus::PopUp => "[q] abort ",
-        _ => "",
-      },
-      match self.state.focus {
-        Focus::Menu =>
-          "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [y] copy name [/] search [g] top [G] bottom",
-        Focus::Editor if !self.state.query_task_running =>
-          "[<alt + enter>|<f5>] execute query [<alt + e>|<f6>] external editor [<ctrl + f>|<alt + f>] save query to favorites",
-        Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
-        Focus::Favorites =>
-          "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
-        Focus::Data if !self.state.query_task_running =>
-          "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [Y] copy all [g] top [G] bottom [0] first col [$] last col",
-        Focus::PopUp => "[<esc>] cancel",
-        _ => "",
-      }
-    );
+    let help_text = footer_help_text(&self.config, self.state.focus, self.state.query_task_running);
     let paragraph =
       Paragraph::new(Line::from(help_text).centered()).block(block).wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
@@ -846,6 +887,7 @@ mod tests {
 
   use super::*;
   use crate::components::app_state_with_focus;
+  use crate::config::default_config_contents;
 
   fn test_app(focus: Focus) -> App {
     let (completion, completion_client) = CompletionCoordinator::new();
@@ -961,5 +1003,40 @@ mod tests {
     app.resize_focused_section(SECTION_RESIZE_STEP);
     assert_eq!(app.menu_width_percent, DEFAULT_MENU_WIDTH_PERCENT);
     assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
+  }
+
+  #[test]
+  fn default_config_preserves_editor_footer_hints() {
+    let config: Config = toml::from_str(default_config_contents()).unwrap();
+
+    assert_eq!(
+      footer_help_text(&config, Focus::Editor, false),
+      "[<alt + enter>|<f5>] execute query [<alt + e>|<f6>] external editor [<ctrl + f>|<alt + f>] save query to favorites"
+    );
+    assert_eq!(footer_help_text(&config, Focus::Editor, true), "[<alt + q>] abort ");
+  }
+
+  #[test]
+  fn footer_uses_configured_action_hints_and_keeps_component_hints_static() {
+    let config: Config = toml::from_str(
+      r#"
+        [keybindings.Editor]
+        "<Alt-q>" = ""
+        "z" = "AbortQuery"
+        "<F5>" = ""
+        "<Alt-enter>" = "SubmitEditorQuery"
+        "x" = "SubmitEditorQuery"
+        "<Alt-e>" = ""
+        "<F6>" = ""
+        "<F2>" = "RequestExternalEditor"
+      "#,
+    )
+    .unwrap();
+
+    assert_eq!(
+      footer_help_text(&config, Focus::Editor, false),
+      "[<alt + enter>|x] execute query [<f2>] external editor [<ctrl + f>|<alt + f>] save query to favorites"
+    );
+    assert_eq!(footer_help_text(&config, Focus::Editor, true), "[z] abort ");
   }
 }

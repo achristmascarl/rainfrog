@@ -229,19 +229,26 @@ impl KeyBindings {
     action: &Action,
     preferred_hint: &str,
   ) -> Option<String> {
-    let mut hints = self
-      .get(&focus)?
-      .iter()
-      .filter(|(_, configured_action)| *configured_action == action)
-      .map(|(key_sequence, _)| key_sequence_to_hint(key_sequence))
-      .collect::<Vec<_>>();
-    hints.sort_unstable();
+    let hints = self.hints_for_action(focus, action);
 
     hints
       .iter()
       .find(|hint| hint.as_str() == preferred_hint)
       .cloned()
       .or_else(|| hints.into_iter().next())
+  }
+
+  pub fn hints_for_action(&self, focus: Focus, action: &Action) -> Vec<String> {
+    let Some(bindings) = self.get(&focus) else {
+      return Vec::new();
+    };
+    let mut hints = bindings
+      .iter()
+      .filter(|(_, configured_action)| *configured_action == action)
+      .map(|(key_sequence, _)| key_sequence_to_hint(key_sequence))
+      .collect::<Vec<_>>();
+    hints.sort_unstable();
+    hints
   }
 }
 
@@ -371,7 +378,7 @@ pub fn key_event_to_string(key_event: &KeyEvent) -> String {
     KeyCode::Delete => "delete",
     KeyCode::Insert => "insert",
     KeyCode::F(c) => {
-      char = format!("f({c})");
+      char = format!("f{c}");
       &char
     },
     KeyCode::Char(' ') => "space",
@@ -866,6 +873,13 @@ mod tests {
       )),
       "ctrl-alt-a".to_string()
     );
+  }
+
+  #[test]
+  fn test_function_key_formats_with_parseable_syntax() {
+    let key = KeyEvent::new(KeyCode::F(2), KeyModifiers::empty());
+    assert_eq!(key_event_to_string(&key), "f2");
+    assert_eq!(parse_key_sequence("<f2>").unwrap(), vec![key]);
   }
 
   #[test]
