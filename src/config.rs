@@ -155,12 +155,7 @@ impl Config {
 
     let mut cfg: Self = builder.build()?.try_deserialize()?;
 
-    for (focus, default_bindings) in default_config.keybindings.iter() {
-      let user_bindings = cfg.keybindings.entry(*focus).or_default();
-      for (key, cmd) in default_bindings.iter() {
-        user_bindings.entry(key.clone()).or_insert_with(|| cmd.clone());
-      }
-    }
+    cfg.keybindings.merge_defaults(&default_config.keybindings);
     for (focus, default_styles) in default_config.styles.iter() {
       let user_styles = cfg.styles.entry(*focus).or_default();
       for (style_key, style) in default_styles.iter() {
@@ -217,6 +212,38 @@ pub fn default_config_contents() -> &'static str {
 
 #[derive(Clone, Debug, Default, Deref, DerefMut)]
 pub struct KeyBindings(pub HashMap<Focus, HashMap<Vec<KeyEvent>, Action>>);
+
+impl KeyBindings {
+  fn merge_defaults(&mut self, defaults: &Self) {
+    for (focus, default_bindings) in defaults.iter() {
+      let user_bindings = self.entry(*focus).or_default();
+      for (key, action) in default_bindings {
+        user_bindings.entry(key.clone()).or_insert_with(|| action.clone());
+      }
+    }
+  }
+
+  pub fn hint_for_action(
+    &self,
+    focus: Focus,
+    action: &Action,
+    preferred_hint: &str,
+  ) -> Option<String> {
+    let mut hints = self
+      .get(&focus)?
+      .iter()
+      .filter(|(_, configured_action)| *configured_action == action)
+      .map(|(key_sequence, _)| key_sequence_to_hint(key_sequence))
+      .collect::<Vec<_>>();
+    hints.sort_unstable();
+
+    hints
+      .iter()
+      .find(|hint| hint.as_str() == preferred_hint)
+      .cloned()
+      .or_else(|| hints.into_iter().next())
+  }
+}
 
 impl<'de> Deserialize<'de> for KeyBindings {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -387,6 +414,19 @@ pub fn key_event_to_string(key_event: &KeyEvent) -> String {
   key.push_str(key_code);
 
   key
+}
+
+fn key_sequence_to_hint(key_sequence: &[KeyEvent]) -> String {
+  key_sequence
+    .iter()
+    .map(|key| {
+      let hint = key_event_to_string(key)
+        .replace("ctrl-", "ctrl+")
+        .replace("shift-", "shift+")
+        .replace("alt-", "alt+");
+      format!("<{hint}>")
+    })
+    .collect()
 }
 
 pub fn parse_key_sequence(raw: &str) -> Result<Vec<KeyEvent>, String> {
@@ -623,6 +663,13 @@ mod tests {
   }
 
   #[test]
+  fn test_invalid_non_empty_action_is_an_error() {
+    let toml_src = "[keybindings.Editor]\n\"x\" = \"NotAnAction\"\n";
+    let err = toml::from_str::<Config>(toml_src).unwrap_err();
+    assert!(err.to_string().contains("NotAnAction"), "got: {err}");
+  }
+
+  #[test]
   fn test_valid_keybinding_still_parses() {
     let toml_src = "[keybindings.Editor]\n\"<Alt-e>\" = \"Quit\"\n";
     let c: Config = toml::from_str(toml_src).unwrap();
@@ -633,6 +680,69 @@ mod tests {
         .get(&parse_key_sequence("<Alt-e>").unwrap())
         .unwrap(),
       &Action::Quit
+    );
+  }
+
+  #[test]
+  fn test_empty_action_disables_default_keybinding() {
+    let toml_src = r#"
+      [keybindings.Menu]
+      "<Alt-1>" = ""
+      "<Ctrl-h>" = "FocusMenu"
+    "#;
+    let mut config: Config = toml::from_str(toml_src).unwrap();
+    let default_config: Config = toml::from_str(CONFIG).unwrap();
+
+    config.keybindings.merge_defaults(&default_config.keybindings);
+
+    let menu_bindings = config.keybindings.get(&Focus::Menu).unwrap();
+    assert_eq!(menu_bindings.get(&parse_key_sequence("<Alt-1>").unwrap()), Some(&Action::NoOp));
+    assert_eq!(
+      menu_bindings.get(&parse_key_sequence("<Ctrl-h>").unwrap()),
+      Some(&Action::FocusMenu)
+    );
+  }
+
+  #[test]
+  fn test_focus_hint_uses_replacement_for_disabled_preferred_binding() {
+    let toml_src = r#"
+      [keybindings.Menu]
+      "<Alt-1>" = ""
+      "<Ctrl-h>" = "FocusMenu"
+    "#;
+    let mut config: Config = toml::from_str(toml_src).unwrap();
+    let default_config: Config = toml::from_str(CONFIG).unwrap();
+    config.keybindings.merge_defaults(&default_config.keybindings);
+
+    assert_eq!(
+      config.keybindings.hint_for_action(Focus::Menu, &Action::FocusMenu, "<alt+1>"),
+      Some("<ctrl+h>".to_owned())
+    );
+  }
+
+  #[test]
+  fn test_focus_hint_preserves_active_preferred_binding() {
+    let config: Config = toml::from_str(CONFIG).unwrap();
+
+    assert_eq!(
+      config.keybindings.hint_for_action(Focus::Menu, &Action::FocusMenu, "<alt+1>"),
+      Some("<alt+1>".to_owned())
+    );
+  }
+
+  #[test]
+  fn test_focus_hint_is_absent_without_an_active_binding() {
+    let config: Config = toml::from_str(
+      r#"
+        [keybindings.Menu]
+        "<Alt-1>" = ""
+      "#,
+    )
+    .unwrap();
+
+    assert_eq!(
+      config.keybindings.hint_for_action(Focus::Menu, &Action::FocusMenu, "<alt+1>"),
+      None
     );
   }
 

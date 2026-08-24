@@ -90,10 +90,10 @@ impl Menu {
     }
   }
 
-  fn draw_loading_skeleton(&self, f: &mut Frame<'_>, area: Rect, focused: bool) {
+  fn draw_loading_skeleton(&self, f: &mut Frame<'_>, area: Rect, focused: bool, focus_hint: &str) {
     let border_style = if focused { Style::default().fg(Color::Green) } else { Style::new().dim() };
     let block = Block::default()
-      .title(" 󰦄  loading... <alt+1> (schema) ")
+      .title(format!(" 󰦄  loading...{focus_hint} (schema) "))
       .borders(Borders::ALL)
       .border_style(border_style)
       .padding(Padding { left: 0, right: 1, top: 0, bottom: 0 });
@@ -531,8 +531,13 @@ impl Component for Menu {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Menu;
+    let focus_hint = self
+      .config
+      .keybindings
+      .hint_for_action(app_state.focus, &Action::FocusMenu, "<alt+1>")
+      .map_or_else(String::new, |hint| format!(" {hint}"));
     if self.loading {
-      self.draw_loading_skeleton(f, area, focused);
+      self.draw_loading_skeleton(f, area, focused, &focus_hint);
       return Ok(());
     }
     let parent_block = Block::default();
@@ -574,7 +579,7 @@ impl Component for Menu {
       match i {
         x if x == self.schema_index => {
           let block = Block::default()
-            .title(format!(" 󰦄  {schema_label} <alt+1> (schema) "))
+            .title(format!(" 󰦄  {schema_label}{focus_hint} (schema) "))
             .borders(Borders::ALL)
             .border_style(if focused && self.menu_focus == MenuFocus::Schema {
               Style::default().fg(Color::Green)
@@ -753,6 +758,34 @@ mod tests {
   }
 
   #[test]
+  fn loading_skeleton_uses_configured_focus_hint() {
+    let mut menu = Menu::new();
+    let config: Config = toml::from_str(
+      r#"
+        [keybindings.Menu]
+        "<Alt-1>" = ""
+        "<Ctrl-h>" = "FocusMenu"
+      "#,
+    )
+    .unwrap();
+    menu.register_config_handler(config).unwrap();
+    let backend = ratatui::backend::TestBackend::new(40, 12);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal
+      .draw(|frame| {
+        menu.draw(frame, frame.area(), &app_state_with_focus(Focus::Menu)).unwrap();
+      })
+      .unwrap();
+
+    let rendered: String =
+      terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect();
+    assert!(rendered.contains("<ctrl+h>"));
+    assert!(!rendered.contains("<alt+1>"));
+  }
+
+  #[test]
+>>>>>>> 59c491f (unset default shortcuts, dynamic hints)
   fn failed_refresh_hides_skeleton_and_preserves_existing_menu() {
     let mut menu = Menu::new();
     menu.set_table_list(Some(Ok(Rows {

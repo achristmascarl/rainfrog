@@ -434,6 +434,7 @@ impl App {
         }
         let action_consumed = false;
         match &action {
+          Action::NoOp => {},
           Action::Tick => {
             self.last_tick_key_events.drain(..);
           },
@@ -740,11 +741,22 @@ impl App {
         self.last_frame_mouse_event = None;
       }
     }
-    let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+4>", "   favorites <alt+5>"])
-      .highlight_style(Style::new().fg(self.state.focus.tab_color()).reversed())
-      .select(self.last_focused_tab.tab_index())
-      .padding(" ", "")
-      .divider(" ");
+    let focus_hint = |action, preferred_hint| {
+      self
+        .config
+        .keybindings
+        .hint_for_action(self.state.focus, action, preferred_hint)
+        .map_or_else(String::new, |hint| format!(" {hint}"))
+    };
+    let tabs = Tabs::new(vec![
+      format!(" 󰤏 query{}", focus_hint(&Action::FocusEditor, "<alt+2>")),
+      format!("   history{}", focus_hint(&Action::FocusHistory, "<alt+4>")),
+      format!("   favorites{}", focus_hint(&Action::FocusFavorites, "<alt+5>")),
+    ])
+    .highlight_style(Style::new().fg(self.state.focus.tab_color()).reversed())
+    .select(self.last_focused_tab.tab_index())
+    .padding(" ", "")
+    .divider(" ");
 
     let state = &self.state;
 
