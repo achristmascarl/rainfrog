@@ -194,6 +194,21 @@ impl Editor<'_> {
     let _ = self.completion_command_tx.send(CompletionCommand::Cancel { generation });
   }
 
+  fn query_lines_to_submit(&self) -> Vec<String> {
+    if self.vim_state.mode == Mode::Visual
+      && let Some((start, end)) = self.textarea.selection_range()
+      && start != end
+    {
+      let mut selection = self.textarea.clone();
+      if selection.cursor() == end {
+        selection.move_cursor(CursorMove::Forward);
+      }
+      selection.copy();
+      return selection.yank_text().split('\n').map(str::to_owned).collect();
+    }
+    self.textarea.lines().to_vec()
+  }
+
   fn handle_completion_input(&mut self, input: Input, app_state: &AppState) -> bool {
     if !self.completion.is_visible() || self.vim_state.mode != Mode::Insert {
       return false;
@@ -309,7 +324,7 @@ impl Editor<'_> {
         if !app_state.query_task_running
           && let Some(sender) = &self.command_tx
         {
-          sender.send(Action::Query(self.textarea.lines().to_vec(), false, false))?;
+          sender.send(Action::Query(self.query_lines_to_submit(), false, false))?;
           self.vim_state = Vim::new(Mode::Normal);
           self.vim_state.register_action_handler(self.command_tx.clone())?;
           self.cursor_style = Mode::Normal.cursor_style();
@@ -463,12 +478,12 @@ impl Component for Editor<'_> {
       },
       Action::SubmitEditorQueryBypassParser => {
         if let Some(sender) = &self.command_tx {
-          sender.send(Action::Query(self.textarea.lines().to_vec(), false, true))?;
+          sender.send(Action::Query(self.query_lines_to_submit(), false, true))?;
         }
       },
       Action::SubmitEditorQuery => {
         if let Some(sender) = &self.command_tx {
-          sender.send(Action::Query(self.textarea.lines().to_vec(), false, false))?;
+          sender.send(Action::Query(self.query_lines_to_submit(), false, false))?;
         }
       },
       Action::QueryToEditor(lines) => {
@@ -850,6 +865,64 @@ mod tests {
     assert_eq!(action_rx.try_recv().unwrap(), Action::Query(vec!["sel".into()], false, false));
     assert_eq!(editor.vim_state.mode, Mode::Normal);
     assert!(!editor.completion.is_visible());
+  }
+
+  #[test]
+  fn submit_action_executes_non_empty_visual_selection() {
+    let mut editor = Editor::new();
+    editor.textarea = TextArea::from(["select 1;", "select 2;"]);
+    editor.textarea.move_cursor(CursorMove::Bottom);
+    editor.textarea.start_selection();
+    editor.textarea.move_cursor(CursorMove::End);
+    editor.vim_state = Vim::new(Mode::Visual);
+    let (action_tx, mut action_rx) = mpsc::unbounded_channel();
+    editor.register_action_handler(action_tx).unwrap();
+
+    editor.update(Action::SubmitEditorQuery, &app_state_with_focus(Focus::Editor)).unwrap();
+
+    assert_eq!(
+      action_rx.try_recv().unwrap(),
+      Action::Query(vec!["select 2;".into()], false, false)
+    );
+  }
+
+  #[test]
+  fn modified_enter_executes_non_empty_visual_selection() {
+    let mut editor = Editor::new();
+    editor.textarea = TextArea::from(["select 1;", "select 2;"]);
+    editor.textarea.move_cursor(CursorMove::Bottom);
+    editor.textarea.start_selection();
+    editor.textarea.move_cursor(CursorMove::End);
+    editor.vim_state = Vim::new(Mode::Visual);
+    let (action_tx, mut action_rx) = mpsc::unbounded_channel();
+    editor.register_action_handler(action_tx).unwrap();
+
+    editor
+      .transition_vim_state(
+        Input { key: Key::Enter, ctrl: false, alt: true, shift: false },
+        &app_state_with_focus(Focus::Editor),
+      )
+      .unwrap();
+
+    assert_eq!(
+      action_rx.try_recv().unwrap(),
+      Action::Query(vec!["select 2;".into()], false, false)
+    );
+  }
+
+  #[test]
+  fn query_submission_requires_visual_mode_and_non_empty_selection() {
+    let mut editor = Editor::new();
+    editor.textarea = TextArea::from(["select 1;", "select 2;"]);
+    editor.textarea.start_selection();
+    editor.vim_state = Vim::new(Mode::Visual);
+
+    assert_eq!(editor.query_lines_to_submit(), ["select 1;", "select 2;"]);
+
+    editor.textarea.move_cursor(CursorMove::End);
+    editor.vim_state = Vim::new(Mode::Normal);
+
+    assert_eq!(editor.query_lines_to_submit(), ["select 1;", "select 2;"]);
   }
 
   #[test]
