@@ -785,7 +785,6 @@ mod tests {
   }
 
   #[test]
->>>>>>> 59c491f (unset default shortcuts, dynamic hints)
   fn failed_refresh_hides_skeleton_and_preserves_existing_menu() {
     let mut menu = Menu::new();
     menu.set_table_list(Some(Ok(Rows {
