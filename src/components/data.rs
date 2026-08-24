@@ -554,6 +554,11 @@ impl Component for Data<'_> {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Data;
+    let focus_hint = self
+      .config
+      .keybindings
+      .hint_for_action(app_state.focus, &Action::FocusData, "<alt+3>")
+      .map_or_else(String::new, |hint| format!(" {hint}"));
 
     let mut block = Block::default().borders(Borders::ALL).border_style(if focused {
       Style::new().green()
@@ -577,25 +582,30 @@ impl Component for Data<'_> {
       let row = &rows[y];
       let title_string = match self.scrollable.get_selection_mode() {
         Some(SelectionMode::Row) => {
-          format!(" 󰆼 results <alt+3> (row {} of {})", y.saturating_add(1), rows.len())
+          format!(" 󰆼 results{focus_hint} (row {} of {})", y.saturating_add(1), rows.len())
         },
         Some(SelectionMode::Cell) => {
           let cell = row
             .get(x)
             .map(|c| Self::preview_text(c, TITLE_CELL_PREVIEW_MAX_CHARS))
             .unwrap_or_default();
-          format!(" 󰆼 results <alt+3> (row {} of {}) - {} ", y.saturating_add(1), rows.len(), cell)
+          format!(
+            " 󰆼 results{focus_hint} (row {} of {}) - {} ",
+            y.saturating_add(1),
+            rows.len(),
+            cell
+          )
         },
         Some(SelectionMode::Copied) => {
-          format!(" 󰆼 results <alt+3> ({} rows) - copied! ", rows.len())
+          format!(" 󰆼 results{focus_hint} ({} rows) - copied! ", rows.len())
         },
-        _ => format!(" 󰆼 results <alt+3> ({} rows)", rows.len()),
+        _ => format!(" 󰆼 results{focus_hint} ({} rows)", rows.len()),
       };
       block = block.title(title_string);
     } else {
       let title_string = match self.scrollable.get_selection_mode() {
-        Some(SelectionMode::Copied) => " 󰆼 results <alt+3> - copied! ",
-        _ => " 󰆼 results <alt+3>",
+        Some(SelectionMode::Copied) => format!(" 󰆼 results{focus_hint} - copied! "),
+        _ => format!(" 󰆼 results{focus_hint}"),
       };
       block = block.title(title_string);
     }

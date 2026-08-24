@@ -32,6 +32,10 @@ pub enum ExportFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
 pub enum Action {
+  // An explicitly disabled keybinding. The empty serde name lets it act as a
+  // tombstone while user bindings are merged with the defaults.
+  #[serde(rename = "")]
+  NoOp,
   Tick,
   Render,
   Resize(u16, u16),

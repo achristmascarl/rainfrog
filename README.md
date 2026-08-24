@@ -403,6 +403,16 @@ them. to see a list of the ones you can customize, see the default
 config file at [.config/rainfrog_config.toml](./.config/rainfrog_config.toml). below
 are the default keybindings.
 
+set a keybinding's action to an empty string (`""`) to disable it. keybindings
+are scoped to their section, so a binding must be disabled separately in each
+focus where it should no longer apply.
+
+```toml
+[keybindings.Menu]
+"<Alt-1>" = ""
+"<Ctrl-h>" = "FocusMenu"
+```
+
 <!-- TOC --><a name="nb-for-mac-users"></a>
 #### n.b. for mac users
 on mac, for VS Code, terminal, kitty, and others, a setting for
