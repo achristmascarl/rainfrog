@@ -424,6 +424,8 @@ kitty, it's `macos_option_as_alt yes` in the config.)
 | `Alt+5`, `Ctrl+m`            | change focus to query favorites |
 | `Tab`                        | cycle focus forwards            |
 | `Shift+Tab`                  | cycle focus backwards           |
+| `Alt+-`                      | decrease focused section size   |
+| `Alt++`                      | increase focused section size   |
 | `q`, `Alt+q` in query editor | abort current query             |
 
 <!-- TOC --><a name="menu-list-of-schemas-and-tables"></a>
