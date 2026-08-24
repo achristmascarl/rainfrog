@@ -39,6 +39,16 @@ use crate::{
   ui::center,
 };
 
+const DEFAULT_MENU_WIDTH_PERCENT: u16 = 25;
+const DEFAULT_TABS_HEIGHT_PERCENT: u16 = 45;
+const MIN_SECTION_PERCENT: u16 = 10;
+const MAX_SECTION_PERCENT: u16 = 90;
+const SECTION_RESIZE_STEP: i16 = 5;
+
+fn resized_percent(percent: u16, delta: i16) -> u16 {
+  (percent as i16 + delta).clamp(MIN_SECTION_PERCENT as i16, MAX_SECTION_PERCENT as i16) as u16
+}
+
 pub struct HistoryEntry {
   pub query_lines: Vec<String>,
   pub timestamp: chrono::DateTime<chrono::Local>,
@@ -74,6 +84,8 @@ pub struct App {
   last_focused_component: Focus,
   popup: Option<Box<dyn PopUp>>,
   completion: CompletionCoordinator,
+  menu_width_percent: u16,
+  tabs_height_percent: u16,
 }
 
 impl App {
@@ -113,6 +125,8 @@ impl App {
       last_focused_component: focus,
       popup: None,
       completion,
+      menu_width_percent: DEFAULT_MENU_WIDTH_PERCENT,
+      tabs_height_percent: DEFAULT_TABS_HEIGHT_PERCENT,
     })
   }
 
@@ -166,6 +180,23 @@ impl App {
       Focus::History => self.set_focus(Focus::History),
       Focus::Favorites => self.set_focus(Focus::Favorites),
       _ => {},
+    }
+  }
+
+  fn resize_focused_section(&mut self, delta: i16) {
+    match self.state.focus {
+      Focus::Menu => {
+        self.menu_width_percent = resized_percent(self.menu_width_percent, delta);
+      },
+      Focus::Editor | Focus::History | Focus::Favorites => {
+        self.tabs_height_percent = resized_percent(self.tabs_height_percent, delta);
+      },
+      // the stored percentage is the upper section's share, so growing
+      // the results pane means shrinking the stored value
+      Focus::Data => {
+        self.tabs_height_percent = resized_percent(self.tabs_height_percent, -delta);
+      },
+      Focus::PopUp => {},
     }
   }
 
@@ -440,6 +471,12 @@ impl App {
             Focus::Favorites => self.set_focus(Focus::History),
             Focus::PopUp => {},
           },
+          Action::IncreaseSectionSize => {
+            self.resize_focused_section(SECTION_RESIZE_STEP);
+          },
+          Action::DecreaseSectionSize => {
+            self.resize_focused_section(-SECTION_RESIZE_STEP);
+          },
           Action::LoadMenu => {
             self.components.menu.set_table_list(None);
             self.completion.start_menu_load(database.as_ref())?;
@@ -645,11 +682,17 @@ impl App {
       .split(f.area());
     let root_layout = Layout::default()
       .direction(Direction::Horizontal)
-      .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
+      .constraints([
+        Constraint::Percentage(self.menu_width_percent),
+        Constraint::Percentage(100 - self.menu_width_percent),
+      ])
       .split(hints_layout[0]);
     let right_layout = Layout::default()
       .direction(Direction::Vertical)
-      .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+      .constraints([
+        Constraint::Percentage(self.tabs_height_percent),
+        Constraint::Percentage(100 - self.tabs_height_percent),
+      ])
       .split(root_layout[1]);
     let tabs_layout = Layout::default()
       .direction(Direction::Vertical)
@@ -782,5 +825,129 @@ impl App {
       popup_actions,
       center(layout[1], Constraint::Fill(1), Constraint::Percentage(50)),
     );
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use pretty_assertions::assert_eq;
+
+  use super::*;
+  use crate::components::app_state_with_focus;
+
+  fn test_app(focus: Focus) -> App {
+    let (completion, completion_client) = CompletionCoordinator::new();
+    App {
+      components: Components {
+        menu: Box::new(Menu::new()),
+        editor: Box::new(Editor::with_completion_channels(completion_client)),
+        history: Box::new(History::new()),
+        data: Box::new(Data::new()),
+        favorites: Box::new(Favorites::new()),
+      },
+      should_quit: false,
+      mouse_mode_override: None,
+      config: Config::default(),
+      last_tick_key_events: Vec::new(),
+      last_frame_mouse_event: None,
+      state: app_state_with_focus(focus),
+      last_focused_tab: Focus::Editor,
+      last_focused_component: focus,
+      popup: None,
+      completion,
+      menu_width_percent: DEFAULT_MENU_WIDTH_PERCENT,
+      tabs_height_percent: DEFAULT_TABS_HEIGHT_PERCENT,
+    }
+  }
+
+  #[test]
+  fn test_resized_percent_steps_and_clamps() {
+    assert_eq!(resized_percent(25, 5), 30);
+    assert_eq!(resized_percent(25, -5), 20);
+    assert_eq!(resized_percent(90, 5), 90);
+    assert_eq!(resized_percent(10, -5), 10);
+  }
+
+  #[test]
+  fn test_resize_focused_section_menu() {
+    let mut app = test_app(Focus::Menu);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    assert_eq!(app.menu_width_percent, 30);
+    assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
+    app.resize_focused_section(-SECTION_RESIZE_STEP);
+    assert_eq!(app.menu_width_percent, DEFAULT_MENU_WIDTH_PERCENT);
+  }
+
+  #[test]
+  fn test_resize_focused_section_tabs() {
+    for focus in [Focus::Editor, Focus::History, Focus::Favorites] {
+      let mut app = test_app(focus);
+      app.resize_focused_section(SECTION_RESIZE_STEP);
+      assert_eq!(app.tabs_height_percent, 50, "focus: {focus:?}");
+      assert_eq!(app.menu_width_percent, DEFAULT_MENU_WIDTH_PERCENT, "focus: {focus:?}");
+    }
+  }
+
+  #[test]
+  fn test_resize_focused_section_data_inverts() {
+    let mut app = test_app(Focus::Data);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    assert_eq!(app.tabs_height_percent, 40);
+    app.resize_focused_section(-SECTION_RESIZE_STEP);
+    assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
+  }
+
+  #[test]
+  fn test_draw_layout_applies_resized_percentages() {
+    use ratatui::{Terminal, backend::TestBackend};
+
+    // returns (right region start column, data block top row): the tab-content
+    // block's top-left corner marks the menu width, and the first corner below
+    // it marks where the results section begins
+    fn markers(
+      app: &mut App,
+      terminal: &mut Terminal<TestBackend>,
+      tx: &mpsc::UnboundedSender<Action>,
+    ) -> (u16, u16) {
+      terminal.draw(|f| app.draw_layout(f, tx.clone()).unwrap()).unwrap();
+      let buf = terminal.backend().buffer();
+      let right_start = (0u16..100)
+        .find(|&x| buf.cell(Position::new(x, 1)).unwrap().symbol() == "┌")
+        .expect("tab content block top border not found");
+      let data_top = (2u16..42)
+        .find(|&y| buf.cell(Position::new(right_start, y)).unwrap().symbol() == "┌")
+        .expect("data block top border not found");
+      (right_start, data_top)
+    }
+
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut app = test_app(Focus::Menu);
+    // 100x42: each width percent is one column, and with the two hint rows the
+    // 40-row main area makes each 5% step exactly two rows
+    let mut terminal = Terminal::new(TestBackend::new(100, 42)).unwrap();
+
+    assert_eq!(markers(&mut app, &mut terminal, &tx), (25, 18));
+
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    assert_eq!(markers(&mut app, &mut terminal, &tx), (40, 18));
+
+    app.state.focus = Focus::Editor;
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    assert_eq!(markers(&mut app, &mut terminal, &tx), (40, 20));
+
+    app.state.focus = Focus::Data;
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    assert_eq!(markers(&mut app, &mut terminal, &tx), (40, 16));
+  }
+
+  #[test]
+  fn test_resize_focused_section_popup_noop() {
+    let mut app = test_app(Focus::PopUp);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    assert_eq!(app.menu_width_percent, DEFAULT_MENU_WIDTH_PERCENT);
+    assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
   }
 }

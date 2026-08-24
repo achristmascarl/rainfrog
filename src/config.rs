@@ -672,6 +672,36 @@ mod tests {
   }
 
   #[test]
+  fn test_default_config_section_resize_bindings() {
+    let c: Config = toml::from_str(CONFIG).unwrap();
+    for focus in [Focus::Menu, Focus::Editor, Focus::History, Focus::Data, Focus::Favorites] {
+      let keymap = c.keybindings.get(&focus).unwrap();
+      assert_eq!(
+        keymap.get(&parse_key_sequence("<Alt-minus>").unwrap()),
+        Some(&Action::DecreaseSectionSize),
+        "missing decrease binding for {focus:?}"
+      );
+      assert_eq!(
+        keymap.get(&parse_key_sequence("<Alt-+>").unwrap()),
+        Some(&Action::IncreaseSectionSize),
+        "missing increase binding for {focus:?}"
+      );
+      assert_eq!(
+        keymap.get(&parse_key_sequence("<Alt-shift-+>").unwrap()),
+        Some(&Action::IncreaseSectionSize),
+        "missing shifted increase binding for {focus:?}"
+      );
+    }
+    let popup = c.keybindings.get(&Focus::PopUp).unwrap();
+    assert!(
+      !popup
+        .values()
+        .any(|a| matches!(a, Action::IncreaseSectionSize | Action::DecreaseSectionSize)),
+      "popup must not have resize bindings"
+    );
+  }
+
+  #[test]
   fn test_simple_keys() {
     assert_eq!(
       parse_key_event("a").unwrap(),

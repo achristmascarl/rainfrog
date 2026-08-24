@@ -57,6 +57,8 @@ pub enum Action {
   FocusFavorites,
   CycleFocusForwards,
   CycleFocusBackwards,
+  IncreaseSectionSize,
+  DecreaseSectionSize,
   LoadMenu,
   CopyData(String),
   RequestExportData(i64),
