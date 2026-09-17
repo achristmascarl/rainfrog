@@ -39,9 +39,9 @@ the levels of support for different databases can be split into 4 tiers:
 | postgres | 1 |  | |
 | mysql | 2 |  | |
 | sqlite | 2  |          | |
-| redshift| 2  |          | postgres |
-| duckdb | 3 | prebuilt duckdb and musl binaries do not include this driver      | |
-| oracle | 4 | requires additional runtime dependencies          | |
+| redshift | 2 |          | postgres |
+| duckdb | 2 | prebuilt android, i686, and musl binaries do not include this driver      | |
+| oracle | 3 | requires additional runtime dependencies          | |
 
 
 
