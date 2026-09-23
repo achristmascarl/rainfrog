@@ -86,12 +86,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.88
-          target: ${{ matrix.target }}
-          profile: minimal
-          override: true
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
@@ -110,7 +107,7 @@ jobs:
         env:
           RUSTFLAGS: ${{ matrix.rust-crossflags }}
         with:
-          toolchain: 1.88
+          toolchain: stable
           command: build
           target: ${{ matrix.target }}
           args: "--release ${{ matrix.features }}"
@@ -120,7 +117,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          toolchain: 1.88
+          toolchain: stable
           args: --release --target ${{ matrix.target }} ${{ matrix.features }}
 
       - name: Packaging final binary
