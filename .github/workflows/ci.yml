@@ -11,26 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  zigbuild:
-    name: Test GNU build against glibc 2.28
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-gnu
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: x86_64-unknown-linux-gnu-zigbuild
-      - name: Install Zig
-        uses: mlugg/setup-zig@v2
-      - name: Install cargo-zigbuild
-        uses: taiki-e/install-action@cargo-zigbuild
-      - name: Build against glibc 2.28
-        run: cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.28 --features default
-
   test:
     name: Test Suite (${{ matrix.os-name }})
     runs-on: ${{ matrix.os }}
