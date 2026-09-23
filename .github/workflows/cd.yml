@@ -34,6 +34,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary-postfix: ""
             use-cross: false
+            use-zigbuild: true
             binary-name: rainfrog
             features: --features default
           - os: windows-latest
@@ -45,13 +46,15 @@ jobs:
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             binary-postfix: ""
-            use-cross: true
+            use-cross: false
+            use-zigbuild: true
             binary-name: rainfrog
             features: --features default
           - os: ubuntu-latest
             target: i686-unknown-linux-gnu
             binary-postfix: ""
-            use-cross: true
+            use-cross: false
+            use-zigbuild: true
             binary-name: rainfrog
             features: --features arboard,oracle --no-default-features
           - os: ubuntu-latest
@@ -83,32 +86,38 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.88
-          target: ${{ matrix.target }}
-          profile: minimal
-          override: true
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - name: Install Zig
+        if: ${{ matrix.use-zigbuild == true }}
+        uses: mlugg/setup-zig@v2
+      - name: Install cargo-zigbuild
+        if: ${{ matrix.use-zigbuild == true }}
+        uses: taiki-e/install-action@cargo-zigbuild
+      - name: Cargo zigbuild
+        if: ${{ matrix.use-zigbuild == true }}
+        run: cargo zigbuild --release --target ${{ matrix.target }}.2.28 ${{ matrix.features }}
       - name: Cross build
         if: ${{ matrix.use-cross == true }}
         uses: houseabsolute/actions-rust-cross@v0
         env:
           RUSTFLAGS: ${{ matrix.rust-crossflags }}
         with:
-          toolchain: 1.88
+          toolchain: stable
           command: build
           target: ${{ matrix.target }}
           args: "--release ${{ matrix.features }}"
           cross-version: 51f46f296253d8122c927c5bb933e3c4f27cc317
       - name: Cargo build
-        if: ${{ matrix.use-cross != true }}
+        if: ${{ matrix.use-cross != true && matrix.use-zigbuild != true }}
         uses: actions-rs/cargo@v1
         with:
           command: build
-          toolchain: 1.88
+          toolchain: stable
           args: --release --target ${{ matrix.target }} ${{ matrix.features }}
 
       - name: Packaging final binary
