@@ -535,7 +535,7 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 
 | keybinding                | description                    |
 | ------------------------- | ------------------------------ |
-| `F`                       | toggle full-screen results     |
+| `F`                       | maximize results with menu/tabs at minimum size; press again to restore the previous layout |
 | `P`                       | export results to csv          |
 | `j`, `↓`                  | scroll down by 1 row           |
 | `k`, `↑`                  | scroll up by 1 row             |
