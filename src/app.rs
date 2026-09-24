@@ -86,6 +86,7 @@ pub struct App {
   completion: CompletionCoordinator,
   menu_width_percent: u16,
   tabs_height_percent: u16,
+  data_fullscreen_restore: Option<(u16, u16)>,
 }
 
 fn format_footer_key_hint(hint: &str) -> String {
@@ -142,7 +143,7 @@ fn footer_help_text(config: &Config, focus: Focus, query_task_running: bool) -> 
     Focus::Favorites =>
       "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search".to_owned(),
     Focus::Data if !query_task_running =>
-      "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [Y] copy all [g] top [G] bottom [0] first col [$] last col".to_owned(),
+      "[F] toggle full screen [P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [Y] copy all [g] top [G] bottom [0] first col [$] last col".to_owned(),
     Focus::PopUp => "[<esc>] cancel".to_owned(),
     _ => String::new(),
   };
@@ -189,6 +190,7 @@ impl App {
       completion,
       menu_width_percent: DEFAULT_MENU_WIDTH_PERCENT,
       tabs_height_percent: DEFAULT_TABS_HEIGHT_PERCENT,
+      data_fullscreen_restore: None,
     })
   }
 
@@ -259,6 +261,21 @@ impl App {
         self.tabs_height_percent = resized_percent(self.tabs_height_percent, -delta);
       },
       Focus::PopUp => {},
+    }
+  }
+
+  fn toggle_data_fullscreen(&mut self) {
+    if self.menu_width_percent == MIN_SECTION_PERCENT
+      && self.tabs_height_percent == MIN_SECTION_PERCENT
+    {
+      (self.menu_width_percent, self.tabs_height_percent) = self
+        .data_fullscreen_restore
+        .take()
+        .unwrap_or((DEFAULT_MENU_WIDTH_PERCENT, DEFAULT_TABS_HEIGHT_PERCENT));
+    } else {
+      self.data_fullscreen_restore = Some((self.menu_width_percent, self.tabs_height_percent));
+      self.menu_width_percent = MIN_SECTION_PERCENT;
+      self.tabs_height_percent = MIN_SECTION_PERCENT;
     }
   }
 
@@ -539,6 +556,9 @@ impl App {
           },
           Action::DecreaseSectionSize => {
             self.resize_focused_section(-SECTION_RESIZE_STEP);
+          },
+          Action::ToggleDataFullscreen => {
+            self.toggle_data_fullscreen();
           },
           Action::LoadMenu => {
             self.components.menu.set_table_list(None);
@@ -911,6 +931,7 @@ mod tests {
       completion,
       menu_width_percent: DEFAULT_MENU_WIDTH_PERCENT,
       tabs_height_percent: DEFAULT_TABS_HEIGHT_PERCENT,
+      data_fullscreen_restore: None,
     }
   }
 
@@ -948,6 +969,69 @@ mod tests {
     app.resize_focused_section(SECTION_RESIZE_STEP);
     assert_eq!(app.tabs_height_percent, 40);
     app.resize_focused_section(-SECTION_RESIZE_STEP);
+    assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
+  }
+
+  #[test]
+  fn test_fullscreen_keeps_minimum_panes_and_restores_both_splits() {
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut app = test_app(Focus::Data);
+    let mut terminal = Terminal::new(TestBackend::new(100, 42)).unwrap();
+
+    for (menu_width, tabs_height) in [
+      (DEFAULT_MENU_WIDTH_PERCENT, DEFAULT_TABS_HEIGHT_PERCENT),
+      (40, 70),
+      (MIN_SECTION_PERCENT, 70),
+      (40, MIN_SECTION_PERCENT),
+    ] {
+      app.menu_width_percent = menu_width;
+      app.tabs_height_percent = tabs_height;
+      terminal.draw(|f| app.draw_layout(f, tx.clone()).unwrap()).unwrap();
+      let before = terminal.backend().buffer().clone();
+
+      app.toggle_data_fullscreen();
+      terminal.draw(|f| app.draw_layout(f, tx.clone()).unwrap()).unwrap();
+      let fullscreen = terminal.backend().buffer();
+      // The menu retains 10 columns, and tabs retain 4 of the 40 main rows.
+      for (x, y, symbol) in
+        [(10, 1, "┌"), (99, 3, "┘"), (10, 4, "┌"), (99, 4, "┐"), (10, 39, "└"), (99, 39, "┘")]
+      {
+        assert_eq!(fullscreen.cell(Position::new(x, y)).unwrap().symbol(), symbol);
+      }
+
+      app.toggle_data_fullscreen();
+      terminal.draw(|f| app.draw_layout(f, tx.clone()).unwrap()).unwrap();
+      assert_eq!(terminal.backend().buffer(), &before);
+      assert_eq!((app.menu_width_percent, app.tabs_height_percent), (menu_width, tabs_height));
+    }
+  }
+
+  #[test]
+  fn test_fullscreen_after_manual_resizing_restores_latest_split() {
+    let mut app = test_app(Focus::Data);
+    app.menu_width_percent = 40;
+    app.tabs_height_percent = 70;
+    app.toggle_data_fullscreen();
+    app.set_focus(Focus::Menu);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    app.set_focus(Focus::Data);
+    app.resize_focused_section(-SECTION_RESIZE_STEP);
+    assert_eq!((app.menu_width_percent, app.tabs_height_percent), (15, 15));
+    app.toggle_data_fullscreen();
+    assert_eq!((app.menu_width_percent, app.tabs_height_percent), (10, 10));
+    app.toggle_data_fullscreen();
+    assert_eq!((app.menu_width_percent, app.tabs_height_percent), (15, 15));
+  }
+
+  #[test]
+  fn test_manually_maximized_data_restores_default_without_saved_split() {
+    let mut app = test_app(Focus::Data);
+    app.menu_width_percent = MIN_SECTION_PERCENT;
+    app.tabs_height_percent = MIN_SECTION_PERCENT;
+    app.toggle_data_fullscreen();
+    assert_eq!(app.menu_width_percent, DEFAULT_MENU_WIDTH_PERCENT);
     assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
   }
 

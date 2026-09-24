@@ -400,6 +400,9 @@ impl Component for Data<'_> {
     }
     let input = Input::from(key);
     match input {
+      Input { key: Key::Char('F'), .. } => {
+        self.command_tx.clone().unwrap().send(Action::ToggleDataFullscreen)?;
+      },
       Input { key: Key::Char('P'), .. } => {
         if let DataState::HasResults(rows) = &self.data_state {
           self
@@ -902,6 +905,26 @@ mod tests {
       panic!("expected the yanked table to be copied");
     };
     assert_eq!(yanked, "id\n---\n1\n2\n");
+  }
+
+  #[test]
+  fn uppercase_f_requests_fullscreen_toggle() {
+    let app_state = crate::components::app_state_with_focus(Focus::Data);
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut data = Data::new();
+    data.register_action_handler(tx).unwrap();
+
+    data
+      .handle_key_events(
+        crossterm::event::KeyEvent::new(
+          crossterm::event::KeyCode::Char('F'),
+          crossterm::event::KeyModifiers::SHIFT,
+        ),
+        &app_state,
+      )
+      .unwrap();
+
+    assert_eq!(rx.try_recv(), Ok(Action::ToggleDataFullscreen));
   }
 
   #[test]
