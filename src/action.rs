@@ -63,6 +63,7 @@ pub enum Action {
   CycleFocusBackwards,
   IncreaseSectionSize,
   DecreaseSectionSize,
+  ToggleDataFullscreen,
   LoadMenu,
   CopyData(String),
   RequestExportData(i64),

@@ -142,7 +142,7 @@ fn footer_help_text(config: &Config, focus: Focus, query_task_running: bool) -> 
     Focus::Favorites =>
       "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search".to_owned(),
     Focus::Data if !query_task_running =>
-      "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [Y] copy all [g] top [G] bottom [0] first col [$] last col".to_owned(),
+      "[F] toggle full screen [P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [Y] copy all [g] top [G] bottom [0] first col [$] last col".to_owned(),
     Focus::PopUp => "[<esc>] cancel".to_owned(),
     _ => String::new(),
   };
@@ -260,6 +260,14 @@ impl App {
       },
       Focus::PopUp => {},
     }
+  }
+
+  fn toggle_data_fullscreen(&mut self) {
+    self.tabs_height_percent = if self.tabs_height_percent == MIN_SECTION_PERCENT {
+      DEFAULT_TABS_HEIGHT_PERCENT
+    } else {
+      MIN_SECTION_PERCENT
+    };
   }
 
   fn last_focused_component(&mut self) {
@@ -539,6 +547,9 @@ impl App {
           },
           Action::DecreaseSectionSize => {
             self.resize_focused_section(-SECTION_RESIZE_STEP);
+          },
+          Action::ToggleDataFullscreen => {
+            self.toggle_data_fullscreen();
           },
           Action::LoadMenu => {
             self.components.menu.set_table_list(None);
@@ -949,6 +960,21 @@ mod tests {
     assert_eq!(app.tabs_height_percent, 40);
     app.resize_focused_section(-SECTION_RESIZE_STEP);
     assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
+  }
+
+  #[test]
+  fn test_toggle_data_fullscreen() {
+    let mut app = test_app(Focus::Data);
+
+    app.toggle_data_fullscreen();
+    assert_eq!(app.tabs_height_percent, MIN_SECTION_PERCENT);
+
+    app.toggle_data_fullscreen();
+    assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
+
+    app.tabs_height_percent = 70;
+    app.toggle_data_fullscreen();
+    assert_eq!(app.tabs_height_percent, MIN_SECTION_PERCENT);
   }
 
   #[test]
