@@ -27,7 +27,7 @@ const AUTOPAIRS: [(char, char); 6] =
   [('\'', '\''), ('"', '"'), ('[', ']'), ('{', '}'), ('(', ')'), ('`', '`')];
 
 fn keyword_regex() -> String {
-  format!("(?i)(^|[^a-zA-Z0-9\'\"`._]+)({})($|[^a-zA-Z0-9\'\"`._]+)", get_keywords().join("|"))
+  format!("(?i)(^|[^a-zA-Z0-9\'\"`._]+)({})\\b", get_keywords().join("|"))
 }
 
 #[derive(Default)]
@@ -564,6 +564,30 @@ mod tests {
   use crate::completion::{CompletionKind, CompletionSource, CursorPosition, TextRange};
   use crate::{components::app_state_with_focus, tui::Event};
   use crossterm::event::KeyCode;
+  use ratatui::backend::TestBackend;
+
+  #[test]
+  fn highlights_consecutive_keywords() {
+    let mut editor = Editor::new();
+    editor.textarea = TextArea::from(["SELECT FROM WHERE"]);
+    editor.textarea.set_search_pattern(keyword_regex()).unwrap();
+    editor.textarea.move_cursor(CursorMove::End);
+    let mut terminal = Terminal::new(TestBackend::new(30, 3)).unwrap();
+
+    terminal
+      .draw(|frame| editor.draw(frame, frame.area(), &app_state_with_focus(Focus::Editor)).unwrap())
+      .unwrap();
+
+    let highlighted: String = terminal
+      .backend()
+      .buffer()
+      .content
+      .iter()
+      .filter(|cell| cell.fg == Color::Magenta && cell.symbol() != " ")
+      .map(|cell| cell.symbol())
+      .collect();
+    assert_eq!(highlighted, "SELECTFROMWHERE");
+  }
 
   fn response(candidates: &[&str]) -> CompletionResponse {
     CompletionResponse {
