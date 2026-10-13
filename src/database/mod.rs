@@ -107,7 +107,9 @@ pub enum DbTaskResult {
   NoTask,
 }
 
+// async_trait adds #[must_use] to methods returning futures, which are already must-use.
 #[async_trait(?Send)]
+#[allow(clippy::double_must_use)]
 pub trait Database {
   /// Returns the built-in functions available for completion for this driver.
   fn builtin_functions(&self) -> &'static [&'static str];
