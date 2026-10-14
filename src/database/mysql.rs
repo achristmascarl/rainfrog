@@ -25,7 +25,7 @@ use super::{
 use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
 type MySqlTransaction = sqlx::Transaction<'static, MySql>;
-type ConnectionTask = JoinHandle<Result<(Arc<Mutex<PoolConnection<MySql>>>, u64)>>;
+type ConnectionTask = JoinHandle<Result<(Arc<Mutex<PoolConnection<MySql>>>, u64, bool)>>;
 type TransactionAcquireTask = JoinHandle<Result<(MySqlTransaction, u64)>>;
 type TransactionTask = JoinHandle<(QueryResultsWithMetadata, MySqlTransaction)>;
 enum MySqlTask {
@@ -113,8 +113,12 @@ impl Database for MySqlDriver {
       handle: tokio::spawn(
         async move {
           let conn = Arc::new(Mutex::new(pool.acquire().await?));
-          let pid = connection_pid(conn.lock().await.as_mut()).await?;
-          Ok((conn, pid))
+          let mut guard = conn.lock().await;
+          let pid = connection_pid(guard.as_mut()).await?;
+          let no_backslash_escapes =
+            if bypass_parser { session_no_backslash_escapes(guard.as_mut()).await? } else { false };
+          drop(guard);
+          Ok((conn, pid, no_backslash_escapes))
         }
         .in_current_span(),
       ),
@@ -165,10 +169,15 @@ impl Database for MySqlDriver {
           )
         } else {
           match handle.await? {
-            Ok((conn, pid)) => {
+            Ok((conn, pid, no_backslash_escapes)) => {
               log::info!("Starting query with PID {}", pid.clone());
               self.querying_conn = Some(conn.clone());
               self.querying_pid = Some(pid.to_string());
+              let first_query = if statement_type.is_none() {
+                preprocess_delimiter_script(first_query, no_backslash_escapes)
+              } else {
+                first_query
+              };
               (
                 DbTaskResult::Pending,
                 Some(MySqlTask::Query(spawn_query_task(conn, first_query, statement_type))),
@@ -555,6 +564,256 @@ fn spawn_query_task(
   })
 }
 
+#[derive(Clone, Copy)]
+enum ScriptState {
+  Normal,
+  SingleQuoted,
+  DoubleQuoted,
+  Backtick,
+  LineComment,
+  BlockComment,
+}
+
+fn preprocess_delimiter_script(query: String, mut no_backslash_escapes: bool) -> String {
+  let mut delimiter = ";".to_owned();
+  let mut statements = Vec::new();
+  let mut statement = String::new();
+  let mut state = ScriptState::Normal;
+  let mut ends_with_line_comment = false;
+  let mut saw_directive = false;
+  let mut index = 0;
+
+  while index < query.len() {
+    if matches!(state, ScriptState::Normal) && (index == 0 || query.as_bytes()[index - 1] == b'\n')
+    {
+      let line_end = query[index..].find('\n').map_or(query.len(), |offset| index + offset);
+      if let Some(new_delimiter) = delimiter_directive(&query[index..line_end]) {
+        saw_directive = true;
+        if let Some(new_delimiter) = new_delimiter {
+          delimiter = new_delimiter.to_owned();
+        }
+        index = if line_end < query.len() { line_end + 1 } else { line_end };
+        continue;
+      }
+    }
+
+    let remaining = &query[index..];
+    if matches!(state, ScriptState::Normal)
+      && !delimiter.is_empty()
+      && remaining.starts_with(&delimiter)
+    {
+      if !statement.trim().is_empty() {
+        if let Some(enabled) = no_backslash_escapes_setting(&statement) {
+          no_backslash_escapes = enabled;
+        }
+        statements.push((statement.trim().to_owned(), ends_with_line_comment));
+      }
+      statement.clear();
+      ends_with_line_comment = false;
+      index += delimiter.len();
+      continue;
+    }
+
+    let mut chars = remaining.chars();
+    let current = chars.next().unwrap();
+    let next = chars.next();
+    let third = chars.next();
+
+    match state {
+      ScriptState::Normal => match (current, next) {
+        ('\'', _) => {
+          state = ScriptState::SingleQuoted;
+          ends_with_line_comment = false;
+          statement.push(current);
+          index += current.len_utf8();
+        },
+        ('"', _) => {
+          state = ScriptState::DoubleQuoted;
+          ends_with_line_comment = false;
+          statement.push(current);
+          index += current.len_utf8();
+        },
+        ('`', _) => {
+          state = ScriptState::Backtick;
+          ends_with_line_comment = false;
+          statement.push(current);
+          index += current.len_utf8();
+        },
+        ('#', _) => {
+          state = ScriptState::LineComment;
+          ends_with_line_comment = true;
+          statement.push(current);
+          index += current.len_utf8();
+        },
+        ('-', Some('-')) if third.is_some_and(|c| c.is_whitespace() || c.is_control()) => {
+          state = ScriptState::LineComment;
+          ends_with_line_comment = true;
+          statement.push_str("--");
+          index += 2;
+        },
+        ('/', Some('*')) => {
+          state = ScriptState::BlockComment;
+          ends_with_line_comment = false;
+          statement.push_str("/*");
+          index += 2;
+        },
+        _ => {
+          if !current.is_whitespace() {
+            ends_with_line_comment = false;
+          }
+          statement.push(current);
+          index += current.len_utf8();
+        },
+      },
+      ScriptState::SingleQuoted | ScriptState::DoubleQuoted | ScriptState::Backtick => {
+        let quote = match state {
+          ScriptState::SingleQuoted => '\'',
+          ScriptState::DoubleQuoted => '"',
+          ScriptState::Backtick => '`',
+          _ => unreachable!(),
+        };
+        statement.push(current);
+        index += current.len_utf8();
+
+        if current == '\\' && !no_backslash_escapes && !matches!(state, ScriptState::Backtick) {
+          if let Some(next) = next {
+            statement.push(next);
+            index += next.len_utf8();
+          }
+        } else if current == quote {
+          if next == Some(quote) {
+            statement.push(quote);
+            index += quote.len_utf8();
+          } else {
+            state = ScriptState::Normal;
+          }
+        }
+      },
+      ScriptState::LineComment => {
+        statement.push(current);
+        index += current.len_utf8();
+        if current == '\n' {
+          state = ScriptState::Normal;
+        }
+      },
+      ScriptState::BlockComment => {
+        if current == '*' && next == Some('/') {
+          statement.push_str("*/");
+          index += 2;
+          state = ScriptState::Normal;
+        } else {
+          statement.push(current);
+          index += current.len_utf8();
+        }
+      },
+    }
+  }
+
+  if !saw_directive {
+    return query;
+  }
+
+  if !statement.trim().is_empty() {
+    statements.push((statement.trim().to_owned(), ends_with_line_comment));
+  }
+
+  let mut normalized = String::new();
+  for (index, (statement, ends_with_line_comment)) in statements.into_iter().enumerate() {
+    if index > 0 {
+      normalized.push('\n');
+    }
+    normalized.push_str(&statement);
+    if ends_with_line_comment {
+      normalized.push('\n');
+    }
+    normalized.push(';');
+  }
+  normalized
+}
+
+fn no_backslash_escapes_setting(statement: &str) -> Option<bool> {
+  const SET: &str = "SET";
+
+  let statement = statement.trim_start();
+  let keyword = statement.get(..SET.len())?;
+  if !keyword.eq_ignore_ascii_case(SET) {
+    return None;
+  }
+
+  let remainder = &statement[SET.len()..];
+  if !remainder.starts_with(char::is_whitespace) {
+    return None;
+  }
+
+  let (variable, value) = remainder.trim_start().split_once('=')?;
+  let variable = variable.trim();
+  let variable = variable.strip_prefix("@@").unwrap_or(variable).trim_start();
+  let variable = if let Some((scope, variable)) = variable.split_once('.') {
+    if scope.eq_ignore_ascii_case("SESSION") || scope.eq_ignore_ascii_case("LOCAL") {
+      variable
+    } else {
+      return None;
+    }
+  } else if let Some((scope, variable)) = variable.split_once(char::is_whitespace) {
+    if scope.eq_ignore_ascii_case("SESSION") || scope.eq_ignore_ascii_case("LOCAL") {
+      variable.trim_start()
+    } else {
+      return None;
+    }
+  } else {
+    variable
+  };
+  if !variable.eq_ignore_ascii_case("sql_mode") {
+    return None;
+  }
+
+  let value = value.trim();
+  let quote = value.chars().next()?;
+  if !matches!(quote, '\'' | '"') || !value.ends_with(quote) {
+    return None;
+  }
+  let modes = &value[quote.len_utf8()..value.len() - quote.len_utf8()];
+  Some(sql_mode_has_no_backslash_escapes(modes))
+}
+
+fn sql_mode_has_no_backslash_escapes(sql_mode: &str) -> bool {
+  sql_mode.split(',').any(|mode| mode.trim().eq_ignore_ascii_case("NO_BACKSLASH_ESCAPES"))
+}
+
+async fn session_no_backslash_escapes(conn: &mut MySqlConnection) -> Result<bool> {
+  let sql_mode =
+    sqlx::query_scalar::<_, String>("SELECT @@SESSION.sql_mode").fetch_one(conn).await?;
+  Ok(sql_mode_has_no_backslash_escapes(&sql_mode))
+}
+
+fn delimiter_directive(line: &str) -> Option<Option<&str>> {
+  const KEYWORD: &str = "DELIMITER";
+
+  let line = line.trim();
+  let keyword = line.get(..KEYWORD.len())?;
+  if !keyword.eq_ignore_ascii_case(KEYWORD) {
+    return None;
+  }
+
+  let remainder = &line[KEYWORD.len()..];
+  if !remainder.is_empty() && !remainder.starts_with(char::is_whitespace) {
+    return None;
+  }
+
+  Some(remainder.split_whitespace().next().map(|delimiter| {
+    match (delimiter.chars().next(), delimiter.chars().last()) {
+      (Some(first), Some(last))
+        if delimiter.len() >= first.len_utf8() + last.len_utf8()
+          && first == last
+          && matches!(first, '\'' | '"') =>
+      {
+        &delimiter[first.len_utf8()..delimiter.len() - last.len_utf8()]
+      },
+      _ => delimiter,
+    }
+  }))
+}
+
 fn spawn_tx_task(
   tx: MySqlTransaction,
   first_query: String,
@@ -873,6 +1132,138 @@ mod tests {
     ]);
     let opts = MySqlDriver::build_connection_opts(args).unwrap();
     assert!(matches!(opts.get_ssl_mode(), MySqlSslMode::Required));
+  }
+
+  #[test]
+  fn preprocesses_mysql_delimiter_script() {
+    let query = r#"DELIMITER $$
+CREATE PROCEDURE hello_world()
+BEGIN
+  SELECT 'Hello World';
+END $$
+DELIMITER ;"#;
+
+    assert_eq!(
+      preprocess_delimiter_script(query.to_owned(), false),
+      "CREATE PROCEDURE hello_world()\nBEGIN\n  SELECT 'Hello World';\nEND;"
+    );
+  }
+
+  #[test]
+  fn preprocesses_quoted_mysql_delimiters() {
+    let query = r#"DELIMITER "$$"
+SELECT 1$$
+DELIMITER ";""#;
+
+    assert_eq!(preprocess_delimiter_script(query.to_owned(), false), "SELECT 1;");
+  }
+
+  #[test]
+  fn custom_delimiters_ignore_quoted_and_commented_tokens() {
+    let query = r#"DELIMITER //
+CREATE PROCEDURE delimiter_examples()
+BEGIN
+  SELECT 'single // ;', "double // ;", `identifier//name`;
+  -- a // line comment
+  # another // line comment
+  /* a // block comment */
+  SELECT 'escaped \'// value', 'doubled ''// value';
+END//
+DELIMITER ;
+SELECT 1;"#;
+
+    assert_eq!(
+      preprocess_delimiter_script(query.to_owned(), false),
+      r#"CREATE PROCEDURE delimiter_examples()
+BEGIN
+  SELECT 'single // ;', "double // ;", `identifier//name`;
+  -- a // line comment
+  # another // line comment
+  /* a // block comment */
+  SELECT 'escaped \'// value', 'doubled ''// value';
+END;
+SELECT 1;"#
+    );
+  }
+
+  #[test]
+  fn backslashes_do_not_escape_backticks() {
+    let query = r#"DELIMITER $$
+SELECT 1 AS `p\`$$
+DELIMITER ;
+SELECT 2;"#;
+
+    assert_eq!(
+      preprocess_delimiter_script(query.to_owned(), false),
+      r#"SELECT 1 AS `p\`;
+SELECT 2;"#
+    );
+  }
+
+  #[test]
+  fn no_backslash_escapes_mode_does_not_escape_closing_quotes() {
+    let query = r#"SET sql_mode='NO_BACKSLASH_ESCAPES';
+DELIMITER $$
+CREATE PROCEDURE backslash_literal()
+BEGIN
+  SELECT 'abc\';
+END$$
+DELIMITER ;"#;
+
+    assert_eq!(
+      preprocess_delimiter_script(query.to_owned(), false),
+      r#"SET sql_mode='NO_BACKSLASH_ESCAPES';
+CREATE PROCEDURE backslash_literal()
+BEGIN
+  SELECT 'abc\';
+END;"#
+    );
+  }
+
+  #[test]
+  fn connection_no_backslash_escapes_mode_does_not_escape_closing_quotes() {
+    let query = r#"DELIMITER $$
+SELECT 'abc\'$$
+DELIMITER ;
+SELECT 1;"#;
+
+    assert_eq!(
+      preprocess_delimiter_script(query.to_owned(), true),
+      r#"SELECT 'abc\';
+SELECT 1;"#
+    );
+  }
+
+  #[test]
+  fn script_without_delimiter_directive_is_unchanged() {
+    let query = "  SELECT 'preserve formatting';\r\n\r\nSELECT 2;  ";
+
+    assert_eq!(preprocess_delimiter_script(query.to_owned(), false), query);
+    assert_eq!(preprocess_delimiter_script(String::new(), false), "");
+    assert_eq!(preprocess_delimiter_script(" \n\t".to_owned(), false), " \n\t");
+  }
+
+  #[test]
+  fn blank_delimiter_directive_is_ignored_without_creating_statements() {
+    assert_eq!(preprocess_delimiter_script("DELIMITER\nSELECT 1;".to_owned(), false), "SELECT 1;");
+    assert_eq!(preprocess_delimiter_script("  delimiter  \n".to_owned(), false), "");
+  }
+
+  #[test]
+  fn terminates_statements_after_trailing_line_comments() {
+    let query = "DELIMITER $$\nSELECT 1 -- first\n$$\nSELECT 2 # second\n$$";
+
+    assert_eq!(
+      preprocess_delimiter_script(query.to_owned(), false),
+      "SELECT 1 -- first\n;\nSELECT 2 # second\n;"
+    );
+  }
+
+  #[test]
+  fn double_dash_without_whitespace_is_not_a_comment() {
+    let query = "DELIMITER $$\nSELECT 1--2$$";
+
+    assert_eq!(preprocess_delimiter_script(query.to_owned(), false), "SELECT 1--2;");
   }
 
   #[test]
