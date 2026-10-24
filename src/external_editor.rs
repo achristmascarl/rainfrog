@@ -1,4 +1,9 @@
-use std::{env, fs, io::Write, path::Path, process::Command};
+use std::{
+  env, fs,
+  io::Write,
+  path::Path,
+  process::{Command, ExitStatus},
+};
 
 use color_eyre::eyre::{Result, WrapErr, bail, eyre};
 
@@ -25,15 +30,50 @@ pub fn open_editor(path: &Path) -> Result<()> {
 }
 
 fn run_editor(command: &EditorCommand, path: &Path) -> Result<()> {
-  let status = Command::new(&command.program)
-    .args(&command.args)
-    .arg(path)
-    .status()
-    .wrap_err_with(|| format!("Failed to launch external editor '{}'", command.program))?;
-  if !status.success() {
-    bail!("External editor '{}' exited with {status}", command.program);
+  let launch_error = || format!("Failed to launch external editor '{}'", command.program);
+  match Command::new(&command.program).args(&command.args).arg(path).status() {
+    Err(error) => Err(error).wrap_err_with(launch_error),
+    // POSIX allows posix_spawn to return success when exec fails and requires
+    // the child to exit 127 instead of reporting errno. glibc usually forwards
+    // ENOENT through CLONE_VM|CLONE_VFORK; qemu-user, OpenBSD, and HPPA do not,
+    // so Command yields Ok(127) and the NotFound error is lost. Restore it when
+    // the program cannot be resolved. An editor that really exits 127 is unchanged.
+    Ok(status) if is_missing_program_status(&command.program, status) => {
+      Err(std::io::Error::new(std::io::ErrorKind::NotFound, "No such file or directory"))
+        .wrap_err_with(launch_error)
+    },
+    Ok(status) if !status.success() => {
+      bail!("External editor '{}' exited with {status}", command.program);
+    },
+    Ok(_) => Ok(()),
   }
-  Ok(())
+}
+
+#[cfg(unix)]
+fn is_missing_program_status(program: &str, status: ExitStatus) -> bool {
+  status.code() == Some(127) && !program_is_resolvable(program)
+}
+
+#[cfg(not(unix))]
+fn is_missing_program_status(_program: &str, _status: ExitStatus) -> bool {
+  false
+}
+
+/// Whether `posix_spawnp` could find `program`. An inconclusive `stat` counts as
+/// present so a genuine exit 127 is not rewritten into `NotFound`.
+#[cfg(unix)]
+fn program_is_resolvable(program: &str) -> bool {
+  if program.contains('/') {
+    return path_is_present(Path::new(program));
+  }
+  // posix_spawnp searches PATH. glibc uses CS_PATH when PATH is unset.
+  let paths = env::var_os("PATH").unwrap_or_else(|| "/bin:/usr/bin".into());
+  env::split_paths(&paths).any(|dir| path_is_present(&dir.join(program)))
+}
+
+#[cfg(unix)]
+fn path_is_present(path: &Path) -> bool {
+  path.try_exists().unwrap_or(true)
 }
 
 pub async fn edit_query(query: String) -> Result<String> {
