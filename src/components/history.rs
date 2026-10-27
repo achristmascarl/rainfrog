@@ -121,6 +121,10 @@ impl Component for History {
   }
 
   fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
+    if action == Action::ClearHistory {
+      self.list_state = ListState::default();
+      self.copied = false;
+    }
     Ok(None)
   }
 
@@ -207,5 +211,37 @@ impl Component for History {
         .position(self.list_state.selected().unwrap_or(0));
     f.render_stateful_widget(vertical_scrollbar, scrollbar_margin, &mut vertical_scrollbar_state);
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use crossterm::event::KeyModifiers;
+  use ratatui::{Terminal, backend::TestBackend};
+  use tokio::sync::mpsc;
+
+  use super::*;
+  use crate::{app::HistoryEntry, components::app_state_with_focus};
+
+  #[test]
+  fn clearing_history_makes_copy_and_edit_safe() {
+    let mut history = History::new();
+    let mut state = app_state_with_focus(Focus::History);
+    state
+      .history
+      .push(HistoryEntry { query_lines: vec!["select 1".into()], timestamp: chrono::Local::now() });
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    history.register_action_handler(tx).unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(80, 20)).unwrap();
+    terminal.draw(|frame| history.draw(frame, frame.area(), &state).unwrap()).unwrap();
+
+    state.history.clear();
+    history.update(Action::ClearHistory, &state).unwrap();
+    for key in ['I', 'y'] {
+      history
+        .handle_key_events(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE), &state)
+        .unwrap();
+    }
+    assert!(rx.try_recv().is_err());
   }
 }
