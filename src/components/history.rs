@@ -95,13 +95,13 @@ impl Component for History {
         KeyCode::Char('G') => {
           self.list_state.select(Some(app_state.history.len().saturating_sub(1)))
         },
-        KeyCode::Char('I') => {
-          self
-            .command_tx
-            .as_ref()
-            .unwrap()
-            .send(Action::QueryToEditor(app_state.history[i].query_lines.clone()))?;
-          self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
+        KeyCode::Enter | KeyCode::Char('I') => {
+          let tx = self.command_tx.as_ref().unwrap();
+          tx.send(Action::QueryToEditor(app_state.history[i].query_lines.clone()))?;
+          tx.send(Action::FocusEditor)?;
+          if key.code == KeyCode::Enter {
+            tx.send(Action::SubmitEditorQuery)?;
+          }
         },
         KeyCode::Char('y') => {
           self
@@ -221,10 +221,54 @@ mod tests {
   use tokio::sync::mpsc;
 
   use super::*;
-  use crate::{components::app_state_with_focus, history::HistoryEntry};
+  use crate::{
+    components::{app_state_with_focus, editor::Editor},
+    history::HistoryEntry,
+  };
 
   #[test]
-  fn clearing_history_makes_copy_and_edit_safe() {
+  fn history_activation_loads_selected_query_and_submits_only_on_enter() {
+    for key in [KeyCode::Enter, KeyCode::Char('I')] {
+      let mut history = History::new();
+      let mut state = app_state_with_focus(Focus::History);
+      state.history = vec![
+        HistoryEntry { query_lines: vec!["select 1;".into()], timestamp: chrono::Local::now() },
+        HistoryEntry {
+          query_lines: vec!["select 'café',".into(), "  '🐸';".into()],
+          timestamp: chrono::Local::now(),
+        },
+      ];
+      history.list_state.select(Some(1));
+      let (tx, mut rx) = mpsc::unbounded_channel();
+      history.register_action_handler(tx.clone()).unwrap();
+      let mut editor = Editor::new();
+      editor.register_action_handler(tx).unwrap();
+      editor
+        .update(Action::QueryToEditor(vec!["select 'previous editor contents';".into()]), &state)
+        .unwrap();
+
+      history.handle_key_events(KeyEvent::new(key, KeyModifiers::NONE), &state).unwrap();
+
+      let load = rx.try_recv().unwrap();
+      assert_eq!(load, Action::QueryToEditor(vec!["select 'café',".into(), "  '🐸';".into()]));
+      editor.update(load, &state).unwrap();
+      assert_eq!(rx.try_recv().unwrap(), Action::FocusEditor);
+      state.focus = Focus::Editor;
+      if key == KeyCode::Enter {
+        let submit = rx.try_recv().unwrap();
+        assert_eq!(submit, Action::SubmitEditorQuery);
+        editor.update(submit, &state).unwrap();
+        assert_eq!(
+          rx.try_recv().unwrap(),
+          Action::Query(vec!["select 'café',".into(), "  '🐸';".into()], false, false)
+        );
+      }
+      assert!(rx.try_recv().is_err());
+    }
+  }
+
+  #[test]
+  fn clearing_history_makes_copy_edit_and_execution_safe() {
     let mut history = History::new();
     let mut state = app_state_with_focus(Focus::History);
     state
@@ -237,10 +281,8 @@ mod tests {
 
     state.history.clear();
     history.update(Action::ClearHistory, &state).unwrap();
-    for key in ['I', 'y'] {
-      history
-        .handle_key_events(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE), &state)
-        .unwrap();
+    for key in [KeyCode::Char('I'), KeyCode::Char('y'), KeyCode::Enter] {
+      history.handle_key_events(KeyEvent::new(key, KeyModifiers::NONE), &state).unwrap();
     }
     assert!(rx.try_recv().is_err());
   }

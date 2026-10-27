@@ -136,7 +136,7 @@ fn footer_help_text(config: &Config, focus: Focus, query_task_running: bool) -> 
       )
     },
     Focus::History =>
-      "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history".to_owned(),
+      "[j|↓] down [k|↑] up [<enter>] execute query [y] copy query [I] edit query [D] clear history".to_owned(),
     Focus::Favorites =>
       "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search".to_owned(),
     Focus::Data if !query_task_running =>

@@ -520,6 +520,7 @@ with `persist_query_history = true`, pressing `D` also clears saved history.
 | `G`        | jump to bottom of list        |
 | `y`        | copy selected query           |
 | `I`        | edit selected query in editor |
+| `Enter`    | load selected query in editor and execute |
 | `D`        | delete all history            |
 
 <!-- TOC --><a name="query-favorites"></a>
