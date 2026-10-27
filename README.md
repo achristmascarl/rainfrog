@@ -505,6 +505,8 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 <!-- TOC --><a name="query-history"></a>
 #### query history
 
+timestamps are displayed in local time as `YYYY-MM-DD HH:mm:ss`.
+
 | keybinding | description                   |
 | ---------- | ----------------------------- |
 | `j`, `↓`   | move selection down by 1      |

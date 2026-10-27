@@ -174,7 +174,7 @@ impl Component for History {
         }
         lines.insert(
           0,
-          Line::from(format!("{}{}", if self.copied && selected { " copied! - " } else { "" }, h.timestamp))
+          Line::from(format!("{}{}", if self.copied && selected { " copied! - " } else { "" }, h.timestamp.format("%Y-%m-%d %H:%M:%S")))
             .style(if focused { Color::Yellow } else { Color::default() }),
         );
         lines.push(
