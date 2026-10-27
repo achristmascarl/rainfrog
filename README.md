@@ -363,6 +363,7 @@ export RAINFROG_CONFIG=~/.config/rainfrog
 | autocomplete_debounce_ms | `100` | how long edit-triggered completion waits before refreshing or hiding the menu. |
 | autocomplete_trigger_len | `1` | minimum identifier length for automatic completion; `Ctrl+Space` bypasses it. |
 | autopairs_enabled | `true` | whether insert mode automatically closes single quotes, double quotes, brackets, braces, parentheses, and backticks at the end of a line or before whitespace; skips an adjacent closing half; and removes both halves when backspacing an empty pair. |
+| persist_query_history | `true` | whether to save the latest 50 queries across sessions. set to `false` for in-memory history only; existing saved history is left untouched. |
 
 <!-- TOC --><a name="database-connections"></a>
 ### database connections
@@ -505,7 +506,11 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 <!-- TOC --><a name="query-history"></a>
 #### query history
 
+the latest 50 queries are saved after each submission and restored on startup.
+history is shared across database connections and stored in `history.sqlite3` in
+the application data directory, which can be overridden with `RAINFROG_DATA`.
 timestamps are displayed in local time as `YYYY-MM-DD HH:mm:ss`.
+with `persist_query_history = true`, pressing `D` also clears saved history.
 
 | keybinding | description                   |
 | ---------- | ----------------------------- |

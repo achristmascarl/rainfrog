@@ -30,6 +30,7 @@ use crate::{
   database::{self, Database, DbTaskResult, ExecutionType, Rows},
   external_editor,
   focus::Focus,
+  history::{HISTORY_LIMIT, HistoryEntry, HistoryStore},
   popups::{
     PopUp, PopUpPayload, confirm_bypass::ConfirmBypass, confirm_export::ConfirmExport,
     confirm_query::ConfirmQuery, confirm_tx::ConfirmTx, confirm_yank::ConfirmYank,
@@ -47,11 +48,6 @@ const SECTION_RESIZE_STEP: i16 = 5;
 
 fn resized_percent(percent: u16, delta: i16) -> u16 {
   (percent as i16 + delta).clamp(MIN_SECTION_PERCENT as i16, MAX_SECTION_PERCENT as i16) as u16
-}
-
-pub struct HistoryEntry {
-  pub query_lines: Vec<String>,
-  pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
 pub struct AppState {
@@ -80,6 +76,7 @@ pub struct App {
   pub last_tick_key_events: Vec<KeyEvent>,
   pub last_frame_mouse_event: Option<MouseEvent>,
   pub state: AppState,
+  history_store: Option<HistoryStore>,
   last_focused_tab: Focus,
   last_focused_component: Focus,
   popup: Option<Box<dyn PopUp>>,
@@ -152,7 +149,7 @@ fn footer_help_text(config: &Config, focus: Focus, query_task_running: bool) -> 
 }
 
 impl App {
-  pub fn new(mouse_mode_override: Option<bool>, config: Config) -> Result<Self> {
+  pub async fn new(mouse_mode_override: Option<bool>, config: Config) -> Result<Self> {
     let focus = Focus::Menu;
     let (completion, completion_client) = CompletionCoordinator::new();
     let menu = Menu::new();
@@ -161,6 +158,23 @@ impl App {
     let data = Data::new();
     let favorites = Favorites::new();
     let favorite_entries = FavoriteEntries::new(&config.config._favorites_dir)?;
+    let mut history_store = None;
+    let mut history_entries = Vec::new();
+    if config.settings.persist_query_history.unwrap_or(true) {
+      let result: Result<_> = async {
+        let mut store = HistoryStore::open(&config.config._data_dir).await?;
+        let entries = store.load().await?;
+        Ok((store, entries))
+      }
+      .await;
+      match result {
+        Ok((store, entries)) => {
+          history_store = Some(store);
+          history_entries = entries;
+        },
+        Err(error) => log::error!("Failed to load query history; using in-memory history: {error}"),
+      }
+    }
 
     Ok(Self {
       components: Components {
@@ -178,12 +192,13 @@ impl App {
       state: AppState {
         driver: Driver::Postgres,
         focus,
-        history: vec![],
+        history: history_entries,
         last_query_start: None,
         last_query_end: None,
         favorites: favorite_entries,
         query_task_running: false,
       },
+      history_store,
       last_focused_tab: Focus::Editor,
       last_focused_component: focus,
       popup: None,
@@ -194,15 +209,24 @@ impl App {
     })
   }
 
-  fn add_to_history(&mut self, query_lines: Vec<String>) {
-    self.state.history.insert(0, HistoryEntry { query_lines, timestamp: chrono::Local::now() });
-    if self.state.history.len() > 50 {
-      self.state.history.pop();
+  async fn add_to_history(&mut self, query_lines: Vec<String>) {
+    let entry = HistoryEntry { query_lines, timestamp: chrono::Local::now() };
+    if let Some(store) = &mut self.history_store
+      && let Err(error) = store.append(&entry).await
+    {
+      log::error!("Failed to save query history: {error}");
     }
+    self.state.history.insert(0, entry);
+    self.state.history.truncate(HISTORY_LIMIT);
   }
 
-  fn clear_history(&mut self) {
-    self.state.history = vec![];
+  async fn clear_history(&mut self) {
+    if let Some(store) = &mut self.history_store
+      && let Err(error) = store.clear().await
+    {
+      log::error!("Failed to clear persisted query history: {error}");
+    }
+    self.state.history.clear();
   }
 
   fn set_data_state(&mut self, data: Option<Result<Rows>>, statement_type: Option<Statement>) {
@@ -591,7 +615,7 @@ impl App {
             if query_string.is_empty() {
               break 'query_action;
             }
-            self.add_to_history(query_lines.clone());
+            self.add_to_history(query_lines.clone()).await;
             if *bypass && !confirmed {
               log::warn!("Bypassing parser");
               self.set_popup(Box::new(ConfirmBypass::new(query_string.clone())));
@@ -687,7 +711,7 @@ impl App {
             self.state.favorites.delete_entry(name.clone());
           },
           Action::ClearHistory => {
-            self.clear_history();
+            self.clear_history().await;
           },
           Action::CopyData(data) => {
             #[cfg(feature = "arboard")]
@@ -909,6 +933,85 @@ mod tests {
   use crate::components::app_state_with_focus;
   use crate::config::default_config_contents;
 
+  fn history_config(dir: &std::path::Path, contents: &str) -> Config {
+    let mut config: Config = toml::from_str(contents).unwrap();
+    config.config._data_dir = dir.join("data");
+    config.config._favorites_dir = dir.join("favorites");
+    config
+  }
+
+  #[tokio::test]
+  async fn history_persists_by_default_and_clear_survives_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = history_config(dir.path(), "");
+    let mut app = App::new(None, config.clone()).await.unwrap();
+    app.add_to_history(vec!["select 'café';".into(), "".into(), "select '🐸';".into()]).await;
+    app.add_to_history(vec!["select 2".into()]).await;
+
+    let mut reopened = App::new(None, config.clone()).await.unwrap();
+    assert_eq!(reopened.state.history, app.state.history);
+    reopened.clear_history().await;
+    assert!(reopened.state.history.is_empty());
+    assert!(App::new(None, config.clone()).await.unwrap().state.history.is_empty());
+
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      let permissions =
+        std::fs::metadata(config.config._data_dir.join("history.sqlite3")).unwrap().permissions();
+      assert_eq!(permissions.mode() & 0o777, 0o600);
+    }
+  }
+
+  #[tokio::test]
+  async fn disabled_history_leaves_persisted_entries_untouched() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = history_config(dir.path(), default_config_contents());
+    let mut app = App::new(None, config.clone()).await.unwrap();
+    app.add_to_history(vec!["select 1".into()]).await;
+    drop(app);
+    let path = config.config._data_dir.join("history.sqlite3");
+    let saved = std::fs::read(&path).unwrap();
+
+    let disabled = history_config(dir.path(), "[settings]\npersist_query_history = false");
+    let mut app = App::new(None, disabled.clone()).await.unwrap();
+    assert!(app.state.history.is_empty());
+    app.add_to_history(vec!["select 2".into()]).await;
+    assert_eq!(app.state.history[0].query_lines, ["select 2"]);
+    app.clear_history().await;
+    assert_eq!(std::fs::read(&path).unwrap(), saved);
+    assert_eq!(App::new(None, config).await.unwrap().state.history[0].query_lines, ["select 1"]);
+
+    let mut disabled = disabled;
+    disabled.config._data_dir = dir.path().join("unused");
+    let mut app = App::new(None, disabled.clone()).await.unwrap();
+    app.add_to_history(vec!["select 3".into()]).await;
+    app.clear_history().await;
+    assert!(!disabled.config._data_dir.exists());
+  }
+
+  #[tokio::test]
+  async fn history_storage_errors_fall_back_to_memory_without_overwriting_files() {
+    for corrupt_database in [false, true] {
+      let dir = tempfile::tempdir().unwrap();
+      let config = history_config(dir.path(), "");
+      let path = if corrupt_database {
+        std::fs::create_dir_all(&config.config._data_dir).unwrap();
+        config.config._data_dir.join("history.sqlite3")
+      } else {
+        config.config._data_dir.clone()
+      };
+      std::fs::write(&path, "existing contents").unwrap();
+
+      let mut app = App::new(None, config).await.unwrap();
+      app.add_to_history(vec!["select 1".into()]).await;
+      assert_eq!(app.state.history[0].query_lines, ["select 1"]);
+      app.clear_history().await;
+      assert!(app.state.history.is_empty());
+      assert_eq!(std::fs::read_to_string(path).unwrap(), "existing contents");
+    }
+  }
+
   fn test_app(focus: Focus) -> App {
     let (completion, completion_client) = CompletionCoordinator::new();
     App {
@@ -925,6 +1028,7 @@ mod tests {
       last_tick_key_events: Vec::new(),
       last_frame_mouse_event: None,
       state: app_state_with_focus(focus),
+      history_store: None,
       last_focused_tab: Focus::Editor,
       last_focused_component: focus,
       popup: None,

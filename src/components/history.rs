@@ -221,7 +221,7 @@ mod tests {
   use tokio::sync::mpsc;
 
   use super::*;
-  use crate::{app::HistoryEntry, components::app_state_with_focus};
+  use crate::{components::app_state_with_focus, history::HistoryEntry};
 
   #[test]
   fn clearing_history_makes_copy_and_edit_safe() {
