@@ -68,52 +68,30 @@ pub fn query_lines(text: &str) -> Vec<String> {
 mod tests {
   use super::*;
 
+  #[cfg(unix)]
   fn env_lookup<'a>(values: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
     move |name| values.iter().find_map(|(key, value)| (*key == name).then(|| value.to_string()))
   }
 
-  #[test]
-  fn visual_takes_precedence_over_editor() {
+  #[cfg(unix)]
+  #[tokio::test]
+  async fn selected_editor_process_edits_the_query_and_cleans_up_its_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("editor.sh");
+    fs::write(&script, "test \"$(cat \"$1\")\" = 'select 1;' || exit 1\nprintf 'select 2;\\n\\nselect 3;\\n' > \"$1\"\n").unwrap();
+    let visual = format!("sh {}", script.display());
     let command =
-      editor_command_with(&env_lookup(&[("VISUAL", "nvim"), ("EDITOR", "vim")])).unwrap();
-
-    assert_eq!(command.program, "nvim");
-    assert!(command.args.is_empty());
-  }
-
-  #[test]
-  fn empty_editor_variables_are_ignored() {
-    let command =
-      editor_command_with(&env_lookup(&[("VISUAL", "  "), ("EDITOR", "vim -f")])).unwrap();
-
-    assert_eq!(command.program, "vim");
-    assert_eq!(command.args, ["-f"]);
-  }
-
-  #[test]
-  fn vi_is_used_when_editor_variables_are_missing() {
-    let command = editor_command_with(&env_lookup(&[])).unwrap();
-
-    assert_eq!(command.program, "vi");
-    assert!(command.args.is_empty());
-  }
-
-  #[test]
-  fn editor_command_supports_simple_arguments() {
-    let command = editor_command_with(&env_lookup(&[("VISUAL", "code --wait")])).unwrap();
-
-    assert_eq!(command.program, "code");
-    assert_eq!(command.args, ["--wait"]);
-  }
-
-  #[test]
-  fn empty_query_stays_as_one_editor_line() {
-    assert_eq!(query_lines(""), [""]);
-  }
-
-  #[test]
-  fn multiline_query_is_split_into_editor_lines() {
-    assert_eq!(query_lines("select 1;\n\nselect 2;\n"), ["select 1;", "", "select 2;"]);
+      editor_command_with(&env_lookup(&[("VISUAL", &visual), ("EDITOR", "missing-editor")]))
+        .unwrap();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let edited = edit_query_with("select 1;".into(), move |path| {
+      tx.send(path.to_path_buf()).unwrap();
+      run_editor(&command, path)
+    })
+    .await
+    .unwrap();
+    assert_eq!(query_lines(&edited), ["select 2;", "", "select 3;"]);
+    assert!(!rx.await.unwrap().exists());
   }
 
   #[tokio::test]

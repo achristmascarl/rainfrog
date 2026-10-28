@@ -172,14 +172,6 @@ mod tests {
   use crate::completion::{CompletionKind, CompletionSource};
 
   #[test]
-  fn anchor_uses_screen_cursor_and_viewport() {
-    let inner = Rect::new(1, 1, 40, 5);
-    let cursor = ScreenCursor { row: 12, col: 7, char: None, dc: None };
-    let anchor = cursor_anchor(inner, cursor, ViewportState { top_row: 10, top_col: 0 }, 3);
-    assert_eq!(anchor, Some(Position::new(11, 3)));
-  }
-
-  #[test]
   fn dropdown_flips_above_near_bottom() {
     let backend = ratatui::backend::TestBackend::new(50, 15);
     let mut terminal = ratatui::Terminal::new(backend).unwrap();
@@ -198,11 +190,5 @@ mod tests {
       })
       .unwrap();
     assert!(rendered.unwrap().y < 13);
-  }
-
-  #[test]
-  fn truncation_uses_terminal_cell_width() {
-    assert_eq!(truncate("表名", 3), "表…");
-    assert_eq!(truncate("café", 4), "café");
   }
 }

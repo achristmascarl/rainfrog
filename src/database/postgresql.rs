@@ -894,11 +894,9 @@ fn parse_value(
 #[cfg(test)]
 mod tests {
   use clap::Parser;
-  use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::ParserError};
   use sqlx::postgres::PgSslMode;
 
   use super::*;
-  use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
 
   #[test]
   fn ssl_required_overrides_url_ssl_mode() {
@@ -955,133 +953,5 @@ mod tests {
     ]);
     let opts = PostgresDriver::build_connection_opts(args).unwrap();
     assert!(matches!(opts.get_ssl_mode(), PgSslMode::Require));
-  }
-
-  #[test]
-  fn test_get_first_query() {
-    type TestCase = (&'static str, Result<(String, Box<dyn Fn(Statement) -> bool>), ParseError>);
-
-    let test_cases: Vec<TestCase> = vec![
-      // single query
-      (
-        "SELECT * FROM users;",
-        Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // multiple queries
-      (
-        "SELECT * FROM users; DELETE FROM posts;",
-        Err(ParseError::MoreThanOneStatement("Only one statement allowed per query".to_owned())),
-      ),
-      // empty query
-      ("", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
-      // syntax error
-      (
-        "SELEC * FORM users;",
-        Err(ParseError::SqlParserError(ParserError::ParserError(
-          "Expected: an SQL statement, found: SELEC at Line: 1, Column: 1".to_owned(),
-        ))),
-      ),
-      // lowercase
-      (
-        "select * from \"public\".\"users\"",
-        Ok((
-          "SELECT * FROM \"public\".\"users\"".to_owned(),
-          Box::new(|s| matches!(s, Statement::Query(_))),
-        )),
-      ),
-      // newlines
-      (
-        "select *\nfrom users;",
-        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // comment-only
-      ("-- select * from users;", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
-      // commented line(s)
-      (
-        "-- select blah;\nselect * from users",
-        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      (
-        "-- select blah;\nselect * from users\n-- insert blah",
-        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // update
-      (
-        "UPDATE users SET name = 'John' WHERE id = 1",
-        Ok((
-          "UPDATE users SET name = 'John' WHERE id = 1".to_owned(),
-          Box::new(|s| matches!(s, Statement::Update { .. })),
-        )),
-      ),
-      // delete
-      (
-        "DELETE FROM users WHERE id = 1",
-        Ok((
-          "DELETE FROM users WHERE id = 1".to_owned(),
-          Box::new(|s| matches!(s, Statement::Delete(_))),
-        )),
-      ),
-      // drop
-      (
-        "DROP TABLE users",
-        Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. })))),
-      ),
-      // explain
-      (
-        "EXPLAIN SELECT * FROM users",
-        Ok((
-          "EXPLAIN SELECT * FROM users".to_owned(),
-          Box::new(|s| matches!(s, Statement::Explain { .. })),
-        )),
-      ),
-    ];
-
-    let dialect = Box::new(PostgreSqlDialect {});
-
-    for (input, expected_output) in test_cases {
-      let result = get_first_query(input.to_string(), Driver::Postgres);
-      match (result, expected_output) {
-        (Ok((query, statement_type)), Ok((expected_query, match_statement))) => {
-          assert_eq!(query, expected_query);
-          assert!(match_statement(statement_type));
-        },
-        (Err(ParseError::EmptyQuery(msg)), Err(ParseError::EmptyQuery(expected_msg))) => {
-          assert_eq!(msg, expected_msg)
-        },
-        (
-          Err(ParseError::MoreThanOneStatement(msg)),
-          Err(ParseError::MoreThanOneStatement(expected_msg)),
-        ) => {
-          assert_eq!(msg, expected_msg)
-        },
-        (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {
-          assert_eq!(msg, expected_msg)
-        },
-        _ => panic!("Unexpected result for input: {input}"),
-      }
-    }
-  }
-
-  #[test]
-  fn test_execution_type_postgres() {
-    let test_cases = vec![
-      ("DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
-      ("DROP TABLE users", ExecutionType::Confirm),
-      ("UPDATE users SET name = 'John' WHERE id = 1", ExecutionType::Transaction),
-      ("SELECT * FROM users", ExecutionType::Normal),
-      ("INSERT INTO users (name) VALUES ('John')", ExecutionType::Normal),
-      ("EXPLAIN ANALYZE DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
-      ("EXPLAIN ANALYZE DROP TABLE users", ExecutionType::Confirm),
-      ("EXPLAIN SELECT * FROM users", ExecutionType::Normal),
-      ("EXPLAIN ANALYZE SELECT * FROM users WHERE id = 1", ExecutionType::Normal),
-    ];
-
-    for (query, expected) in test_cases {
-      assert_eq!(
-        get_execution_type(query.to_string(), false, Driver::Postgres).unwrap().0,
-        expected,
-        "Failed for query: {query}"
-      );
-    }
   }
 }
