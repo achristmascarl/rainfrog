@@ -2,6 +2,21 @@
 
 use std::{fs, process::Command};
 
+fn rainfrog_command() -> Command {
+  // Cargo runs the test through its target runner, but subprocesses need to
+  // select that runner explicitly too (for example, Cross's Android QEMU runner).
+  let target = env!("VERGEN_CARGO_TARGET_TRIPLE").replace('-', "_").to_uppercase();
+  let runner = std::env::var(format!("CARGO_TARGET_{target}_RUNNER")).unwrap_or_default();
+  let mut runner_args = runner.split_whitespace();
+  if let Some(program) = runner_args.next() {
+    let mut command = Command::new(program);
+    command.args(runner_args).arg(env!("CARGO_BIN_EXE_rainfrog"));
+    command
+  } else {
+    Command::new(env!("CARGO_BIN_EXE_rainfrog"))
+  }
+}
+
 #[test]
 fn edit_command_creates_a_config_and_preserves_existing_edits_on_reopen() {
   let dir = tempfile::tempdir().unwrap();
@@ -10,7 +25,7 @@ fn edit_command_creates_a_config_and_preserves_existing_edits_on_reopen() {
   fs::write(&script, "printf '\\n# edited by external editor\\n' >> \"$1\"\n").unwrap();
 
   for expected_edits in 1..=2 {
-    let output = Command::new(env!("CARGO_BIN_EXE_rainfrog"))
+    let output = rainfrog_command()
       .arg("edit")
       .current_dir(dir.path())
       .env("RAINFROG_CONFIG", &config_dir)
@@ -31,7 +46,7 @@ fn edit_command_reports_editor_failure_and_leaves_the_config_available() {
   let dir = tempfile::tempdir().unwrap();
   let script = dir.path().join("editor.sh");
   fs::write(&script, "exit 7\n").unwrap();
-  let output = Command::new(env!("CARGO_BIN_EXE_rainfrog"))
+  let output = rainfrog_command()
     .arg("edit")
     .current_dir(dir.path())
     .env("RAINFROG_CONFIG", dir.path().join("config"))
