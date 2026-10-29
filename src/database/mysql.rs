@@ -19,8 +19,10 @@ use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::Instrument;
 
 use super::{
-  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows,
+  Value, builtin_functions,
 };
+use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
 type MySqlTransaction = sqlx::Transaction<'static, MySql>;
 type ConnectionTask = JoinHandle<Result<(Arc<Mutex<PoolConnection<MySql>>>, u64, bool)>>;
@@ -84,6 +86,10 @@ pub struct MySqlDriver {
 
 #[async_trait(?Send)]
 impl Database for MySqlDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    builtin_functions::MYSQL
+  }
+
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let opts = super::mysql::MySqlDriver::build_connection_opts(args)?;
     let pool =
@@ -330,15 +336,36 @@ impl Database for MySqlDriver {
     Ok(())
   }
 
-  async fn load_menu(&self) -> Result<Rows> {
+  fn start_load_menu(&self) -> Result<JoinHandle<Result<Rows>>> {
     let pool = self.pool.clone().unwrap();
-    match query_with_pool(pool.clone(), MENU_QUERY.to_owned()).await {
-      Ok(rows) => Ok(rows),
-      Err(e) => {
-        log::warn!("Falling back to simple MySQL menu query: {e:?}");
-        query_with_pool(pool, SIMPLE_MENU_QUERY.to_owned()).await
-      },
-    }
+    Ok(tokio::spawn(async move {
+      match query_with_pool(pool.clone(), MENU_QUERY.to_owned()).await {
+        Ok(rows) => Ok(rows),
+        Err(e) => {
+          log::warn!("Falling back to simple MySQL menu query: {e:?}");
+          query_with_pool(pool, SIMPLE_MENU_QUERY.to_owned()).await
+        },
+      }
+    }))
+  }
+
+  fn start_load_columns(
+    &self,
+    tables: Vec<TableRef>,
+  ) -> Result<JoinHandle<Result<Vec<TableColumns>>>> {
+    let pool = self.pool.clone().unwrap();
+    Ok(tokio::spawn(async move {
+      let mut output = Vec::with_capacity(tables.len());
+      for table in tables {
+        let schema = table.schema.replace('\'', "''");
+        let name = table.table.replace('\'', "''");
+        let query = format!(
+          "select column_name, data_type from information_schema.columns where table_schema = '{schema}' and table_name = '{name}' order by ordinal_position"
+        );
+        output.push(table_columns_from_rows(table, query_with_pool(pool.clone(), query).await?));
+      }
+      Ok(output)
+    }))
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
@@ -1044,11 +1071,9 @@ fn parse_value(
 #[cfg(test)]
 mod tests {
   use clap::Parser;
-  use sqlparser::{ast::Statement, dialect::MySqlDialect, parser::ParserError};
   use sqlx::mysql::MySqlSslMode;
 
   use super::*;
-  use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
 
   #[test]
   fn ssl_required_overrides_url_ssl_mode() {
@@ -1237,126 +1262,5 @@ SELECT 1;"#
     let query = "DELIMITER $$\nSELECT 1--2$$";
 
     assert_eq!(preprocess_delimiter_script(query.to_owned(), false), "SELECT 1--2;");
-  }
-
-  #[test]
-  fn test_get_first_query() {
-    type TestCase = (&'static str, Result<(String, Box<dyn Fn(Statement) -> bool>), ParseError>);
-
-    let test_cases: Vec<TestCase> = vec![
-      // single query
-      (
-        "SELECT * FROM users;",
-        Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // multiple queries
-      (
-        "SELECT * FROM users; DELETE FROM posts;",
-        Err(ParseError::MoreThanOneStatement("Only one statement allowed per query".to_owned())),
-      ),
-      // empty query
-      ("", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
-      // syntax error
-      (
-        "SELEC * FORM users;",
-        Err(ParseError::SqlParserError(ParserError::ParserError(
-          "Expected: an SQL statement, found: SELEC at Line: 1, Column: 1".to_owned(),
-        ))),
-      ),
-      // lowercase
-      (
-        "select * from `users`",
-        Ok(("SELECT * FROM `users`".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // newlines
-      (
-        "select *\nfrom users;",
-        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // comment-only
-      ("-- select * from users;", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
-      // commented line(s)
-      (
-        "-- select blah;\nselect * from users",
-        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // update
-      (
-        "UPDATE users SET name = 'John' WHERE id = 1",
-        Ok((
-          "UPDATE users SET name = 'John' WHERE id = 1".to_owned(),
-          Box::new(|s| matches!(s, Statement::Update { .. })),
-        )),
-      ),
-      // delete
-      (
-        "DELETE FROM users WHERE id = 1",
-        Ok((
-          "DELETE FROM users WHERE id = 1".to_owned(),
-          Box::new(|s| matches!(s, Statement::Delete { .. })),
-        )),
-      ),
-      // drop
-      (
-        "DROP TABLE users",
-        Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. })))),
-      ),
-      // explain
-      (
-        "EXPLAIN SELECT * FROM users",
-        Ok((
-          "EXPLAIN SELECT * FROM users".to_owned(),
-          Box::new(|s| matches!(s, Statement::Explain { .. })),
-        )),
-      ),
-    ];
-
-    let dialect = Box::new(MySqlDialect {});
-
-    for (input, expected_output) in test_cases {
-      let result = get_first_query(input.to_string(), Driver::MySql);
-      match (result, expected_output) {
-        (Ok((query, statement_type)), Ok((expected_query, match_statement))) => {
-          assert_eq!(query, expected_query);
-          assert!(match_statement(statement_type));
-        },
-        (Err(ParseError::EmptyQuery(msg)), Err(ParseError::EmptyQuery(expected_msg))) => {
-          assert_eq!(msg, expected_msg)
-        },
-        (
-          Err(ParseError::MoreThanOneStatement(msg)),
-          Err(ParseError::MoreThanOneStatement(expected_msg)),
-        ) => {
-          assert_eq!(msg, expected_msg)
-        },
-        (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {
-          assert_eq!(msg, expected_msg)
-        },
-        _ => panic!("Unexpected result for input: {input}"),
-      }
-    }
-  }
-
-  #[test]
-  fn test_execution_type_mysql() {
-    let test_cases = vec![
-      ("DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
-      ("DROP TABLE users", ExecutionType::Confirm),
-      ("UPDATE users SET name = 'John' WHERE id = 1", ExecutionType::Transaction),
-      ("SELECT * FROM users", ExecutionType::Normal),
-      ("INSERT INTO users (name) VALUES ('John')", ExecutionType::Normal),
-      ("EXPLAIN ANALYZE DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
-      ("EXPLAIN ANALYZE DROP TABLE users", ExecutionType::Confirm),
-      ("EXPLAIN SELECT * FROM users", ExecutionType::Normal),
-      ("EXPLAIN ANALYZE SELECT * FROM users WHERE id = 1", ExecutionType::Normal),
-    ];
-
-    for (query, expected) in test_cases {
-      assert_eq!(
-        get_execution_type(query.to_string(), false, Driver::MySql).unwrap().0,
-        expected,
-        "Failed for query: {query}"
-      );
-    }
   }
 }

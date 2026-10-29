@@ -32,6 +32,10 @@ pub enum ExportFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
 pub enum Action {
+  // An explicitly disabled keybinding. The empty serde name lets it act as a
+  // tombstone while user bindings are merged with the defaults.
+  #[serde(rename = "")]
+  NoOp,
   Tick,
   Render,
   Resize(u16, u16),
@@ -42,6 +46,9 @@ pub enum Action {
   Help,
   SubmitEditorQuery,
   SubmitEditorQueryBypassParser,
+  TriggerCompletion,
+  RequestExternalEditor,
+  EditQueryExternally(Vec<String>),
   Query(Vec<String>, bool, bool), // (query_lines, execution_confirmed, bypass_parser)
   MenuPreview(MenuPreview, MenuTarget), // (preview, target)
   QueryToEditor(Vec<String>),
@@ -54,6 +61,9 @@ pub enum Action {
   FocusFavorites,
   CycleFocusForwards,
   CycleFocusBackwards,
+  IncreaseSectionSize,
+  DecreaseSectionSize,
+  ToggleDataFullscreen,
   LoadMenu,
   CopyData(String),
   RequestExportData(i64),

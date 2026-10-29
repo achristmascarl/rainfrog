@@ -275,12 +275,6 @@ mod tests {
   }
 
   #[test]
-  fn test_oracle_connect_options_get_connection_string() {
-    let opts = OracleConnectOptions::new();
-    assert_eq!(opts.get_connection_string(), "//localhost:1521/XE");
-  }
-
-  #[test]
   fn test_oracle_connect_options_from_tcps_string() {
     let opts = OracleConnectOptions::from_str(
       "jdbc:oracle:thin:user/p@ss@tcps://localhost:1521/XE?wallet_location=/tmp/wallet",

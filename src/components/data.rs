@@ -7,6 +7,8 @@ use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use ratatui_textarea::{Input, Key};
 use sqlparser::ast::Statement;
 use tokio::sync::mpsc::UnboundedSender;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use super::{
   Frame,
@@ -66,6 +68,10 @@ pub struct Data<'a> {
   explain_height: u16,
   explain_max_x_offset: u16,
   explain_max_y_offset: u16,
+}
+
+fn error_text(error: &eyre::Report) -> String {
+  format!("{error:#}")
 }
 
 impl Data<'_> {
@@ -216,19 +222,32 @@ impl Data<'_> {
   }
 
   fn cell_display_width(value: &str) -> usize {
-    value.chars().take(MAX_COLUMN_WIDTH as usize).count()
+    // stop once the cap is reached: a TEXT or JSON cell can be far longer than
+    // any column we will ever draw, and only the capped value is used
+    let mut width = 0_usize;
+    for grapheme in value.graphemes(true) {
+      width = width.saturating_add(grapheme.width());
+      if width >= MAX_COLUMN_WIDTH as usize {
+        return MAX_COLUMN_WIDTH as usize;
+      }
+    }
+    width
   }
 
-  fn clamp_render_text(value: &str, max_chars: usize) -> String {
-    if max_chars == 0 || value.is_empty() {
+  fn clamp_render_text(value: &str, max_width: usize) -> String {
+    if max_width == 0 || value.is_empty() {
       return String::new();
     }
-    let mut chars_seen = 0_usize;
-    for (idx, _) in value.char_indices() {
-      if chars_seen == max_chars {
+    let mut width_seen = 0_usize;
+    // measure per grapheme, not per char: a ZWJ sequence such as a family emoji
+    // is one glyph whose width is less than the sum of its parts, and splitting
+    // it would drop the rest of the value
+    for (idx, grapheme) in value.grapheme_indices(true) {
+      let grapheme_width = grapheme.width();
+      if width_seen.saturating_add(grapheme_width) > max_width {
         return value[..idx].to_owned();
       }
-      chars_seen = chars_seen.saturating_add(1);
+      width_seen = width_seen.saturating_add(grapheme_width);
     }
     value.to_owned()
   }
@@ -381,6 +400,9 @@ impl Component for Data<'_> {
     }
     let input = Input::from(key);
     match input {
+      Input { key: Key::Char('F'), .. } => {
+        self.command_tx.clone().unwrap().send(Action::ToggleDataFullscreen)?;
+      },
       Input { key: Key::Char('P'), .. } => {
         if let DataState::HasResults(rows) = &self.data_state {
           self
@@ -488,7 +510,7 @@ impl Component for Data<'_> {
           self.command_tx.clone().unwrap().send(Action::CopyData(text.to_string()))?;
           self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
         } else if let DataState::Error(err) = &self.data_state {
-          self.command_tx.clone().unwrap().send(Action::CopyData(err.to_string()))?;
+          self.command_tx.clone().unwrap().send(Action::CopyData(error_text(err)))?;
           self.scrollable.transition_selection_mode(Some(SelectionMode::Copied));
         }
       },
@@ -535,6 +557,11 @@ impl Component for Data<'_> {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, app_state: &AppState) -> Result<()> {
     let focused = app_state.focus == Focus::Data;
+    let focus_hint = self
+      .config
+      .keybindings
+      .hint_for_action(app_state.focus, &Action::FocusData, "<alt+3>")
+      .map_or_else(String::new, |hint| format!(" {hint}"));
 
     let mut block = Block::default().borders(Borders::ALL).border_style(if focused {
       Style::new().green()
@@ -558,25 +585,30 @@ impl Component for Data<'_> {
       let row = &rows[y];
       let title_string = match self.scrollable.get_selection_mode() {
         Some(SelectionMode::Row) => {
-          format!(" 󰆼 results <alt+3> (row {} of {})", y.saturating_add(1), rows.len())
+          format!(" 󰆼 results{focus_hint} (row {} of {})", y.saturating_add(1), rows.len())
         },
         Some(SelectionMode::Cell) => {
           let cell = row
             .get(x)
             .map(|c| Self::preview_text(c, TITLE_CELL_PREVIEW_MAX_CHARS))
             .unwrap_or_default();
-          format!(" 󰆼 results <alt+3> (row {} of {}) - {} ", y.saturating_add(1), rows.len(), cell)
+          format!(
+            " 󰆼 results{focus_hint} (row {} of {}) - {} ",
+            y.saturating_add(1),
+            rows.len(),
+            cell
+          )
         },
         Some(SelectionMode::Copied) => {
-          format!(" 󰆼 results <alt+3> ({} rows) - copied! ", rows.len())
+          format!(" 󰆼 results{focus_hint} ({} rows) - copied! ", rows.len())
         },
-        _ => format!(" 󰆼 results <alt+3> ({} rows)", rows.len()),
+        _ => format!(" 󰆼 results{focus_hint} ({} rows)", rows.len()),
       };
       block = block.title(title_string);
     } else {
       let title_string = match self.scrollable.get_selection_mode() {
-        Some(SelectionMode::Copied) => " 󰆼 results <alt+3> - copied! ",
-        _ => " 󰆼 results <alt+3>",
+        Some(SelectionMode::Copied) => format!(" 󰆼 results{focus_hint} - copied! "),
+        _ => format!(" 󰆼 results{focus_hint}"),
       };
       block = block.title(title_string);
     }
@@ -676,7 +708,7 @@ impl Component for Data<'_> {
       },
       DataState::Error(e) => {
         f.render_widget(
-          Paragraph::new(e.to_string())
+          Paragraph::new(error_text(e))
             .style(Style::default().fg(Color::Red))
             .wrap(Wrap { trim: true })
             .block(block),
@@ -712,12 +744,9 @@ struct TableForYank {
 
 impl TableForYank {
   fn new(rows: &Rows, app_state: &AppState) -> Self {
-    let sql = app_state
-      .history
-      .first()
-      .expect("expected the last SQL query in history")
-      .query_lines
-      .clone();
+    // history can be empty here: it is cleared with [D] in the history pane
+    // while the results of the last query are still on screen
+    let sql = app_state.history.first().map(|entry| entry.query_lines.clone()).unwrap_or_default();
 
     let headers: &Vec<String> = &rows.headers.iter().map(|h| h.name.clone()).collect();
     let rows = &rows.rows;
@@ -742,7 +771,9 @@ impl TableForYank {
       buff.push('\n');
     }
 
-    buff.push('\n');
+    if !self.sql.is_empty() {
+      buff.push('\n');
+    }
 
     while let Some(col) = self.table.first() {
       if col.is_empty() {
@@ -761,12 +792,15 @@ impl TableForYank {
   }
 
   fn format_column(col: &mut VecDeque<String>, index: usize, last_index: usize) {
-    let width = col.iter().map(|s| s.len()).max().unwrap_or(1) + 1;
+    let width = col.iter().map(|s| s.width()).max().unwrap_or(1) + 1;
 
     let format_cell = |s: &str| {
       let prefix = if index == 0 { "" } else { "| " };
-      let padding =
-        if index == last_index { " ".repeat(0) } else { " ".repeat(width.saturating_sub(s.len())) };
+      let padding = if index == last_index {
+        " ".repeat(0)
+      } else {
+        " ".repeat(width.saturating_sub(s.width()))
+      };
       format!("{prefix}{s}{padding}")
     };
 
@@ -797,69 +831,163 @@ impl TableForYank {
 }
 
 #[cfg(test)]
-mod yank {
-
-  use std::collections::VecDeque;
-
-  use crate::components::data::TableForYank;
+mod tests {
+  use super::*;
+  use crate::components::app_state_with_focus;
+  use crate::database::Header;
 
   #[test]
-  fn to_columns_is_works() {
-    let headers = vec!["id".to_string(), "name".to_string(), "age".to_string()];
-    let rows = vec![
-      vec!["id1".to_string(), "name1".to_string(), "age1".to_string()],
-      vec!["id2".to_string(), "name2".to_string(), "age2".to_string()],
-      vec!["id3".to_string(), "name3".to_string(), "age3".to_string()],
-    ];
+  fn query_errors_are_rendered_and_copied_with_the_underlying_cause() {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut data = Data::new();
+    data.register_action_handler(tx).unwrap();
+    let error = std::io::Error::new(std::io::ErrorKind::NotFound, "editor executable missing");
+    data.set_data_state(
+      Some(Err(eyre::Report::new(error).wrap_err("Failed to launch editor"))),
+      None,
+    );
+    let state = app_state_with_focus(Focus::Data);
+    let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(100, 8)).unwrap();
+    terminal.draw(|frame| data.draw(frame, frame.area(), &state).unwrap()).unwrap();
+    let rendered: String =
+      terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect();
+    let expected = "Failed to launch editor: editor executable missing";
+    assert!(rendered.contains(expected));
 
-    let result = TableForYank::to_columns(&headers, &rows);
-
-    let expected = vec![
-      VecDeque::from(["id".to_string(), "id1".to_string(), "id2".to_string(), "id3".to_string()]),
-      VecDeque::from([
-        "name".to_string(),
-        "name1".to_string(),
-        "name2".to_string(),
-        "name3".to_string(),
-      ]),
-      VecDeque::from([
-        "age".to_string(),
-        "age1".to_string(),
-        "age2".to_string(),
-        "age3".to_string(),
-      ]),
-    ];
-
-    assert_eq!(expected, result)
+    data
+      .handle_key_events(
+        KeyEvent::new(crossterm::event::KeyCode::Char('y'), crossterm::event::KeyModifiers::NONE),
+        &state,
+      )
+      .unwrap();
+    assert_eq!(rx.try_recv().unwrap(), Action::CopyData(expected.into()));
   }
 
   #[test]
-  fn yank_is_works() {
-    let headers = vec!["id".to_string(), "name".to_string(), "age".to_string()];
-    let rows = vec![
-      vec!["id1".to_string(), "name1".to_string(), "age1".to_string()],
-      vec!["id2".to_string(), "name2".to_string(), "age2".to_string()],
-      vec!["id3".to_string(), "name3".to_string(), "age3".to_string()],
-    ];
+  fn compact_results_render_unicode_and_cap_long_values_without_losing_copied_data() {
+    let family = "👨‍👩‍👧‍👦";
+    let long = "日".repeat(50_000);
+    let mut data = Data::new();
+    let config: Config = toml::from_str("[settings]\ndata_compact_columns = true").unwrap();
+    data.register_config_handler(config).unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    data.register_action_handler(tx).unwrap();
+    data.set_data_state(
+      Some(Ok(Rows {
+        headers: vec![
+          Header { name: "name".into(), type_name: "text".into() },
+          Header { name: "value".into(), type_name: "text".into() },
+        ],
+        rows: vec![vec!["日本語".into(), family.into()], vec!["café".into(), long.clone()]],
+        rows_affected: None,
+      })),
+      None,
+    );
+    let state = app_state_with_focus(Focus::Data);
+    let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(80, 12)).unwrap();
+    terminal.draw(|frame| data.draw(frame, frame.area(), &state).unwrap()).unwrap();
+    let buffer = terminal.backend().buffer();
+    let rendered: String = buffer.content.iter().map(|cell| cell.symbol()).collect();
+    assert!(rendered.contains(family));
+    assert!(rendered.contains("café"));
+    // Wide characters occupy two cells. The second column starts after the
+    // seven-cell compact name column and the configured inter-column spacing.
+    let japanese_row =
+      (0..12).find(|&y| buffer.cell(Position::new(1, y)).unwrap().symbol() == "日").unwrap();
+    assert_eq!(
+      buffer.cell(Position::new(1 + 7 + COLUMN_SPACING, japanese_row)).unwrap().symbol(),
+      family
+    );
+    assert_eq!(buffer.content.iter().filter(|cell| cell.symbol() == "日").count(), 19);
 
-    let mut data_to_yank = TableForYank {
-      sql: vec!["select".to_string(), "*".to_string(), "from".to_string(), "something".to_string()],
-      table: TableForYank::to_columns(&headers, &rows),
+    // Rendering truncates the long value; copying the selected cell preserves it.
+    for code in [
+      crossterm::event::KeyCode::Char('j'),
+      crossterm::event::KeyCode::Char('w'),
+      crossterm::event::KeyCode::Char('v'),
+      crossterm::event::KeyCode::Char('y'),
+    ] {
+      data
+        .handle_key_events(KeyEvent::new(code, crossterm::event::KeyModifiers::NONE), &state)
+        .unwrap();
+    }
+    assert_eq!(rx.try_recv().unwrap(), Action::CopyData(long));
+  }
+
+  #[test]
+  fn yank_all_includes_query_history_and_aligns_unicode_columns() {
+    let mut state = app_state_with_focus(Focus::Data);
+    state.history.push(crate::app::HistoryEntry {
+      query_lines: vec!["select *".into(), "from t".into()],
+      timestamp: chrono::Local::now(),
+    });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut data = Data::new();
+    data.register_action_handler(tx).unwrap();
+    data.set_data_state(
+      Some(Ok(Rows {
+        headers: vec![
+          Header { name: "id".into(), type_name: "int".into() },
+          Header { name: "name".into(), type_name: "text".into() },
+          Header { name: "age".into(), type_name: "int".into() },
+        ],
+        rows: vec![
+          vec!["1".into(), "café".into(), "30".into()],
+          vec!["2".into(), "abcd".into(), "40".into()],
+          vec!["3".into(), "日本語".into(), "50".into()],
+        ],
+        rows_affected: None,
+      })),
+      None,
+    );
+    data.update(Action::YankAll, &state).unwrap();
+    assert_eq!(rx.try_recv().unwrap(), Action::CopyData("select *\nfrom t\n\nid | name   | age\n---+--------+-----\n1  | café   | 30\n2  | abcd   | 40\n3  | 日本語 | 50\n".into()));
+  }
+
+  #[test]
+  fn yank_all_after_the_history_is_cleared_does_not_panic() {
+    // [D] in the history pane clears the history while the results of the last
+    // query are still displayed, so [Y] must not assume history is non-empty
+    let app_state = crate::components::app_state_with_focus(Focus::Data);
+    assert!(app_state.history.is_empty());
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut data = Data::new();
+    data.register_action_handler(tx).unwrap();
+    data.set_data_state(
+      Some(Ok(Rows {
+        headers: vec![Header { name: "id".to_owned(), type_name: "int4".to_owned() }],
+        rows: vec![vec!["1".to_owned()], vec!["2".to_owned()]],
+        rows_affected: None,
+      })),
+      None,
+    );
+
+    data.update(Action::YankAll, &app_state).unwrap();
+
+    let Some(Action::CopyData(yanked)) = rx.try_recv().ok() else {
+      panic!("expected the yanked table to be copied");
     };
+    assert_eq!(yanked, "id\n---\n1\n2\n");
+  }
 
-    let result = data_to_yank.yank();
+  #[test]
+  fn uppercase_f_requests_fullscreen_toggle() {
+    let app_state = crate::components::app_state_with_focus(Focus::Data);
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut data = Data::new();
+    data.register_action_handler(tx).unwrap();
 
-    let expected = "\
-select
-*
-from
-something
+    data
+      .handle_key_events(
+        crossterm::event::KeyEvent::new(
+          crossterm::event::KeyCode::Char('F'),
+          crossterm::event::KeyModifiers::SHIFT,
+        ),
+        &app_state,
+      )
+      .unwrap();
 
- id  | name  | age
------+-------+------
- id1 | name1 | age1
- id2 | name2 | age2
- id3 | name3 | age3
-";
+    assert_eq!(rx.try_recv(), Ok(Action::ToggleDataFullscreen));
   }
 }

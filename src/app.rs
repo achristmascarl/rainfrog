@@ -17,6 +17,7 @@ use tokio::sync::mpsc::{self};
 use crate::{
   action::{Action, ExportFormat, MenuItemKind, MenuPreview},
   cli::{Cli, Driver},
+  completion::{CompletionCoordinator, CompletionDatabaseEvent},
   components::{
     Component, ComponentImpls,
     data::{Data, DataComponent},
@@ -25,8 +26,9 @@ use crate::{
     history::History,
     menu::{Menu, MenuComponent},
   },
-  config::Config,
+  config::{Config, KeyBindings},
   database::{self, Database, DbTaskResult, ExecutionType, Rows},
+  external_editor,
   focus::Focus,
   popups::{
     PopUp, PopUpPayload, confirm_bypass::ConfirmBypass, confirm_export::ConfirmExport,
@@ -37,12 +39,23 @@ use crate::{
   ui::center,
 };
 
+const DEFAULT_MENU_WIDTH_PERCENT: u16 = 25;
+const DEFAULT_TABS_HEIGHT_PERCENT: u16 = 45;
+const MIN_SECTION_PERCENT: u16 = 10;
+const MAX_SECTION_PERCENT: u16 = 90;
+const SECTION_RESIZE_STEP: i16 = 5;
+
+fn resized_percent(percent: u16, delta: i16) -> u16 {
+  (percent as i16 + delta).clamp(MIN_SECTION_PERCENT as i16, MAX_SECTION_PERCENT as i16) as u16
+}
+
 pub struct HistoryEntry {
   pub query_lines: Vec<String>,
   pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
 pub struct AppState {
+  pub driver: Driver,
   pub focus: Focus,
   pub history: Vec<HistoryEntry>,
   pub favorites: FavoriteEntries,
@@ -70,13 +83,80 @@ pub struct App {
   last_focused_tab: Focus,
   last_focused_component: Focus,
   popup: Option<Box<dyn PopUp>>,
+  completion: CompletionCoordinator,
+  menu_width_percent: u16,
+  tabs_height_percent: u16,
+  data_fullscreen_restore: Option<(u16, u16)>,
+}
+
+fn format_footer_key_hint(hint: &str) -> String {
+  let Some(inner) = hint.strip_prefix('<').and_then(|hint| hint.strip_suffix('>')) else {
+    return hint.to_owned();
+  };
+  if inner.chars().count() == 1 {
+    inner.to_owned()
+  } else {
+    format!("<{}>", inner.replace('+', " + "))
+  }
+}
+
+fn footer_action_hints(keybindings: &KeyBindings, focus: Focus, action: &Action) -> Vec<String> {
+  keybindings
+    .hints_for_action(focus, action)
+    .iter()
+    .map(|hint| format_footer_key_hint(hint))
+    .collect()
+}
+
+fn footer_help_text(config: &Config, focus: Focus, query_task_running: bool) -> String {
+  let abort_hints = footer_action_hints(&config.keybindings, focus, &Action::AbortQuery).join("|");
+  let abort = if query_task_running && focus != Focus::PopUp && !abort_hints.is_empty() {
+    format!("[{abort_hints}] abort ")
+  } else {
+    String::new()
+  };
+
+  let contextual = match focus {
+    Focus::Menu =>
+      "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [y] copy name [/] search [g] top [G] bottom".to_owned(),
+    Focus::Editor if !query_task_running => {
+      let mut execute_hints = vec!["<alt + enter>".to_owned()];
+      for hint in footer_action_hints(&config.keybindings, focus, &Action::SubmitEditorQuery) {
+        if !execute_hints.contains(&hint) {
+          execute_hints.push(hint);
+        }
+      }
+      let execute_hints = execute_hints.join("|");
+      let external_editor_hints =
+        footer_action_hints(&config.keybindings, focus, &Action::RequestExternalEditor).join("|");
+      let external_editor = if external_editor_hints.is_empty() {
+        String::new()
+      } else {
+        format!(" [{external_editor_hints}] external editor")
+      };
+      format!(
+        "[{execute_hints}] execute query{external_editor} [<ctrl + f>|<alt + f>] save query to favorites"
+      )
+    },
+    Focus::History =>
+      "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history".to_owned(),
+    Focus::Favorites =>
+      "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search".to_owned(),
+    Focus::Data if !query_task_running =>
+      "[F] toggle full screen [P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [Y] copy all [g] top [G] bottom [0] first col [$] last col".to_owned(),
+    Focus::PopUp => "[<esc>] cancel".to_owned(),
+    _ => String::new(),
+  };
+
+  format!("{abort}{contextual}")
 }
 
 impl App {
   pub fn new(mouse_mode_override: Option<bool>, config: Config) -> Result<Self> {
     let focus = Focus::Menu;
+    let (completion, completion_client) = CompletionCoordinator::new();
     let menu = Menu::new();
-    let editor = Editor::new();
+    let editor = Editor::with_completion_channels(completion_client);
     let history = History::new();
     let data = Data::new();
     let favorites = Favorites::new();
@@ -96,6 +176,7 @@ impl App {
       last_tick_key_events: Vec::new(),
       last_frame_mouse_event: None,
       state: AppState {
+        driver: Driver::Postgres,
         focus,
         history: vec![],
         last_query_start: None,
@@ -106,6 +187,10 @@ impl App {
       last_focused_tab: Focus::Editor,
       last_focused_component: focus,
       popup: None,
+      completion,
+      menu_width_percent: DEFAULT_MENU_WIDTH_PERCENT,
+      tabs_height_percent: DEFAULT_TABS_HEIGHT_PERCENT,
+      data_fullscreen_restore: None,
     })
   }
 
@@ -118,6 +203,23 @@ impl App {
 
   fn clear_history(&mut self) {
     self.state.history = vec![];
+  }
+
+  fn set_data_state(&mut self, data: Option<Result<Rows>>, statement_type: Option<Statement>) {
+    let result_rows = data
+      .as_ref()
+      .and_then(|result| result.as_ref().ok())
+      .filter(|_| !matches!(statement_type.as_ref(), Some(Statement::Explain { .. })));
+    self.completion.add_result_rows(result_rows);
+    self.components.data.set_data_state(data, statement_type);
+  }
+
+  fn set_data_loading(&mut self) {
+    self.components.data.set_loading();
+  }
+
+  fn set_data_cancelled(&mut self) {
+    self.components.data.set_cancelled();
   }
 
   fn set_focus(&mut self, focus: Focus) {
@@ -145,6 +247,38 @@ impl App {
     }
   }
 
+  fn resize_focused_section(&mut self, delta: i16) {
+    match self.state.focus {
+      Focus::Menu => {
+        self.menu_width_percent = resized_percent(self.menu_width_percent, delta);
+      },
+      Focus::Editor | Focus::History | Focus::Favorites => {
+        self.tabs_height_percent = resized_percent(self.tabs_height_percent, delta);
+      },
+      // the stored percentage is the upper section's share, so growing
+      // the results pane means shrinking the stored value
+      Focus::Data => {
+        self.tabs_height_percent = resized_percent(self.tabs_height_percent, -delta);
+      },
+      Focus::PopUp => {},
+    }
+  }
+
+  fn toggle_data_fullscreen(&mut self) {
+    if self.menu_width_percent == MIN_SECTION_PERCENT
+      && self.tabs_height_percent == MIN_SECTION_PERCENT
+    {
+      (self.menu_width_percent, self.tabs_height_percent) = self
+        .data_fullscreen_restore
+        .take()
+        .unwrap_or((DEFAULT_MENU_WIDTH_PERCENT, DEFAULT_TABS_HEIGHT_PERCENT));
+    } else {
+      self.data_fullscreen_restore = Some((self.menu_width_percent, self.tabs_height_percent));
+      self.menu_width_percent = MIN_SECTION_PERCENT;
+      self.tabs_height_percent = MIN_SECTION_PERCENT;
+    }
+  }
+
   fn last_focused_component(&mut self) {
     match self.last_focused_component {
       Focus::Menu => self.set_focus(Focus::Menu),
@@ -157,14 +291,17 @@ impl App {
   }
 
   pub async fn run(&mut self, driver: Driver, args: Cli) -> Result<()> {
+    self.state.driver = driver;
     let mut database: Box<dyn Database> = match driver {
       Driver::Postgres => Box::new(database::PostgresDriver::new()),
       Driver::MySql => Box::new(database::MySqlDriver::new()),
       Driver::Sqlite => Box::new(database::SqliteDriver::new()),
+      #[cfg(feature = "oracle")]
       Driver::Oracle => Box::new(database::OracleDriver::new()),
       #[cfg(feature = "duckdb")]
       Driver::DuckDb => Box::new(database::DuckDbDriver::new()),
     };
+    self.completion.set_builtin_functions(database.builtin_functions());
     let default_title = database.init(args.clone()).await?;
     let terminal_title = args.connection_name.clone().unwrap_or(default_title);
     tracing::Span::current().record("conn", terminal_title.as_str());
@@ -202,13 +339,27 @@ impl App {
     action_tx.send(Action::LoadMenu)?;
 
     loop {
+      self.completion.poll(
+        std::time::Duration::from_millis(
+          self.config.settings.autocomplete_debounce_ms.unwrap_or(100),
+        ),
+        self.config.settings.autocomplete_trigger_len.unwrap_or(1),
+      );
+      self.completion.start_missing_columns(database.as_ref())?;
+      for event in self.completion.poll_database().await {
+        match event {
+          CompletionDatabaseEvent::MenuLoadFinished(result) => {
+            self.components.menu.set_table_list(Some(result));
+          },
+        }
+      }
       if self.popup.is_some() {
         self.set_focus(Focus::PopUp);
       }
       match database.get_query_results().await? {
         DbTaskResult::Finished(results) => {
           let statement_type = results.data_statement_type();
-          self.components.data.set_data_state(Some(results.results), statement_type);
+          self.set_data_state(Some(results.results), statement_type);
           self.state.last_query_end = Some(chrono::Utc::now());
           self.state.query_task_running = false;
         },
@@ -250,7 +401,7 @@ impl App {
                 let payload = popup.handle_key_events(key, &mut self.state)?;
                 match payload {
                   Some(PopUpPayload::SetDataTable(result, statement)) => {
-                    self.components.data.set_data_state(result, statement);
+                    self.set_data_state(result, statement);
                     self.set_focus(Focus::Editor);
                   },
                   Some(PopUpPayload::ConfirmQuery(query)) => {
@@ -288,14 +439,14 @@ impl App {
                     self.state.last_query_end = Some(chrono::Utc::now());
                     if let Some(results) = response {
                       let statement_type = results.data_statement_type();
-                      self.components.data.set_data_state(Some(results.results), statement_type);
+                      self.set_data_state(Some(results.results), statement_type);
                       self.set_focus(Focus::Editor);
                     }
                   },
                   Some(PopUpPayload::RollbackTx) => {
                     database.rollback_tx().await?;
                     self.state.last_query_end = Some(chrono::Utc::now());
-                    self.components.data.set_data_state(
+                    self.set_data_state(
                       Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
                       Some(Statement::Rollback { chain: false, savepoint: None }),
                     );
@@ -362,6 +513,7 @@ impl App {
         }
         let action_consumed = false;
         match &action {
+          Action::NoOp => {},
           Action::Tick => {
             self.last_tick_key_events.drain(..);
           },
@@ -399,9 +551,37 @@ impl App {
             Focus::Favorites => self.set_focus(Focus::History),
             Focus::PopUp => {},
           },
+          Action::IncreaseSectionSize => {
+            self.resize_focused_section(SECTION_RESIZE_STEP);
+          },
+          Action::DecreaseSectionSize => {
+            self.resize_focused_section(-SECTION_RESIZE_STEP);
+          },
+          Action::ToggleDataFullscreen => {
+            self.toggle_data_fullscreen();
+          },
           Action::LoadMenu => {
-            let rows = database.load_menu().await;
-            self.components.menu.set_table_list(Some(rows));
+            self.components.menu.set_table_list(None);
+            self.completion.start_menu_load(database.as_ref())?;
+          },
+          Action::EditQueryExternally(lines) => {
+            let query = lines.join("\n");
+            tui.exit()?;
+            let edit_result = external_editor::edit_query(query).await;
+            let resume_result = tui.enter();
+            resume_result?;
+
+            match edit_result {
+              Ok(edited) => {
+                action_tx.send(Action::QueryToEditor(external_editor::query_lines(&edited)))?;
+              },
+              Err(error) => {
+                self.set_data_state(
+                  Some(Err(error.wrap_err("Failed to edit query externally"))),
+                  None,
+                );
+              },
+            }
           },
           Action::Query(query_lines, confirmed, bypass) => 'query_action: {
             if self.state.query_task_running {
@@ -423,8 +603,9 @@ impl App {
             };
             match execution_info {
               Ok((ExecutionType::Transaction, _)) => {
-                self.components.data.set_loading();
-                database.start_tx(query_string).await?;
+                self.set_data_loading();
+                database.start_tx(query_string.clone()).await?;
+                self.completion.queue_columns_for_text(query_string);
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },
@@ -432,26 +613,27 @@ impl App {
                 self.set_popup(Box::new(ConfirmQuery::new(query_string.clone(), statement_type)));
               },
               Ok((ExecutionType::Normal, _)) => {
-                self.components.data.set_loading();
-                database.start_query(query_string, *bypass).await?;
+                self.set_data_loading();
+                database.start_query(query_string.clone(), *bypass).await?;
+                self.completion.queue_columns_for_text(query_string);
                 self.state.last_query_start = Some(chrono::Utc::now());
                 self.state.last_query_end = None;
               },
-              Err(e) => self.components.data.set_data_state(Some(Err(e)), None),
-              _ => self
-                .components
-                .data
-                .set_data_state(Some(Err(eyre!("Missing statement type but not bypass"))), None),
+              Err(e) => self.set_data_state(Some(Err(e)), None),
+              _ => {
+                self
+                  .set_data_state(Some(Err(eyre!("Missing statement type but not bypass"))), None);
+              },
             }
           },
           Action::AbortQuery => match database.abort_query().await {
             Ok(true) => {
-              self.components.data.set_cancelled();
+              self.set_data_cancelled();
               self.state.last_query_end = Some(chrono::Utc::now());
             },
             Ok(false) => {},
             Err(e) => {
-              self.components.data.set_data_state(Some(Err(e)), None);
+              self.set_data_state(Some(Err(e)), None);
             },
           },
           Action::MenuPreview(preview_type, target) => {
@@ -563,6 +745,7 @@ impl App {
         })?;
       }
       if self.should_quit {
+        self.completion.cancel_all();
         database.abort_query().await?;
         tui.stop()?;
         break;
@@ -582,11 +765,17 @@ impl App {
       .split(f.area());
     let root_layout = Layout::default()
       .direction(Direction::Horizontal)
-      .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
+      .constraints([
+        Constraint::Percentage(self.menu_width_percent),
+        Constraint::Percentage(100 - self.menu_width_percent),
+      ])
       .split(hints_layout[0]);
     let right_layout = Layout::default()
       .direction(Direction::Vertical)
-      .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+      .constraints([
+        Constraint::Percentage(self.tabs_height_percent),
+        Constraint::Percentage(100 - self.tabs_height_percent),
+      ])
       .split(root_layout[1]);
     let tabs_layout = Layout::default()
       .direction(Direction::Vertical)
@@ -634,11 +823,22 @@ impl App {
         self.last_frame_mouse_event = None;
       }
     }
-    let tabs = Tabs::new(vec![" 󰤏 query <alt+2>", "   history <alt+4>", "   favorites <alt+5>"])
-      .highlight_style(Style::new().fg(self.state.focus.tab_color()).reversed())
-      .select(self.last_focused_tab.tab_index())
-      .padding(" ", "")
-      .divider(" ");
+    let focus_hint = |action, preferred_hint| {
+      self
+        .config
+        .keybindings
+        .hint_for_action(self.state.focus, action, preferred_hint)
+        .map_or_else(String::new, |hint| format!(" {hint}"))
+    };
+    let tabs = Tabs::new(vec![
+      format!(" 󰤏 query{}", focus_hint(&Action::FocusEditor, "<alt+2>")),
+      format!("   history{}", focus_hint(&Action::FocusHistory, "<alt+4>")),
+      format!("   favorites{}", focus_hint(&Action::FocusFavorites, "<alt+5>")),
+    ])
+    .highlight_style(Style::new().fg(self.state.focus.tab_color()).reversed())
+    .select(self.last_focused_tab.tab_index())
+    .padding(" ", "")
+    .divider(" ");
 
     let state = &self.state;
 
@@ -670,28 +870,7 @@ impl App {
 
   fn render_hints(&self, frame: &mut Frame, area: Rect) {
     let block = Block::default().style(Style::default().fg(Color::Blue));
-    let help_text = format!(
-      "{}{}",
-      match self.state.query_task_running {
-        false => "",
-        _ if self.state.focus == Focus::Editor => "[<alt + q>] abort ",
-        _ if self.state.focus != Focus::PopUp => "[q] abort ",
-        _ => "",
-      },
-      match self.state.focus {
-        Focus::Menu =>
-          "[R] refresh [j|↓] down [k|↑] up [l|<enter>] table list [h|󰁮 ] schema list [y] copy name [/] search [g] top [G] bottom",
-        Focus::Editor if !self.state.query_task_running =>
-          "[<alt + enter>|<f5>] execute query [<ctrl + f>|<alt + f>] save query to favorites",
-        Focus::History => "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] clear history",
-        Focus::Favorites =>
-          "[j|↓] down [k|↑] up [y] copy query [I] edit query [D] delete entry [/] search [<esc>] clear search",
-        Focus::Data if !self.state.query_task_running =>
-          "[P] export [j|↓] next row [k|↑] prev row [w|e] next col [b] prev col [v] select field [V] select row [y] copy [Y] copy all [g] top [G] bottom [0] first col [$] last col",
-        Focus::PopUp => "[<esc>] cancel",
-        _ => "",
-      }
-    );
+    let help_text = footer_help_text(&self.config, self.state.focus, self.state.query_task_running);
     let paragraph =
       Paragraph::new(Line::from(help_text).centered()).block(block).wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
@@ -719,5 +898,204 @@ impl App {
       popup_actions,
       center(layout[1], Constraint::Fill(1), Constraint::Percentage(50)),
     );
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use pretty_assertions::assert_eq;
+
+  use super::*;
+  use crate::components::app_state_with_focus;
+  use crate::config::default_config_contents;
+
+  fn test_app(focus: Focus) -> App {
+    let (completion, completion_client) = CompletionCoordinator::new();
+    App {
+      components: Components {
+        menu: Box::new(Menu::new()),
+        editor: Box::new(Editor::with_completion_channels(completion_client)),
+        history: Box::new(History::new()),
+        data: Box::new(Data::new()),
+        favorites: Box::new(Favorites::new()),
+      },
+      should_quit: false,
+      mouse_mode_override: None,
+      config: Config::default(),
+      last_tick_key_events: Vec::new(),
+      last_frame_mouse_event: None,
+      state: app_state_with_focus(focus),
+      last_focused_tab: Focus::Editor,
+      last_focused_component: focus,
+      popup: None,
+      completion,
+      menu_width_percent: DEFAULT_MENU_WIDTH_PERCENT,
+      tabs_height_percent: DEFAULT_TABS_HEIGHT_PERCENT,
+      data_fullscreen_restore: None,
+    }
+  }
+
+  #[test]
+  fn test_fullscreen_keeps_minimum_panes_and_restores_both_splits() {
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut app = test_app(Focus::Data);
+    let mut terminal = Terminal::new(TestBackend::new(100, 42)).unwrap();
+
+    for (menu_width, tabs_height) in [
+      (DEFAULT_MENU_WIDTH_PERCENT, DEFAULT_TABS_HEIGHT_PERCENT),
+      (40, 70),
+      (MIN_SECTION_PERCENT, 70),
+      (40, MIN_SECTION_PERCENT),
+    ] {
+      app.menu_width_percent = menu_width;
+      app.tabs_height_percent = tabs_height;
+      terminal.draw(|f| app.draw_layout(f, tx.clone()).unwrap()).unwrap();
+      let before = terminal.backend().buffer().clone();
+
+      app.toggle_data_fullscreen();
+      terminal.draw(|f| app.draw_layout(f, tx.clone()).unwrap()).unwrap();
+      let fullscreen = terminal.backend().buffer();
+      // The menu retains 10 columns, and tabs retain 4 of the 40 main rows.
+      for (x, y, symbol) in
+        [(10, 1, "┌"), (99, 3, "┘"), (10, 4, "┌"), (99, 4, "┐"), (10, 39, "└"), (99, 39, "┘")]
+      {
+        assert_eq!(fullscreen.cell(Position::new(x, y)).unwrap().symbol(), symbol);
+      }
+
+      app.toggle_data_fullscreen();
+      terminal.draw(|f| app.draw_layout(f, tx.clone()).unwrap()).unwrap();
+      assert_eq!(terminal.backend().buffer(), &before);
+      assert_eq!((app.menu_width_percent, app.tabs_height_percent), (menu_width, tabs_height));
+    }
+  }
+
+  #[test]
+  fn test_fullscreen_after_manual_resizing_restores_latest_split() {
+    let mut app = test_app(Focus::Data);
+    app.menu_width_percent = 40;
+    app.tabs_height_percent = 70;
+    app.toggle_data_fullscreen();
+    app.set_focus(Focus::Menu);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    app.set_focus(Focus::Data);
+    app.resize_focused_section(-SECTION_RESIZE_STEP);
+    assert_eq!((app.menu_width_percent, app.tabs_height_percent), (15, 15));
+    app.toggle_data_fullscreen();
+    assert_eq!((app.menu_width_percent, app.tabs_height_percent), (10, 10));
+    app.toggle_data_fullscreen();
+    assert_eq!((app.menu_width_percent, app.tabs_height_percent), (15, 15));
+  }
+
+  #[test]
+  fn test_manually_maximized_data_restores_default_without_saved_split() {
+    let mut app = test_app(Focus::Data);
+    app.menu_width_percent = MIN_SECTION_PERCENT;
+    app.tabs_height_percent = MIN_SECTION_PERCENT;
+    app.toggle_data_fullscreen();
+    assert_eq!(app.menu_width_percent, DEFAULT_MENU_WIDTH_PERCENT);
+    assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
+  }
+
+  #[test]
+  fn test_draw_layout_applies_resized_percentages() {
+    use ratatui::{Terminal, backend::TestBackend};
+
+    // returns (right region start column, data block top row): the tab-content
+    // block's top-left corner marks the menu width, and the first corner below
+    // it marks where the results section begins
+    fn markers(
+      app: &mut App,
+      terminal: &mut Terminal<TestBackend>,
+      tx: &mpsc::UnboundedSender<Action>,
+    ) -> (u16, u16) {
+      terminal.draw(|f| app.draw_layout(f, tx.clone()).unwrap()).unwrap();
+      let buf = terminal.backend().buffer();
+      let right_start = (0u16..100)
+        .find(|&x| buf.cell(Position::new(x, 1)).unwrap().symbol() == "┌")
+        .expect("tab content block top border not found");
+      let data_top = (2u16..42)
+        .find(|&y| buf.cell(Position::new(right_start, y)).unwrap().symbol() == "┌")
+        .expect("data block top border not found");
+      (right_start, data_top)
+    }
+
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut app = test_app(Focus::Menu);
+    // 100x42: each width percent is one column, and with the two hint rows the
+    // 40-row main area makes each 5% step exactly two rows
+    let mut terminal = Terminal::new(TestBackend::new(100, 42)).unwrap();
+
+    assert_eq!(markers(&mut app, &mut terminal, &tx), (25, 18));
+
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    assert_eq!(markers(&mut app, &mut terminal, &tx), (40, 18));
+
+    for focus in [Focus::Editor, Focus::History, Focus::Favorites] {
+      app.set_focus(focus);
+      app.resize_focused_section(SECTION_RESIZE_STEP);
+      assert_eq!(markers(&mut app, &mut terminal, &tx), (40, 20));
+      app.resize_focused_section(-SECTION_RESIZE_STEP);
+    }
+
+    app.set_focus(Focus::Data);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    app.resize_focused_section(SECTION_RESIZE_STEP);
+    assert_eq!(markers(&mut app, &mut terminal, &tx), (40, 14));
+
+    // Repeated resizing stays within the usable layout, and a popup cannot
+    // resize the panes behind it.
+    for (delta, expected) in [(SECTION_RESIZE_STEP, (90, 4)), (-SECTION_RESIZE_STEP, (10, 36))] {
+      app.set_focus(Focus::Menu);
+      for _ in 0..30 {
+        app.resize_focused_section(delta);
+      }
+      app.set_focus(Focus::Data);
+      for _ in 0..30 {
+        app.resize_focused_section(delta);
+      }
+      assert_eq!(markers(&mut app, &mut terminal, &tx), expected);
+      app.set_focus(Focus::PopUp);
+      app.resize_focused_section(-delta);
+      assert_eq!(markers(&mut app, &mut terminal, &tx), expected);
+    }
+  }
+
+  #[test]
+  fn default_config_preserves_editor_footer_hints() {
+    let config: Config = toml::from_str(default_config_contents()).unwrap();
+
+    assert_eq!(
+      footer_help_text(&config, Focus::Editor, false),
+      "[<alt + enter>|<f5>] execute query [<alt + e>|<f6>] external editor [<ctrl + f>|<alt + f>] save query to favorites"
+    );
+    assert_eq!(footer_help_text(&config, Focus::Editor, true), "[<alt + q>] abort ");
+  }
+
+  #[test]
+  fn footer_uses_configured_action_hints_and_keeps_component_hints_static() {
+    let config: Config = toml::from_str(
+      r#"
+        [keybindings.Editor]
+        "<Alt-q>" = ""
+        "z" = "AbortQuery"
+        "<F5>" = ""
+        "<Alt-enter>" = "SubmitEditorQuery"
+        "x" = "SubmitEditorQuery"
+        "<Alt-e>" = ""
+        "<F6>" = ""
+        "<F2>" = "RequestExternalEditor"
+      "#,
+    )
+    .unwrap();
+
+    assert_eq!(
+      footer_help_text(&config, Focus::Editor, false),
+      "[<alt + enter>|x] execute query [<f2>] external editor [<ctrl + f>|<alt + f>] save query to favorites"
+    );
+    assert_eq!(footer_help_text(&config, Focus::Editor, true), "[z] abort ");
   }
 }

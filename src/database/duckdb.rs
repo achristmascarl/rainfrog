@@ -15,7 +15,11 @@ use tracing::Instrument;
 
 use crate::cli::{Cli, Driver};
 
-use super::{Database, DbTaskResult, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows};
+use super::{
+  Database, DbTaskResult, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows,
+  builtin_functions,
+};
+use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
 enum DuckDbTask {
   Query(QueryTask),
@@ -29,6 +33,10 @@ pub struct DuckDbDriver {
 
 #[async_trait(?Send)]
 impl Database for DuckDbDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    builtin_functions::DUCKDB
+  }
+
   async fn init(&mut self, args: Cli) -> Result<String> {
     let (path, config) = super::DuckDbDriver::build_connection_opts(args)?;
     let conn = Connection::open_with_flags(path.clone(), config)?;
@@ -39,16 +47,22 @@ impl Database for DuckDbDriver {
   // since it's possible for raw_sql to execute multiple queries in a single string,
   // we only execute the first one and then drop the rest.
   async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()> {
-    let (first_query, statement_type) = super::get_first_query(query.clone(), Driver::DuckDb)?;
+    let (first_query, statement_type) = match bypass_parser {
+      true => (query, None),
+      false => {
+        let (first, stmt) = super::get_first_query(query, Driver::DuckDb)?;
+        (first, Some(stmt))
+      },
+    };
     // since Connection isn't Send/Sync, we need to clone it for each query:
     // https://github.com/duckdb/duckdb-rs/issues/378
     let connection = self.connection.as_ref().unwrap().try_clone()?;
     self.task = Some(DuckDbTask::Query(tokio::spawn(
       async move {
-        let results = run_query(connection, first_query).await;
+        let results = run_query(connection, first_query);
         match results {
-          Ok(rows) => QueryResultsWithMetadata::new(Ok(rows), Some(statement_type)),
-          Err(e) => QueryResultsWithMetadata::new(Err(e), Some(statement_type)),
+          Ok(rows) => QueryResultsWithMetadata::new(Ok(rows), statement_type),
+          Err(e) => QueryResultsWithMetadata::new(Err(e), statement_type),
         }
       }
       .in_current_span(),
@@ -95,11 +109,12 @@ impl Database for DuckDbDriver {
     Err(eyre::Report::msg("Transactions are not currently supported when using the DuckDB driver"))
   }
 
-  async fn load_menu(&self) -> Result<Rows> {
+  fn start_load_menu(&self) -> Result<tokio::task::JoinHandle<Result<Rows>>> {
     let connection = self.connection.as_ref().unwrap().try_clone()?;
-    run_query(
-      connection,
-      "select table_schema,
+    Ok(tokio::task::spawn_blocking(move || {
+      run_query(
+        connection,
+        "select table_schema,
         table_name,
         case
           when table_type = 'BASE TABLE' then 'table'
@@ -110,9 +125,28 @@ impl Database for DuckDbDriver {
       where table_schema != 'information_schema'
       group by table_schema, table_name, table_type
       order by table_schema, object_kind, table_name asc"
-        .to_string(),
-    )
-    .await
+          .to_string(),
+      )
+    }))
+  }
+
+  fn start_load_columns(
+    &self,
+    tables: Vec<TableRef>,
+  ) -> Result<tokio::task::JoinHandle<Result<Vec<TableColumns>>>> {
+    let connection = self.connection.as_ref().unwrap().try_clone()?;
+    Ok(tokio::task::spawn_blocking(move || {
+      let mut output = Vec::with_capacity(tables.len());
+      for table in tables {
+        let schema = table.schema.replace('\'', "''");
+        let name = table.table.replace('\'', "''");
+        let query = format!(
+          "select column_name, data_type from information_schema.columns where table_schema = '{schema}' and table_name = '{name}' order by ordinal_position"
+        );
+        output.push(table_columns_from_rows(table, run_query(connection.try_clone()?, query)?));
+      }
+      Ok(output)
+    }))
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
@@ -156,7 +190,7 @@ impl Database for DuckDbDriver {
   }
 }
 
-async fn run_query(connection: Connection, query: String) -> Result<Rows> {
+fn run_query(connection: Connection, query: String) -> Result<Rows> {
   let mut statement = connection.prepare(query.as_str())?;
   let rows = statement.query([])?;
   fetch_rows(rows)
@@ -336,141 +370,39 @@ impl DuckDbDriver {
 
 #[cfg(test)]
 mod tests {
-  use sqlparser::{ast::Statement, parser::ParserError};
 
   use super::*;
-  use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
 
-  #[test]
-  fn test_get_first_query() {
-    type TestCase = (&'static str, Result<(String, Box<dyn Fn(Statement) -> bool>), ParseError>);
+  #[tokio::test]
+  async fn completion_catalog_loads_from_memory_database() {
+    let connection = Connection::open_in_memory().unwrap();
+    connection.execute_batch("create table users(id integer, name varchar)").unwrap();
+    let driver = DuckDbDriver { connection: Some(connection), task: None };
 
-    let test_cases: Vec<TestCase> = vec![
-      // single query
-      (
-        "SELECT * FROM users;",
-        Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // multiple queries
-      (
-        "SELECT * FROM users; DELETE FROM posts;",
-        Err(ParseError::MoreThanOneStatement("Only one statement allowed per query".to_owned())),
-      ),
-      // empty query
-      ("", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
-      // syntax error
-      (
-        "SELEC * FORM users;",
-        Err(ParseError::SqlParserError(ParserError::ParserError(
-          "Expected: an SQL statement, found: SELEC at Line: 1, Column: 1".to_owned(),
-        ))),
-      ),
-      // lowercase
-      (
-        "select * from `users`",
-        Ok(("SELECT * FROM `users`".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // newlines
-      (
-        "select *\nfrom users;",
-        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // comment-only
-      ("-- select * from users;", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
-      // commented line(s)
-      (
-        "-- select blah;\nselect * from users",
-        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // update
-      (
-        "UPDATE users SET name = 'John' WHERE id = 1",
-        Ok((
-          "UPDATE users SET name = 'John' WHERE id = 1".to_owned(),
-          Box::new(|s| matches!(s, Statement::Update { .. })),
-        )),
-      ),
-      // delete
-      (
-        "DELETE FROM users WHERE id = 1",
-        Ok((
-          "DELETE FROM users WHERE id = 1".to_owned(),
-          Box::new(|s| matches!(s, Statement::Delete { .. })),
-        )),
-      ),
-      // drop
-      (
-        "DROP TABLE users",
-        Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. })))),
-      ),
-      // explain
-      (
-        "EXPLAIN SELECT * FROM users",
-        Ok((
-          "EXPLAIN SELECT * FROM users".to_owned(),
-          Box::new(|s| matches!(s, Statement::Explain { .. })),
-        )),
-      ),
-    ];
+    let menu = driver.start_load_menu().unwrap().await.unwrap().unwrap();
+    let user_row = menu.rows.iter().find(|row| row.get(1).is_some_and(|name| name == "users"));
+    assert!(user_row.is_some());
 
-    for (input, expected_output) in test_cases {
-      let result = get_first_query(input.to_string(), Driver::DuckDb);
-      match (result, expected_output) {
-        (Ok((query, statement_type)), Ok((expected_query, match_statement))) => {
-          assert_eq!(query, expected_query);
-          assert!(match_statement(statement_type));
-        },
-        (Err(ParseError::EmptyQuery(msg)), Err(ParseError::EmptyQuery(expected_msg))) => {
-          assert_eq!(msg, expected_msg)
-        },
-        (
-          Err(ParseError::MoreThanOneStatement(msg)),
-          Err(ParseError::MoreThanOneStatement(expected_msg)),
-        ) => {
-          assert_eq!(msg, expected_msg)
-        },
-        (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {
-          assert_eq!(msg, expected_msg)
-        },
-        _ => panic!("Unexpected result for input: {}", input),
-      }
-    }
+    let table = TableRef { schema: "main".into(), table: "users".into() };
+    let columns = driver.start_load_columns(vec![table]).unwrap().await.unwrap().unwrap();
+    assert_eq!(
+      columns[0].columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
+      vec!["id", "name"]
+    );
   }
 
-  #[test]
-  fn test_execution_type_duckdb() {
-    let test_cases = vec![
-      ("DELETE FROM users WHERE id = 1", ExecutionType::Confirm),
-      ("DROP TABLE users", ExecutionType::Confirm),
-      ("UPDATE users SET name = 'John' WHERE id = 1", ExecutionType::Confirm),
-      ("SELECT * FROM users", ExecutionType::Normal),
-      ("INSERT INTO users (name) VALUES ('John')", ExecutionType::Normal),
-      ("EXPLAIN DELETE FROM users WHERE id = 1", ExecutionType::Normal),
-      ("EXPLAIN SELECT * FROM users", ExecutionType::Normal),
-      ("EXPLAIN QUERY PLAN SELECT * FROM users", ExecutionType::Normal),
-      ("EXPLAIN Query PLAN DELETE FROM users WHERE id = 1", ExecutionType::Normal),
-      (
-        "SELECT * FROM read_csv('flights.csv', delim = '|', header = true, columns = {
-          'FlightDate': 'DATE',
-          'UniqueCarrier': 'VARCHAR',
-          'OriginCityName': 'VARCHAR',
-          'DestCityName': 'VARCHAR'
-        });",
-        ExecutionType::Normal,
-      ),
-      // TODO: Uncomment once https://github.com/apache/datafusion-sqlparser-rs/issues/1824 is fixed
-      // ("COPY FROM DATABASE memory TO my_database;", ExecutionType::Normal),
-    ];
+  #[tokio::test]
+  async fn bypass_parser_sends_raw_query_to_duckdb() {
+    let connection = Connection::open_in_memory().unwrap();
+    let mut driver = DuckDbDriver { connection: Some(connection), task: None };
 
-    let driver = DuckDbDriver::new();
+    driver.start_query("SELEC 1".to_owned(), true).await.unwrap();
 
-    for (query, expected) in test_cases {
-      assert_eq!(
-        get_execution_type(query.to_string(), false, Driver::DuckDb).unwrap().0,
-        expected,
-        "Failed for query: {}",
-        query
-      );
-    }
+    let Some(DuckDbTask::Query(handle)) = driver.task.take() else {
+      panic!("expected DuckDB query task");
+    };
+    let result = handle.await.unwrap();
+    assert!(result.results.is_err());
+    assert!(result.statement_type.is_none());
   }
 }

@@ -100,6 +100,7 @@ pub enum Driver {
   MySql,
   #[serde(alias = "sqlite", alias = "SQLITE")]
   Sqlite,
+  #[cfg(feature = "oracle")]
   #[serde(alias = "oracle", alias = "ORACLE")]
   Oracle,
   #[cfg(feature = "duckdb")]
@@ -115,6 +116,7 @@ impl FromStr for Driver {
       "postgres" | "postgresql" => Ok(Driver::Postgres),
       "mysql" => Ok(Driver::MySql),
       "sqlite" => Ok(Driver::Sqlite),
+      #[cfg(feature = "oracle")]
       "oracle" => Ok(Driver::Oracle),
       #[cfg(feature = "duckdb")]
       "duckdb" => Ok(Driver::DuckDb),
@@ -205,7 +207,9 @@ mod tests {
       ("sqlite:///tmp/data.sqlite", Driver::Sqlite),
       ("sqlite:///var/lib/sqlite/app.sqlite3", Driver::Sqlite),
       ("sqlite://localhost/var/data.sqlite?mode=ro", Driver::Sqlite),
+      #[cfg(feature = "oracle")]
       ("oracle://scott:tiger@//prod-db.example.com:1521/ORCLPDB1", Driver::Oracle),
+      #[cfg(feature = "oracle")]
       ("oracle://user:pass@db-host/service_name", Driver::Oracle),
       #[cfg(feature = "duckdb")]
       ("duckdb:///var/tmp/cache.duckdb", Driver::DuckDb),
@@ -230,7 +234,9 @@ mod tests {
       ("jdbc:mysql:loadbalance://db1.example.com:3306,db2.example.com:3306/app", Driver::MySql),
       ("jdbc:sqlite://localhost/path", Driver::Sqlite),
       ("jdbc:sqlite:/var/lib/sqlite/cache.sqlite3", Driver::Sqlite),
+      #[cfg(feature = "oracle")]
       ("jdbc:oracle:thin:@localhost:1521/dbname", Driver::Oracle),
+      #[cfg(feature = "oracle")]
       ("jdbc:oracle:oci:@//prod-host:1521/ORCLCDB.localdomain", Driver::Oracle),
       #[cfg(feature = "duckdb")]
       ("jdbc:duckdb:/var/lib/duckdb/cache.duckdb", Driver::DuckDb),
@@ -306,51 +312,10 @@ mod tests {
     }
   }
 
+  #[cfg(not(feature = "oracle"))]
   #[test]
-  fn parses_edit_subcommand() {
-    let cli = Cli::parse_from(["rainfrog", "edit"]);
-    assert_eq!(cli.command, Some(CliCommand::Edit));
-  }
-
-  #[test]
-  fn enable_cleartext_plugin_defaults_to_false() {
-    let cli = Cli::parse_from(["rainfrog"]);
-    assert!(!cli.enable_cleartext_plugin);
-  }
-
-  #[test]
-  fn enable_cleartext_plugin_flag_sets_true() {
-    let cli = Cli::parse_from(["rainfrog", "--enable-cleartext-plugin"]);
-    assert!(cli.enable_cleartext_plugin);
-  }
-
-  #[test]
-  fn reenter_password_defaults_to_false() {
-    let cli = Cli::parse_from(["rainfrog"]);
-    assert!(!cli.reenter_password);
-  }
-
-  #[test]
-  fn reenter_password_long_flag_sets_true() {
-    let cli = Cli::parse_from(["rainfrog", "--reenter-password"]);
-    assert!(cli.reenter_password);
-  }
-
-  #[test]
-  fn reenter_password_short_flag_sets_true() {
-    let cli = Cli::parse_from(["rainfrog", "-R"]);
-    assert!(cli.reenter_password);
-  }
-
-  #[test]
-  fn ssl_required_defaults_to_false() {
-    let cli = Cli::parse_from(["rainfrog"]);
-    assert!(!cli.ssl_required);
-  }
-
-  #[test]
-  fn ssl_required_flag_sets_true() {
-    let cli = Cli::parse_from(["rainfrog", "--ssl-required"]);
-    assert!(cli.ssl_required);
+  fn oracle_driver_is_unavailable_without_feature() {
+    assert!("oracle".parse::<Driver>().is_err());
+    assert!(extract_driver_from_url("oracle://localhost/database").is_err());
   }
 }

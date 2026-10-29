@@ -4,14 +4,17 @@ a database tool for the terminal
 
 ![rainfrog demo](vhs/demo.gif)
 
-> [!WARNING]
-> rainfrog is currently in beta
+<div align="center">
 
-the goal for rainfrog is to provide a lightweight, terminal-based tool for
-interacting with databases.
+[![Crate Badge]][Crate] [![Repo Badge]][Repo] [![License Badge]](./LICENSE) \
+[![CI Badge]][CI] [![Built With Ratatui](https://img.shields.io/badge/Built_With_Ratatui-000?logo=ratatui&logoColor=fff)](https://ratatui.rs/)
+
+</div>
 
 ## features
 
+the goal for rainfrog is to provide a lightweight, terminal-based tool for
+interacting with databases.
 - efficient navigation via vim-like keybindings and mouse controls
 - query editor with keyword highlighting, session history, and favorites
 - quickly copy data, filter tables, and switch between schemas
@@ -36,9 +39,9 @@ the levels of support for different databases can be split into 4 tiers:
 | postgres | 1 |  | |
 | mysql | 2 |  | |
 | sqlite | 2  |          | |
-| redshift| 2  |          | postgres |
-| duckdb | 4 | prebuilt duckdb and musl binaries do not include this driver      | |
-| oracle | 4 | requires additional runtime dependencies          | |
+| redshift | 2 |          | postgres |
+| duckdb | 2 | prebuilt android, i686, and musl binaries do not include this driver      | |
+| oracle | 3 | requires additional runtime dependencies          | |
 
 
 
@@ -87,7 +90,6 @@ access on a production database.
       + [results](#results)
 - [exports](#exports)
 - [favorites](#favorites)
-- [roadmap](#roadmap)
 - [known issues and limitations](#known-issues-and-limitations)
 - [Contributing](#contributing)
 - [acknowledgements](#acknowledgements)
@@ -357,6 +359,10 @@ export RAINFROG_CONFIG=~/.config/rainfrog
 | mouse_mode | `true` | whether to capture mouse events. capturing mouse events allows you to change focus and scroll using the mouse. however, your terminal will not handle mouse events like it normally does (you won't be able to copy by highlighting, for example). |
 | data_compact_columns | `true` | whether column widths should be dynamic based on the length of the contents of each column. there is still a max column width that won't be exceeded, so this will save some space by compressing the widths of columns with shorter strings. |
 | data_row_spacer | `false` | whether rows will have a space separating them to make the data table less visually dense.                    |
+| autocomplete_enabled | `true` | whether completions are requested while editing SQL. |
+| autocomplete_debounce_ms | `100` | how long edit-triggered completion waits before refreshing or hiding the menu. |
+| autocomplete_trigger_len | `1` | minimum identifier length for automatic completion; `Ctrl+Space` bypasses it. |
+| autopairs_enabled | `true` | whether insert mode automatically closes single quotes, double quotes, brackets, braces, parentheses, and backticks at the end of a line or before whitespace; skips an adjacent closing half; and removes both halves when backspacing an empty pair. |
 
 <!-- TOC --><a name="database-connections"></a>
 ### database connections
@@ -397,6 +403,16 @@ them. to see a list of the ones you can customize, see the default
 config file at [.config/rainfrog_config.toml](./.config/rainfrog_config.toml). below
 are the default keybindings.
 
+set a keybinding's action to an empty string (`""`) to disable it. keybindings
+are scoped to their section, so a binding must be disabled separately in each
+focus where it should no longer apply.
+
+```toml
+[keybindings.Menu]
+"<Alt-1>" = ""
+"<Ctrl-h>" = "FocusMenu"
+```
+
 <!-- TOC --><a name="nb-for-mac-users"></a>
 #### n.b. for mac users
 on mac, for VS Code, terminal, kitty, and others, a setting for
@@ -418,6 +434,8 @@ kitty, it's `macos_option_as_alt yes` in the config.)
 | `Alt+5`, `Ctrl+m`            | change focus to query favorites |
 | `Tab`                        | cycle focus forwards            |
 | `Shift+Tab`                  | cycle focus backwards           |
+| `Alt+-`                      | decrease focused section size   |
+| `Alt++`                      | increase focused section size   |
 | `q`, `Alt+q` in query editor | abort current query             |
 
 <!-- TOC --><a name="menu-list-of-schemas-and-tables"></a>
@@ -448,7 +466,12 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | Keybinding        | Description                            |
 | ----------------- | -------------------------------------- |
 | `Alt+Enter`, `F5` | Execute query                          |
+| `Alt+e`, `F6`     | Edit query in external editor          |
 | `F7`              | Bypass parser to execute query (cannot rollback, no validation) |
+| `Ctrl+Space`      | Show SQL, schema, buffer, or path completions |
+| `Tab`, `Enter`    | Accept the selected completion             |
+| `Up`, `Down`, `Ctrl+p`, `Ctrl+n` | Navigate completions          |
+| `Esc`             | Dismiss completions; press again for normal mode |
 | `j`, `↓`          | Move cursor down 1 line                |
 | `k`, `↑`          | Move cursor up 1 line                  |
 | `h`, `←`          | Move cursor left 1 char                |
@@ -512,6 +535,7 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 
 | keybinding                | description                    |
 | ------------------------- | ------------------------------ |
+| `F`                       | maximize results with menu/tabs at minimum size; press again to restore the previous layout |
 | `P`                       | export results to csv          |
 | `j`, `↓`                  | scroll down by 1 row           |
 | `k`, `↑`                  | scroll up by 1 row             |
@@ -579,48 +603,6 @@ to make the change permanent, add it to your .zshrc/.bashrc/.\*rc file:
 export RAINFROG_FAVORITES=~/.config/rainfrog/favorites
 ```
 
-<!-- TOC --><a name="roadmap"></a>
-## roadmap
-
-<details>
-  <summary><b>🏁 v0.1.0 – alpha</b></summary>
-  
-- [x] scrollable table
-- [x] cancellable async querying (spawn tokio task)
-- [x] menu list with tables and schemas (collapsible)
-- [x] tui-textarea for query editor
-- [x] basic tui-textarea vim keybindings
-- [x] handle custom types / enums
-- [x] display rows affected
-- [x] confirm before delete/drop
-- [x] table selection and yanking
-- [x] multi-line pasting
-- [x] editor os clipboard support
-- [x] handle mouse events
-- [x] keybindings hints at bottom
-- [x] branch protection
-
-</details>
-
-<details>
-  <summary><b>🏁 v0.2.0 – beta</b></summary>
-
-- [x] vhs explainer gifs
-- [x] upgrade ratatui and tui-textarea
-- [x] shortcuts to view indexes, keys, etc.
-- [x] performant syntax highlighting
-- [x] session history
-- [x] changelog, release script
-- [x] handle explain / analyze output
-- [x] show query duration
-- [x] install script for bins
-
-</details>
-
-now that rainfrog is in beta, check out the
-[issues tab](https://github.com/achristmascarl/rainfrog/issues) for planned
-features
-
 <!-- TOC --><a name="known-issues-and-limitations"></a>
 ## known issues and limitations
 
@@ -648,12 +630,16 @@ or creating PRs.
 <!-- TOC --><a name="acknowledgements"></a>
 ## acknowledgements
 
-- [ratatui](https://github.com/ratatui-org/ratatui) (this project used ratatui's
-  [component template](https://github.com/ratatui-org/templates/tree/983aa3cb3b8dd743200e8e2a1faa6e7c06aad85e/component/template)
-  as a starting point)
-- [tui-textarea](https://github.com/rhysd/tui-textarea) (used in the query
-  editor)
+- [tui-textarea](https://github.com/rhysd/tui-textarea) (originally used in the query editor; now, the [ratatui-textarea](https://github.com/ratatui/ratatui-textarea) fork is used instead)
 - [gobang](https://github.com/TaKO8Ki/gobang) (a rust db tui i drew inspiration
   from)
 - [ricky rainfrog](https://us.jellycat.com/ricky-rain-frog/)
 - [rainfroggg](https://www.rainfrog.gg/) (my wife's tattoo studio)
+
+[Repo]: https://github.com/achristmascarl/rainfrog
+[Crate]: https://crates.io/crates/rainfrog
+[Crate Badge]: https://img.shields.io/crates/v/rainfrog?logo=rust&style=flat-square&color=E05D44
+[Repo Badge]: https://img.shields.io/badge/repo-achristmascarl/rainfrog-1370D3?style=flat-square&logo=github
+[License Badge]: https://img.shields.io/crates/l/rainfrog?style=flat-square&color=1370D3
+[CI Badge]: https://img.shields.io/github/actions/workflow/status/achristmascarl/rainfrog/ci.yml?style=flat-square&logo=github
+[CI]: https://github.com/achristmascarl/rainfrog/actions/workflows/ci.yml

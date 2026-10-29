@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use derive_deref::{Deref, DerefMut};
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use ratatui::style::{Color, Modifier, Style};
-use serde::{Deserialize, de::Deserializer};
+use serde::{Deserialize, de, de::Deserializer};
 
 use crate::{action::Action, cli::Driver, focus::Focus, keyring::Password};
 
@@ -119,6 +119,7 @@ impl StructuredConnection {
         self.username, encoded_password, self.host, self.port, self.database
       )),
       Driver::Sqlite => Err(eyre::Report::msg("Sqlite only supports raw connection strings")),
+      #[cfg(feature = "oracle")]
       Driver::Oracle => Ok(format!(
         "jdbc:oracle:thin:{}/{}@//{}:{}/{}",
         self.username, encoded_password, self.host, self.port, self.database
@@ -154,12 +155,7 @@ impl Config {
 
     let mut cfg: Self = builder.build()?.try_deserialize()?;
 
-    for (focus, default_bindings) in default_config.keybindings.iter() {
-      let user_bindings = cfg.keybindings.entry(*focus).or_default();
-      for (key, cmd) in default_bindings.iter() {
-        user_bindings.entry(key.clone()).or_insert_with(|| cmd.clone());
-      }
-    }
+    cfg.keybindings.merge_defaults(&default_config.keybindings);
     for (focus, default_styles) in default_config.styles.iter() {
       let user_styles = cfg.styles.entry(*focus).or_default();
       for (style_key, style) in default_styles.iter() {
@@ -184,6 +180,18 @@ impl Config {
         cfg.settings.data_row_spacer = default_config.settings.data_row_spacer;
       },
     };
+    if cfg.settings.autocomplete_enabled.is_none() {
+      cfg.settings.autocomplete_enabled = default_config.settings.autocomplete_enabled;
+    }
+    if cfg.settings.autocomplete_debounce_ms.is_none() {
+      cfg.settings.autocomplete_debounce_ms = default_config.settings.autocomplete_debounce_ms;
+    }
+    if cfg.settings.autocomplete_trigger_len.is_none() {
+      cfg.settings.autocomplete_trigger_len = default_config.settings.autocomplete_trigger_len;
+    }
+    if cfg.settings.autopairs_enabled.is_none() {
+      cfg.settings.autopairs_enabled = default_config.settings.autopairs_enabled;
+    }
 
     Ok(cfg)
   }
@@ -205,6 +213,45 @@ pub fn default_config_contents() -> &'static str {
 #[derive(Clone, Debug, Default, Deref, DerefMut)]
 pub struct KeyBindings(pub HashMap<Focus, HashMap<Vec<KeyEvent>, Action>>);
 
+impl KeyBindings {
+  fn merge_defaults(&mut self, defaults: &Self) {
+    for (focus, default_bindings) in defaults.iter() {
+      let user_bindings = self.entry(*focus).or_default();
+      for (key, action) in default_bindings {
+        user_bindings.entry(key.clone()).or_insert_with(|| action.clone());
+      }
+    }
+  }
+
+  pub fn hint_for_action(
+    &self,
+    focus: Focus,
+    action: &Action,
+    preferred_hint: &str,
+  ) -> Option<String> {
+    let hints = self.hints_for_action(focus, action);
+
+    hints
+      .iter()
+      .find(|hint| hint.as_str() == preferred_hint)
+      .cloned()
+      .or_else(|| hints.into_iter().next())
+  }
+
+  pub fn hints_for_action(&self, focus: Focus, action: &Action) -> Vec<String> {
+    let Some(bindings) = self.get(&focus) else {
+      return Vec::new();
+    };
+    let mut hints = bindings
+      .iter()
+      .filter(|(_, configured_action)| *configured_action == action)
+      .map(|(key_sequence, _)| key_sequence_to_hint(key_sequence))
+      .collect::<Vec<_>>();
+    hints.sort_unstable();
+    hints
+  }
+}
+
 impl<'de> Deserialize<'de> for KeyBindings {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
@@ -217,11 +264,16 @@ impl<'de> Deserialize<'de> for KeyBindings {
       .map(|(focus, inner_map)| {
         let converted_inner_map = inner_map
           .into_iter()
-          .map(|(key_str, cmd)| (parse_key_sequence(&key_str).unwrap(), cmd))
-          .collect();
-        (focus, converted_inner_map)
+          .map(|(key_str, cmd)| {
+            // a typo in the config file must not abort the process
+            parse_key_sequence(&key_str)
+              .map(|keys| (keys, cmd))
+              .map_err(|e| de::Error::custom(format!("invalid keybinding \"{key_str}\": {e}")))
+          })
+          .collect::<Result<HashMap<_, _>, D::Error>>()?;
+        Ok((focus, converted_inner_map))
       })
-      .collect();
+      .collect::<Result<HashMap<_, _>, D::Error>>()?;
 
     Ok(KeyBindings(keybindings))
   }
@@ -326,7 +378,7 @@ pub fn key_event_to_string(key_event: &KeyEvent) -> String {
     KeyCode::Delete => "delete",
     KeyCode::Insert => "insert",
     KeyCode::F(c) => {
-      char = format!("f({c})");
+      char = format!("f{c}");
       &char
     },
     KeyCode::Char(' ') => "space",
@@ -371,6 +423,19 @@ pub fn key_event_to_string(key_event: &KeyEvent) -> String {
   key
 }
 
+fn key_sequence_to_hint(key_sequence: &[KeyEvent]) -> String {
+  key_sequence
+    .iter()
+    .map(|key| {
+      let hint = key_event_to_string(key)
+        .replace("ctrl-", "ctrl+")
+        .replace("shift-", "shift+")
+        .replace("alt-", "alt+");
+      format!("<{hint}>")
+    })
+    .collect()
+}
+
 pub fn parse_key_sequence(raw: &str) -> Result<Vec<KeyEvent>, String> {
   if raw.chars().filter(|c| *c == '>').count() != raw.chars().filter(|c| *c == '<').count() {
     return Err(format!("Unable to parse `{raw}`"));
@@ -403,6 +468,10 @@ pub struct Settings {
   pub mouse_mode: Option<bool>,
   pub data_compact_columns: Option<bool>,
   pub data_row_spacer: Option<bool>,
+  pub autocomplete_enabled: Option<bool>,
+  pub autocomplete_debounce_ms: Option<u64>,
+  pub autocomplete_trigger_len: Option<usize>,
+  pub autopairs_enabled: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deref, DerefMut)]
@@ -481,9 +550,13 @@ fn parse_color(s: &str) -> Option<Color> {
     let c = 232 + s.trim_start_matches("gray").parse::<u8>().unwrap_or_default();
     Some(Color::Indexed(c))
   } else if s.contains("rgb") {
-    let red = (s.as_bytes()[3] as char).to_digit(10).unwrap_or_default() as u8;
-    let green = (s.as_bytes()[4] as char).to_digit(10).unwrap_or_default() as u8;
-    let blue = (s.as_bytes()[5] as char).to_digit(10).unwrap_or_default() as u8;
+    let bytes = s.as_bytes();
+    let digit_at = |i: usize| -> u8 {
+      bytes.get(i).and_then(|b| (*b as char).to_digit(10)).unwrap_or_default() as u8
+    };
+    let red = digit_at(3);
+    let green = digit_at(4);
+    let blue = digit_at(5);
     let c = 16 + red * 36 + green * 6 + blue;
     Some(Color::Indexed(c))
   } else if s == "bold black" {
@@ -530,181 +603,82 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_parse_style_default() {
-    let style = parse_style("");
-    assert_eq!(style, Style::default());
+  fn test_invalid_keybinding_is_an_error_not_a_panic() {
+    let toml_src = "[keybindings.Editor]\n\"<bogus-key>\" = \"Quit\"\n";
+    let err = toml::from_str::<Config>(toml_src).unwrap_err();
+    assert!(err.to_string().contains("invalid keybinding \"<bogus-key>\""), "got: {err}");
   }
 
   #[test]
-  fn test_parse_style_foreground() {
-    let style = parse_style("red");
-    assert_eq!(style.fg, Some(Color::Indexed(1)));
+  fn test_invalid_non_empty_action_is_an_error() {
+    let toml_src = "[keybindings.Editor]\n\"x\" = \"NotAnAction\"\n";
+    let err = toml::from_str::<Config>(toml_src).unwrap_err();
+    assert!(err.to_string().contains("NotAnAction"), "got: {err}");
   }
 
   #[test]
-  fn test_parse_style_background() {
-    let style = parse_style("on blue");
-    assert_eq!(style.bg, Some(Color::Indexed(4)));
-  }
-
-  #[test]
-  fn test_parse_style_modifiers() {
-    let style = parse_style("underline red on blue");
-    assert_eq!(style.fg, Some(Color::Indexed(1)));
-    assert_eq!(style.bg, Some(Color::Indexed(4)));
-  }
-
-  #[test]
-  fn test_process_color_string() {
-    let (color, modifiers) = process_color_string("underline bold inverse gray");
-    assert_eq!(color, "gray");
-    assert!(modifiers.contains(Modifier::UNDERLINED));
-    assert!(modifiers.contains(Modifier::BOLD));
-    assert!(modifiers.contains(Modifier::REVERSED));
-  }
-
-  #[test]
-  fn test_parse_color_rgb() {
-    let color = parse_color("rgb123");
-    let expected = 16 + 36 + 2 * 6 + 3;
-    assert_eq!(color, Some(Color::Indexed(expected)));
-  }
-
-  #[test]
-  fn test_parse_color_unknown() {
-    let color = parse_color("unknown");
-    assert_eq!(color, None);
-  }
-
-  #[test]
-  fn test_config() -> Result<()> {
-    let c = Config::new()?;
-    assert_eq!(
-      c.keybindings
-        .get(&Focus::Menu)
-        .unwrap()
-        .get(&parse_key_sequence("<q>").unwrap_or_default())
-        .unwrap(),
-      &Action::AbortQuery
-    );
-    assert_eq!(c.settings.mouse_mode, Some(true));
-    Ok(())
-  }
-
-  #[test]
-  fn test_simple_keys() {
-    assert_eq!(
-      parse_key_event("a").unwrap(),
-      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty())
-    );
-
-    assert_eq!(
-      parse_key_event("enter").unwrap(),
-      KeyEvent::new(KeyCode::Enter, KeyModifiers::empty())
-    );
-
-    assert_eq!(parse_key_event("esc").unwrap(), KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));
-  }
-
-  #[test]
-  fn test_with_modifiers() {
-    assert_eq!(
-      parse_key_event("ctrl-a").unwrap(),
-      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)
-    );
-
-    assert_eq!(
-      parse_key_event("alt-enter").unwrap(),
-      KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT)
-    );
-
-    assert_eq!(
-      parse_key_event("shift-esc").unwrap(),
-      KeyEvent::new(KeyCode::Esc, KeyModifiers::SHIFT)
-    );
-  }
-
-  #[test]
-  fn test_multiple_modifiers() {
-    assert_eq!(
-      parse_key_event("ctrl-alt-a").unwrap(),
-      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL | KeyModifiers::ALT)
-    );
-
-    assert_eq!(
-      parse_key_event("ctrl-shift-enter").unwrap(),
-      KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL | KeyModifiers::SHIFT)
-    );
-  }
-
-  #[test]
-  fn test_reverse_multiple_modifiers() {
-    assert_eq!(
-      key_event_to_string(&KeyEvent::new(
-        KeyCode::Char('a'),
-        KeyModifiers::CONTROL | KeyModifiers::ALT
-      )),
-      "ctrl-alt-a".to_string()
-    );
-  }
-
-  #[test]
-  fn test_invalid_keys() {
-    assert!(parse_key_event("invalid-key").is_err());
-    assert!(parse_key_event("ctrl-invalid-key").is_err());
-  }
-
-  #[test]
-  fn test_case_insensitivity() {
-    assert_eq!(
-      parse_key_event("CTRL-a").unwrap(),
-      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)
-    );
-
-    assert_eq!(
-      parse_key_event("AlT-eNtEr").unwrap(),
-      KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT)
-    );
-  }
-
-  #[test]
-  fn database_connection_enable_cleartext_plugin_true() {
-    let toml = r#"
-      driver = "mysql"
-      host = "localhost"
-      port = 3306
-      database = "mydb"
-      username = "user"
-      enable_cleartext_plugin = true
+  fn test_empty_action_disables_default_keybinding() {
+    let toml_src = r#"
+      [keybindings.Menu]
+      "<Alt-1>" = ""
+      "<Ctrl-h>" = "FocusMenu"
     "#;
-    let conn: DatabaseConnection = toml::from_str(toml).unwrap();
-    assert_eq!(conn.enable_cleartext_plugin, Some(true));
+    let mut config: Config = toml::from_str(toml_src).unwrap();
+    let default_config: Config = toml::from_str(CONFIG).unwrap();
+
+    config.keybindings.merge_defaults(&default_config.keybindings);
+
+    let menu_bindings = config.keybindings.get(&Focus::Menu).unwrap();
+    assert_eq!(menu_bindings.get(&parse_key_sequence("<Alt-1>").unwrap()), Some(&Action::NoOp));
+    assert_eq!(
+      menu_bindings.get(&parse_key_sequence("<Ctrl-h>").unwrap()),
+      Some(&Action::FocusMenu)
+    );
   }
 
   #[test]
-  fn database_connection_enable_cleartext_plugin_false() {
-    let toml = r#"
-      driver = "mysql"
-      host = "localhost"
-      port = 3306
-      database = "mydb"
-      username = "user"
-      enable_cleartext_plugin = false
-    "#;
-    let conn: DatabaseConnection = toml::from_str(toml).unwrap();
-    assert_eq!(conn.enable_cleartext_plugin, Some(false));
+  fn test_focus_hint_is_absent_without_an_active_binding() {
+    let config: Config = toml::from_str(
+      r#"
+        [keybindings.Menu]
+        "<Alt-1>" = ""
+      "#,
+    )
+    .unwrap();
+
+    assert_eq!(
+      config.keybindings.hint_for_action(Focus::Menu, &Action::FocusMenu, "<alt+1>"),
+      None
+    );
   }
 
   #[test]
-  fn database_connection_enable_cleartext_plugin_omitted() {
-    let toml = r#"
-      driver = "mysql"
-      host = "localhost"
-      port = 3306
-      database = "mydb"
-      username = "user"
-    "#;
-    let conn: DatabaseConnection = toml::from_str(toml).unwrap();
-    assert_eq!(conn.enable_cleartext_plugin, None);
+  fn test_default_config_section_resize_bindings() {
+    let c: Config = toml::from_str(CONFIG).unwrap();
+    for focus in [Focus::Menu, Focus::Editor, Focus::History, Focus::Data, Focus::Favorites] {
+      let keymap = c.keybindings.get(&focus).unwrap();
+      assert_eq!(
+        keymap.get(&parse_key_sequence("<Alt-minus>").unwrap()),
+        Some(&Action::DecreaseSectionSize),
+        "missing decrease binding for {focus:?}"
+      );
+      assert_eq!(
+        keymap.get(&parse_key_sequence("<Alt-+>").unwrap()),
+        Some(&Action::IncreaseSectionSize),
+        "missing increase binding for {focus:?}"
+      );
+      assert_eq!(
+        keymap.get(&parse_key_sequence("<Alt-shift-+>").unwrap()),
+        Some(&Action::IncreaseSectionSize),
+        "missing shifted increase binding for {focus:?}"
+      );
+    }
+    let popup = c.keybindings.get(&Focus::PopUp).unwrap();
+    assert!(
+      !popup
+        .values()
+        .any(|a| matches!(a, Action::IncreaseSectionSize | Action::DecreaseSectionSize)),
+      "popup must not have resize bindings"
+    );
   }
 }

@@ -2,6 +2,10 @@
 mouse_mode = true
 data_compact_columns = true
 data_row_spacer = false
+autocomplete_enabled = true
+autocomplete_debounce_ms = 100
+autocomplete_trigger_len = 1
+autopairs_enabled = true
 
 [db]
 # you can add frequently used database connections here. example:
@@ -24,9 +28,15 @@ data_row_spacer = false
 "<Ctrl-m>" = "FocusFavorites"
 "<Tab>" = "CycleFocusForwards"
 "<Backtab>" = "CycleFocusBackwards"
+"<Alt-minus>" = "DecreaseSectionSize"
+"<Alt-+>" = "IncreaseSectionSize"
+"<Alt-shift-+>" = "IncreaseSectionSize"
 
 [keybindings.Editor]
+"<Ctrl-space>" = "TriggerCompletion"
 "<Alt-q>" = "AbortQuery"
+"<Alt-e>" = "RequestExternalEditor"
+"<F6>" = "RequestExternalEditor"
 "<F5>" = "SubmitEditorQuery"
 "<F7>" = "SubmitEditorQueryBypassParser"
 "<Alt-1>" = "FocusMenu"
@@ -40,6 +50,9 @@ data_row_spacer = false
 "<Ctrl-g>" = "FocusHistory"
 "<Ctrl-m>" = "FocusFavorites"
 "<Backtab>" = "CycleFocusBackwards"
+"<Alt-minus>" = "DecreaseSectionSize"
+"<Alt-+>" = "IncreaseSectionSize"
+"<Alt-shift-+>" = "IncreaseSectionSize"
 
 [keybindings.History]
 "<Ctrl-c>" = "Quit"
@@ -56,6 +69,9 @@ data_row_spacer = false
 "<Ctrl-m>" = "FocusFavorites"
 "<Tab>" = "CycleFocusForwards"
 "<Backtab>" = "CycleFocusBackwards"
+"<Alt-minus>" = "DecreaseSectionSize"
+"<Alt-+>" = "IncreaseSectionSize"
+"<Alt-shift-+>" = "IncreaseSectionSize"
 
 [keybindings.Data]
 "<Ctrl-c>" = "Quit"
@@ -72,6 +88,9 @@ data_row_spacer = false
 "<Ctrl-m>" = "FocusFavorites"
 "<Tab>" = "CycleFocusForwards"
 "<Backtab>" = "CycleFocusBackwards"
+"<Alt-minus>" = "DecreaseSectionSize"
+"<Alt-+>" = "IncreaseSectionSize"
+"<Alt-shift-+>" = "IncreaseSectionSize"
 
 [keybindings.Favorites]
 "<Ctrl-c>" = "Quit"
@@ -88,6 +107,9 @@ data_row_spacer = false
 "<Ctrl-m>" = "FocusFavorites"
 "<Tab>" = "CycleFocusForwards"
 "<Backtab>" = "CycleFocusBackwards"
+"<Alt-minus>" = "DecreaseSectionSize"
+"<Alt-+>" = "IncreaseSectionSize"
+"<Alt-shift-+>" = "IncreaseSectionSize"
 
 [keybindings.PopUp]
 "<Ctrl-c>" = "Quit"

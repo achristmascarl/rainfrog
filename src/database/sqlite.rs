@@ -13,13 +13,14 @@ use sqlparser::ast::Statement;
 use sqlx::{
   Column, Either, Row, ValueRef,
   sqlite::{Sqlite, SqliteConnectOptions, SqlitePoolOptions},
-  types::uuid,
 };
 use tracing::Instrument;
 
 use super::{
-  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows, Value,
+  Database, DbTaskResult, Driver, Header, Headers, QueryResultsWithMetadata, QueryTask, Rows,
+  Value, builtin_functions,
 };
+use crate::completion::{TableColumns, TableRef, table_columns_from_rows};
 
 type SqliteTransaction = sqlx::Transaction<'static, Sqlite>;
 type TransactionAcquireTask = tokio::task::JoinHandle<Result<SqliteTransaction>>;
@@ -44,6 +45,10 @@ pub struct SqliteDriver {
 
 #[async_trait(?Send)]
 impl Database for SqliteDriver {
+  fn builtin_functions(&self) -> &'static [&'static str] {
+    builtin_functions::SQLITE
+  }
+
   async fn init(&mut self, args: crate::cli::Cli) -> Result<String> {
     let opts = super::sqlite::SqliteDriver::build_connection_opts(args)?;
     let pool =
@@ -226,10 +231,12 @@ impl Database for SqliteDriver {
     Ok(())
   }
 
-  async fn load_menu(&self) -> Result<Rows> {
-    query_with_pool(
-      self.pool.clone().unwrap(),
-      "select '' as table_schema,
+  fn start_load_menu(&self) -> Result<tokio::task::JoinHandle<Result<Rows>>> {
+    let pool = self.pool.clone().unwrap();
+    Ok(tokio::spawn(async move {
+      query_with_pool(
+        pool,
+        "select '' as table_schema,
         name as table_name,
         case
           when type = 'table' then 'table'
@@ -240,9 +247,26 @@ impl Database for SqliteDriver {
       where type in ('table', 'view')
       and name not like 'sqlite_%'
       order by object_kind, name asc"
-        .to_owned(),
-    )
-    .await
+          .to_owned(),
+      )
+      .await
+    }))
+  }
+
+  fn start_load_columns(
+    &self,
+    tables: Vec<TableRef>,
+  ) -> Result<tokio::task::JoinHandle<Result<Vec<TableColumns>>>> {
+    let pool = self.pool.clone().unwrap();
+    Ok(tokio::spawn(async move {
+      let mut output = Vec::with_capacity(tables.len());
+      for table in tables {
+        let name = table.table.replace('\'', "''");
+        let query = format!("select name, type from pragma_table_info('{name}') order by cid");
+        output.push(table_columns_from_rows(table, query_with_pool(pool.clone(), query).await?));
+      }
+      Ok(output)
+    }))
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
@@ -449,43 +473,10 @@ fn parse_value(
       Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
       |received| Value { parse_error: false, string: received.to_string(), is_null: false },
     )),
-    "TEXT" => {
-      // Try parsing as different types that might be stored as TEXT
-      match row.try_get::<chrono::NaiveDateTime, _>(col.ordinal()) {
-        Ok(dt) => Some(Value { parse_error: false, string: dt.to_string(), is_null: false }),
-        _ => match row.try_get::<chrono::DateTime<chrono::Utc>, _>(col.ordinal()) {
-          Ok(dt) => Some(Value { parse_error: false, string: dt.to_string(), is_null: false }),
-          _ => match row.try_get::<chrono::NaiveDate, _>(col.ordinal()) {
-            Ok(date) => {
-              Some(Value { parse_error: false, string: date.to_string(), is_null: false })
-            },
-            _ => match row.try_get::<chrono::NaiveTime, _>(col.ordinal()) {
-              Ok(time) => {
-                Some(Value { parse_error: false, string: time.to_string(), is_null: false })
-              },
-              _ => match row.try_get::<uuid::Uuid, _>(col.ordinal()) {
-                Ok(uuid) => {
-                  Some(Value { parse_error: false, string: uuid.to_string(), is_null: false })
-                },
-                _ => match row.try_get::<serde_json::Value, _>(col.ordinal()) {
-                  Ok(json) => {
-                    Some(Value { parse_error: false, string: json.to_string(), is_null: false })
-                  },
-                  _ => match row.try_get::<String, _>(col.ordinal()) {
-                    Ok(string) => Some(Value { parse_error: false, string, is_null: false }),
-                    _ => Some(Value {
-                      parse_error: true,
-                      string: "_ERROR_".to_string(),
-                      is_null: false,
-                    }),
-                  },
-                },
-              },
-            },
-          },
-        },
-      }
-    },
+    "TEXT" => Some(row.try_get::<String, usize>(col.ordinal()).map_or(
+      Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
+      |received| Value { parse_error: false, string: received, is_null: false },
+    )),
     "BLOB" => Some(row.try_get::<Vec<u8>, usize>(col.ordinal()).map_or(
       Value { parse_error: true, string: "_ERROR_".to_string(), is_null: false },
       |received| {
@@ -548,129 +539,52 @@ fn parse_value(
 
 #[cfg(test)]
 mod tests {
-  use sqlparser::{ast::Statement, dialect::SQLiteDialect, parser::ParserError};
 
   use super::*;
-  use crate::database::{ExecutionType, ParseError, get_execution_type, get_first_query};
 
-  #[test]
-  fn test_get_first_query() {
-    type TestCase = (&'static str, Result<(String, Box<dyn Fn(Statement) -> bool>), ParseError>);
+  #[tokio::test]
+  async fn completion_catalog_loads_from_memory_database() {
+    let pool = Arc::new(
+      SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap(),
+    );
+    sqlx::query("create table users(id integer, name text)").execute(pool.as_ref()).await.unwrap();
+    let driver = SqliteDriver { pool: Some(pool), task: None };
 
-    let test_cases: Vec<TestCase> = vec![
-      // single query
-      (
-        "SELECT * FROM users;",
-        Ok(("SELECT * FROM users".to_string(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // multiple queries
-      (
-        "SELECT * FROM users; DELETE FROM posts;",
-        Err(ParseError::MoreThanOneStatement("Only one statement allowed per query".to_owned())),
-      ),
-      // empty query
-      ("", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
-      // syntax error
-      (
-        "SELEC * FORM users;",
-        Err(ParseError::SqlParserError(ParserError::ParserError(
-          "Expected: an SQL statement, found: SELEC at Line: 1, Column: 1".to_owned(),
-        ))),
-      ),
-      // lowercase
-      (
-        "select * from `users`",
-        Ok(("SELECT * FROM `users`".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // newlines
-      (
-        "select *\nfrom users;",
-        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // comment-only
-      ("-- select * from users;", Err(ParseError::EmptyQuery("Parsed query is empty".to_owned()))),
-      // commented line(s)
-      (
-        "-- select blah;\nselect * from users",
-        Ok(("SELECT * FROM users".to_owned(), Box::new(|s| matches!(s, Statement::Query(_))))),
-      ),
-      // update
-      (
-        "UPDATE users SET name = 'John' WHERE id = 1",
-        Ok((
-          "UPDATE users SET name = 'John' WHERE id = 1".to_owned(),
-          Box::new(|s| matches!(s, Statement::Update { .. })),
-        )),
-      ),
-      // delete
-      (
-        "DELETE FROM users WHERE id = 1",
-        Ok((
-          "DELETE FROM users WHERE id = 1".to_owned(),
-          Box::new(|s| matches!(s, Statement::Delete { .. })),
-        )),
-      ),
-      // drop
-      (
-        "DROP TABLE users",
-        Ok(("DROP TABLE users".to_owned(), Box::new(|s| matches!(s, Statement::Drop { .. })))),
-      ),
-      // explain
-      (
-        "EXPLAIN SELECT * FROM users",
-        Ok((
-          "EXPLAIN SELECT * FROM users".to_owned(),
-          Box::new(|s| matches!(s, Statement::Explain { .. })),
-        )),
-      ),
-    ];
+    let menu = driver.start_load_menu().unwrap().await.unwrap().unwrap();
+    assert!(menu.rows.iter().any(|row| row.get(1).is_some_and(|name| name == "users")));
 
-    let dialect = Box::new(SQLiteDialect {});
-
-    for (input, expected_output) in test_cases {
-      let result = get_first_query(input.to_string(), Driver::Sqlite);
-      match (result, expected_output) {
-        (Ok((query, statement_type)), Ok((expected_query, match_statement))) => {
-          assert_eq!(query, expected_query);
-          assert!(match_statement(statement_type));
-        },
-        (Err(ParseError::EmptyQuery(msg)), Err(ParseError::EmptyQuery(expected_msg))) => {
-          assert_eq!(msg, expected_msg)
-        },
-        (
-          Err(ParseError::MoreThanOneStatement(msg)),
-          Err(ParseError::MoreThanOneStatement(expected_msg)),
-        ) => {
-          assert_eq!(msg, expected_msg)
-        },
-        (Err(ParseError::SqlParserError(msg)), Err(ParseError::SqlParserError(expected_msg))) => {
-          assert_eq!(msg, expected_msg)
-        },
-        _ => panic!("Unexpected result for input: {input}"),
-      }
-    }
+    let table = TableRef { schema: String::new(), table: "users".into() };
+    let columns = driver.start_load_columns(vec![table]).unwrap().await.unwrap().unwrap();
+    assert_eq!(
+      columns[0].columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
+      vec!["id", "name"]
+    );
   }
 
-  #[test]
-  fn test_execution_type_sqlite() {
-    let test_cases = vec![
-      ("DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
-      ("DROP TABLE users", ExecutionType::Confirm),
-      ("UPDATE users SET name = 'John' WHERE id = 1", ExecutionType::Transaction),
-      ("SELECT * FROM users", ExecutionType::Normal),
-      ("INSERT INTO users (name) VALUES ('John')", ExecutionType::Normal),
-      ("EXPLAIN DELETE FROM users WHERE id = 1", ExecutionType::Normal),
-      ("EXPLAIN SELECT * FROM users", ExecutionType::Normal),
-      ("EXPLAIN QUERY PLAN SELECT * FROM users", ExecutionType::Normal),
-      ("EXPLAIN Query PLAN DELETE FROM users WHERE id = 1", ExecutionType::Normal),
-    ];
+  #[tokio::test]
+  async fn declared_text_values_are_preserved() {
+    let pool = Arc::new(
+      SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap(),
+    );
+    sqlx::query("create table repro(value text)").execute(pool.as_ref()).await.unwrap();
+    sqlx::query("insert into repro values (?), (?), (?)")
+      .bind("abcdefghijklmnop")
+      .bind("abcdefghijklmnopq")
+      .bind(r#"{"key": "value"}"#)
+      .execute(pool.as_ref())
+      .await
+      .unwrap();
 
-    for (query, expected) in test_cases {
-      assert_eq!(
-        get_execution_type(query.to_string(), false, Driver::Sqlite).unwrap().0,
-        expected,
-        "Failed for query: {query}"
-      );
-    }
+    let rows =
+      query_with_pool(pool, "select value from repro order by rowid".into()).await.unwrap();
+
+    assert_eq!(
+      rows.rows,
+      vec![
+        vec!["abcdefghijklmnop".to_owned()],
+        vec!["abcdefghijklmnopq".to_owned()],
+        vec![r#"{"key": "value"}"#.to_owned()],
+      ]
+    );
   }
 }

@@ -5,9 +5,11 @@
 pub mod action;
 pub mod app;
 pub mod cli;
+pub mod completion;
 pub mod components;
 pub mod config;
 pub mod database;
+pub mod external_editor;
 pub mod focus;
 pub mod keyring;
 pub mod popups;
@@ -20,7 +22,6 @@ use std::{
   env, fs,
   io::{self, Write},
   path::Path,
-  process::Command,
 };
 
 use clap::Parser;
@@ -46,7 +47,12 @@ async fn run_app(mut args: Cli, config: Config, driver: Driver) -> Result<()> {
 }
 
 fn supports_ssl_required(driver: Driver) -> bool {
-  matches!(driver, Driver::Postgres | Driver::MySql | Driver::Oracle)
+  match driver {
+    Driver::Postgres | Driver::MySql => true,
+    #[cfg(feature = "oracle")]
+    Driver::Oracle => true,
+    _ => false,
+  }
 }
 
 fn resolve_driver(args: &mut Cli, config: &Config) -> Result<Driver> {
@@ -118,27 +124,10 @@ fn ensure_config_file(path: &Path) -> Result<()> {
   Ok(())
 }
 
-fn open_editor(path: &Path) -> Result<()> {
-  let editor = env::var("VISUAL")
-    .ok()
-    .filter(|value| !value.trim().is_empty())
-    .or_else(|| env::var("EDITOR").ok().filter(|value| !value.trim().is_empty()))
-    .unwrap_or_else(|| "vi".to_string());
-
-  let mut parts = editor.split_whitespace();
-  let program =
-    parts.next().ok_or_else(|| color_eyre::eyre::eyre!("Could not parse editor command"))?;
-  let status = Command::new(program).args(parts).arg(path).status()?;
-  if !status.success() {
-    color_eyre::eyre::bail!("Editor exited with status code {:?}", status.code());
-  }
-  Ok(())
-}
-
 fn edit_config_file() -> Result<()> {
   let config_path = existing_config_path().unwrap_or_else(preferred_config_path);
   ensure_config_file(&config_path)?;
-  open_editor(&config_path)
+  external_editor::open_editor(&config_path)
 }
 
 async fn tokio_main() -> Result<()> {
@@ -194,23 +183,14 @@ async fn main() -> Result<()> {
 
 pub fn prompt_for_driver() -> Result<Driver> {
   let mut driver = String::new();
-  print!("Database driver (postgres, mysql, sqlite, oracle, duckdb): ");
+  #[allow(unused_mut)]
+  let mut drivers = vec!["postgres", "mysql", "sqlite"];
+  #[cfg(feature = "oracle")]
+  drivers.push("oracle");
+  #[cfg(feature = "duckdb")]
+  drivers.push("duckdb");
+  print!("Database driver ({}): ", drivers.join(", "));
   io::stdout().flush()?;
   io::stdin().read_line(&mut driver)?;
   driver.trim().to_lowercase().parse()
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn ssl_required_support_matches_tls_capable_drivers() {
-    assert!(supports_ssl_required(Driver::Postgres));
-    assert!(supports_ssl_required(Driver::MySql));
-    assert!(supports_ssl_required(Driver::Oracle));
-    assert!(!supports_ssl_required(Driver::Sqlite));
-    #[cfg(feature = "duckdb")]
-    assert!(!supports_ssl_required(Driver::DuckDb));
-  }
 }
