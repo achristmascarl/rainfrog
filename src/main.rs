@@ -11,6 +11,7 @@ pub mod config;
 pub mod database;
 pub mod external_editor;
 pub mod focus;
+pub mod history;
 pub mod keyring;
 pub mod popups;
 pub mod tui;
@@ -41,7 +42,7 @@ use crate::{
 
 async fn run_app(mut args: Cli, config: Config, driver: Driver) -> Result<()> {
   let mouse_mode = args.mouse_mode.take();
-  let mut app = App::new(mouse_mode, config)?;
+  let mut app = App::new(mouse_mode, config).await?;
   app.run(driver, args).await?;
   Ok(())
 }

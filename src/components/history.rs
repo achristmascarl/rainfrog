@@ -95,13 +95,13 @@ impl Component for History {
         KeyCode::Char('G') => {
           self.list_state.select(Some(app_state.history.len().saturating_sub(1)))
         },
-        KeyCode::Char('I') => {
-          self
-            .command_tx
-            .as_ref()
-            .unwrap()
-            .send(Action::QueryToEditor(app_state.history[i].query_lines.clone()))?;
-          self.command_tx.as_ref().unwrap().send(Action::FocusEditor)?;
+        KeyCode::Enter | KeyCode::Char('I') => {
+          let tx = self.command_tx.as_ref().unwrap();
+          tx.send(Action::QueryToEditor(app_state.history[i].query_lines.clone()))?;
+          tx.send(Action::FocusEditor)?;
+          if key.code == KeyCode::Enter {
+            tx.send(Action::SubmitEditorQuery)?;
+          }
         },
         KeyCode::Char('y') => {
           self
@@ -121,6 +121,10 @@ impl Component for History {
   }
 
   fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
+    if action == Action::ClearHistory {
+      self.list_state = ListState::default();
+      self.copied = false;
+    }
     Ok(None)
   }
 
@@ -170,7 +174,7 @@ impl Component for History {
         }
         lines.insert(
           0,
-          Line::from(format!("{}{}", if self.copied && selected { " copied! - " } else { "" }, h.timestamp))
+          Line::from(format!("{}{}", if self.copied && selected { " copied! - " } else { "" }, h.timestamp.format("%Y-%m-%d %H:%M:%S")))
             .style(if focused { Color::Yellow } else { Color::default() }),
         );
         lines.push(
@@ -207,5 +211,79 @@ impl Component for History {
         .position(self.list_state.selected().unwrap_or(0));
     f.render_stateful_widget(vertical_scrollbar, scrollbar_margin, &mut vertical_scrollbar_state);
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use crossterm::event::KeyModifiers;
+  use ratatui::{Terminal, backend::TestBackend};
+  use tokio::sync::mpsc;
+
+  use super::*;
+  use crate::{
+    components::{app_state_with_focus, editor::Editor},
+    history::HistoryEntry,
+  };
+
+  #[test]
+  fn history_activation_loads_selected_query_and_submits_only_on_enter() {
+    for key in [KeyCode::Enter, KeyCode::Char('I')] {
+      let mut history = History::new();
+      let mut state = app_state_with_focus(Focus::History);
+      state.history = vec![
+        HistoryEntry { query_lines: vec!["select 1;".into()], timestamp: chrono::Local::now() },
+        HistoryEntry {
+          query_lines: vec!["select 'café',".into(), "  '🐸';".into()],
+          timestamp: chrono::Local::now(),
+        },
+      ];
+      history.list_state.select(Some(1));
+      let (tx, mut rx) = mpsc::unbounded_channel();
+      history.register_action_handler(tx.clone()).unwrap();
+      let mut editor = Editor::new();
+      editor.register_action_handler(tx).unwrap();
+      editor
+        .update(Action::QueryToEditor(vec!["select 'previous editor contents';".into()]), &state)
+        .unwrap();
+
+      history.handle_key_events(KeyEvent::new(key, KeyModifiers::NONE), &state).unwrap();
+
+      let load = rx.try_recv().unwrap();
+      assert_eq!(load, Action::QueryToEditor(vec!["select 'café',".into(), "  '🐸';".into()]));
+      editor.update(load, &state).unwrap();
+      assert_eq!(rx.try_recv().unwrap(), Action::FocusEditor);
+      state.focus = Focus::Editor;
+      if key == KeyCode::Enter {
+        let submit = rx.try_recv().unwrap();
+        assert_eq!(submit, Action::SubmitEditorQuery);
+        editor.update(submit, &state).unwrap();
+        assert_eq!(
+          rx.try_recv().unwrap(),
+          Action::Query(vec!["select 'café',".into(), "  '🐸';".into()], false, false)
+        );
+      }
+      assert!(rx.try_recv().is_err());
+    }
+  }
+
+  #[test]
+  fn clearing_history_makes_copy_edit_and_execution_safe() {
+    let mut history = History::new();
+    let mut state = app_state_with_focus(Focus::History);
+    state
+      .history
+      .push(HistoryEntry { query_lines: vec!["select 1".into()], timestamp: chrono::Local::now() });
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    history.register_action_handler(tx).unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(80, 20)).unwrap();
+    terminal.draw(|frame| history.draw(frame, frame.area(), &state).unwrap()).unwrap();
+
+    state.history.clear();
+    history.update(Action::ClearHistory, &state).unwrap();
+    for key in [KeyCode::Char('I'), KeyCode::Char('y'), KeyCode::Enter] {
+      history.handle_key_events(KeyEvent::new(key, KeyModifiers::NONE), &state).unwrap();
+    }
+    assert!(rx.try_recv().is_err());
   }
 }
