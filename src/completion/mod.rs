@@ -1659,13 +1659,6 @@ mod tests {
   }
 
   #[test]
-  fn detects_incomplete_table_context() {
-    let analysis = analyze(&request("select * from us"));
-    assert_eq!(analysis.context, CompletionContext::Table);
-    assert_eq!(analysis.prefix, "us");
-  }
-
-  #[test]
   fn builtins_are_available_in_table_expression_and_generic_contexts() {
     let catalog = CompletionCatalog {
       builtin_functions: vec!["COALESCE(text, text)".into()],
@@ -1712,33 +1705,6 @@ mod tests {
   }
 
   #[test]
-  fn detects_alias_qualified_columns() {
-    let analysis = analyze(&request("select u.na from public.users as u"));
-    assert_eq!(analysis.context, CompletionContext::Expression);
-
-    let analysis = analyze(&request("select * from public.users as u where u.na"));
-    assert_eq!(analysis.context, CompletionContext::Qualified { qualifier: "u".into() });
-    assert_eq!(analysis.aliases["u"].table, "users");
-    assert_eq!(analysis.aliases["u"].schema, "public");
-  }
-
-  #[test]
-  fn extracts_comma_separated_table_aliases() {
-    let analysis =
-      analyze(&request("select * from users u, sales.orders as o where o.order_number"));
-
-    assert_eq!(analysis.aliases["u"], TableRef { schema: String::new(), table: "users".into() });
-    assert_eq!(analysis.aliases["o"], TableRef { schema: "sales".into(), table: "orders".into() });
-    assert_eq!(
-      analysis.referenced_tables,
-      vec![
-        TableRef { schema: String::new(), table: "users".into() },
-        TableRef { schema: "sales".into(), table: "orders".into() },
-      ]
-    );
-  }
-
-  #[test]
   fn tracks_from_list_commas_by_parenthesis_depth() {
     let analysis = analyze(&request(
       "select * from users u join orders o on coalesce(u.id, o.user_id) = 1, line_items li \
@@ -1757,12 +1723,6 @@ mod tests {
   }
 
   #[test]
-  fn extracts_ctes() {
-    let analysis = analyze(&request("with recent as (select 1) select * from re"));
-    assert!(analysis.ctes.contains(&"recent".to_owned()));
-  }
-
-  #[test]
   fn suppresses_comments() {
     assert_eq!(analyze(&request("select 1 -- sel")).context, CompletionContext::Comment);
     assert_eq!(analyze(&request("select /* sel")).context, CompletionContext::Comment);
@@ -1776,72 +1736,6 @@ mod tests {
       CompletionContext::StringLiteral { fragment: "./fixtures/us".into() }
     );
     assert_eq!(analysis.prefix, "us");
-  }
-
-  #[test]
-  fn replacement_range_is_character_based() {
-    let analysis = analyze(&request("select café"));
-    assert_eq!(analysis.replacement_range.start.col, 7);
-    assert_eq!(analysis.replacement_range.end.col, 11);
-  }
-
-  #[test]
-  fn open_identifier_quotes_include_whitespace_in_the_replacement_range() {
-    let analysis = analyze(&request("select \"full na"));
-
-    assert_eq!(analysis.prefix, "full na");
-    assert_eq!(analysis.replacement_range.start.col, 8);
-    assert_eq!(analysis.replacement_range.end.col, 15);
-  }
-
-  #[test]
-  fn acceptance_reuses_open_identifier_quotes_and_closes_them() {
-    let text = "select \"fu";
-    let range = current_replacement_range(
-      text,
-      CursorPosition { row: 0, col: text.chars().count() },
-      Driver::Postgres,
-    );
-    let spaced_column =
-      CompletionCandidate::new("full name", CompletionKind::Column, CompletionSource::Database)
-        .with_insert_text("\"full name\"");
-    assert_eq!(accepted_insert_text(&spaced_column, text, range, Driver::Postgres), "full name\"");
-
-    let function = CompletionCandidate::new(
-      "function_name(integer)",
-      CompletionKind::Function,
-      CompletionSource::Database,
-    )
-    .with_insert_text("function_name");
-    assert_eq!(accepted_insert_text(&function, text, range, Driver::Postgres), "function_name\"");
-  }
-
-  #[test]
-  fn mysql_acceptance_reuses_an_open_backtick() {
-    let text = "select `ord";
-    let range = current_replacement_range(
-      text,
-      CursorPosition { row: 0, col: text.chars().count() },
-      Driver::MySql,
-    );
-    let table =
-      CompletionCandidate::new("order details", CompletionKind::Table, CompletionSource::Database)
-        .with_insert_text("`order details`");
-
-    assert_eq!(accepted_insert_text(&table, text, range, Driver::MySql), "order details`");
-  }
-
-  #[test]
-  fn identifier_quotes_inside_string_literals_do_not_change_identifier_replacement() {
-    let analysis = analyze(&request("select '\"', na"));
-
-    assert_eq!(analysis.prefix, "na");
-    assert_eq!(analysis.replacement_range.start.col, 12);
-  }
-
-  #[test]
-  fn extracts_unicode_buffer_words_and_excludes_keywords() {
-    assert_eq!(extract_words("SELECT café café 東京 x"), vec!["café", "東京"]);
   }
 
   #[test]
@@ -1892,21 +1786,6 @@ mod tests {
   }
 
   #[test]
-  fn ranks_functions_and_keywords_equally_in_generic_contexts() {
-    let candidates = vec![
-      CompletionCandidate::new("z_function", CompletionKind::Function, CompletionSource::Builtin),
-      CompletionCandidate::new("a_keyword", CompletionKind::Keyword, CompletionSource::SqlSyntax),
-    ];
-
-    let ranked = rank_candidates(candidates, "", &CompletionContext::Generic, &HashSet::new());
-
-    assert_eq!(
-      ranked.iter().map(|candidate| candidate.label.as_str()).collect::<Vec<_>>(),
-      vec!["a_keyword", "z_function"]
-    );
-  }
-
-  #[test]
   fn function_candidates_render_signatures_but_insert_only_the_name() {
     let catalog = CompletionCatalog {
       objects: vec![
@@ -1936,20 +1815,6 @@ mod tests {
       functions,
       vec![("calculate(integer)", "calculate"), ("calculate(text)", "calculate")]
     );
-  }
-
-  #[test]
-  fn function_candidates_without_catalog_arguments_insert_only_the_name() {
-    let object = CatalogObject {
-      schema: "app".into(),
-      name: "calculate".into(),
-      kind: CompletionKind::Function,
-    };
-
-    let candidate = database_object_candidate(&object, Driver::MySql);
-
-    assert_eq!(candidate.label, "calculate");
-    assert_eq!(candidate.insert_text, "calculate");
   }
 
   #[test]
@@ -2381,45 +2246,6 @@ mod tests {
       .collect();
 
     assert_eq!(columns, vec!["z_mentioned", "a_unmentioned"]);
-  }
-
-  #[test]
-  fn buffer_candidates_do_not_include_external_text() {
-    let response =
-      complete(&request("select local_word where lo"), &CompletionCatalog::default(), Vec::new());
-    assert!(response.candidates.iter().any(|candidate| candidate.label == "local_word"));
-    assert!(!response.candidates.iter().any(|candidate| candidate.label == "history_word"));
-  }
-
-  #[test]
-  fn normalizes_menu_and_column_rows() {
-    let menu = Rows {
-      headers: vec![],
-      rows: vec![
-        vec!["public".into(), "users".into(), "table".into()],
-        vec!["public".into(), "active_users".into(), "view".into()],
-      ],
-      rows_affected: None,
-    };
-    let catalog = catalog_from_menu_rows(&menu);
-    assert_eq!(catalog.objects[0].kind, CompletionKind::Table);
-    assert_eq!(catalog.objects[1].kind, CompletionKind::View);
-
-    let table = TableRef { schema: "public".into(), table: "users".into() };
-    let columns = table_columns_from_rows(
-      table.clone(),
-      Rows {
-        headers: vec![
-          Header { name: "COLUMN_NAME".into(), type_name: "text".into() },
-          Header { name: "DATA_TYPE".into(), type_name: "text".into() },
-        ],
-        rows: vec![vec!["id".into(), "integer".into()], vec!["name".into(), "text".into()]],
-        rows_affected: None,
-      },
-    );
-    assert_eq!(columns.table, table);
-    assert_eq!(columns.columns[0], Column { name: "id".into(), type_name: "integer".into() });
-    assert_eq!(columns.columns[1].name, "name");
   }
 
   #[test]

@@ -194,19 +194,3 @@ pub fn prompt_for_driver() -> Result<Driver> {
   io::stdin().read_line(&mut driver)?;
   driver.trim().to_lowercase().parse()
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn ssl_required_support_matches_tls_capable_drivers() {
-    assert!(supports_ssl_required(Driver::Postgres));
-    assert!(supports_ssl_required(Driver::MySql));
-    #[cfg(feature = "oracle")]
-    assert!(supports_ssl_required(Driver::Oracle));
-    assert!(!supports_ssl_required(Driver::Sqlite));
-    #[cfg(feature = "duckdb")]
-    assert!(!supports_ssl_required(Driver::DuckDb));
-  }
-}

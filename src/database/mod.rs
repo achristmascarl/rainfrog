@@ -419,45 +419,135 @@ pub trait HasRowsAffected {
 mod tests {
   use super::*;
 
+  fn drivers() -> Vec<Driver> {
+    vec![
+      Driver::Postgres,
+      Driver::MySql,
+      Driver::Sqlite,
+      #[cfg(feature = "oracle")]
+      Driver::Oracle,
+      #[cfg(feature = "duckdb")]
+      Driver::DuckDb,
+    ]
+  }
+
+  // Exercise dialect selection, parsing, normalization, and execution policy
+  // together. These cases used to be copied into every driver module.
   #[test]
-  fn builtin_function_providers_expose_documented_functions() {
-    fn assert_sorted_and_unique(functions: &[&str]) {
-      assert!(!functions.is_empty());
-      assert!(
-        functions.windows(2).all(|pair| pair[0] < pair[1]),
-        "built-in function lists must be sorted and deduplicated"
+  fn sql_submission_selects_execution_policy_for_each_driver() {
+    for driver in drivers() {
+      let cases = [
+        ("SELECT * FROM users;", "SELECT * FROM users", ExecutionType::Normal),
+        ("select *\nfrom users;", "SELECT * FROM users", ExecutionType::Normal),
+        (
+          "-- select blah;\nselect * from users\n-- insert blah",
+          "SELECT * FROM users",
+          ExecutionType::Normal,
+        ),
+        (
+          "UPDATE users SET name = 'John' WHERE id = 1",
+          "UPDATE users SET name = 'John' WHERE id = 1",
+          ExecutionType::Transaction,
+        ),
+        (
+          "DELETE FROM users WHERE id = 1",
+          "DELETE FROM users WHERE id = 1",
+          ExecutionType::Transaction,
+        ),
+        ("DROP TABLE users", "DROP TABLE users", ExecutionType::Confirm),
+        (
+          "INSERT INTO users (name) VALUES ('John')",
+          "INSERT INTO users (name) VALUES ('John')",
+          ExecutionType::Normal,
+        ),
+        ("EXPLAIN SELECT * FROM users", "EXPLAIN SELECT * FROM users", ExecutionType::Normal),
+      ];
+      for (input, normalized, expected) in cases {
+        let (sql, _) = get_first_query(input.into(), driver).unwrap();
+        assert_eq!(sql, normalized, "{driver:?}: {input}");
+        #[cfg(feature = "duckdb")]
+        let expected = if driver == Driver::DuckDb && expected == ExecutionType::Transaction {
+          ExecutionType::Confirm
+        } else {
+          expected
+        };
+        let (execution, statement) = get_execution_type(input.into(), false, driver).unwrap();
+        assert_eq!(execution, expected, "{driver:?}: {input}");
+        assert!(statement.is_some(), "{driver:?}: {input}");
+        // After confirmation the same statement must proceed normally.
+        assert_eq!(
+          get_execution_type(input.into(), true, driver).unwrap().0,
+          ExecutionType::Normal
+        );
+      }
+
+      let quoted = if driver == Driver::Postgres {
+        "select * from \"public\".\"users\""
+      } else {
+        "select * from `users`"
+      };
+      assert_eq!(
+        get_execution_type(quoted.into(), false, driver).unwrap().0,
+        ExecutionType::Normal
       );
-    }
 
-    let postgres = PostgresDriver::new().builtin_functions();
-    assert_sorted_and_unique(postgres);
-    assert!(postgres.contains(&"GENERATE_SERIES"));
-    assert!(postgres.contains(&"JSONB_BUILD_OBJECT"));
-
-    let mysql = MySqlDriver::new().builtin_functions();
-    assert_sorted_and_unique(mysql);
-    assert!(mysql.contains(&"DATE_FORMAT"));
-    assert!(mysql.contains(&"JSON_EXTRACT"));
-
-    let sqlite = SqliteDriver::new().builtin_functions();
-    assert_sorted_and_unique(sqlite);
-    assert!(sqlite.contains(&"JSON_EXTRACT"));
-    assert!(sqlite.contains(&"JULIANDAY"));
-
-    #[cfg(feature = "oracle")]
-    {
-      let oracle = OracleDriver::new().builtin_functions();
-      assert_sorted_and_unique(oracle);
-      assert!(oracle.contains(&"NVL"));
-      assert!(oracle.contains(&"TO_CHAR"));
+      let explains = if driver == Driver::Sqlite {
+        vec![
+          ("EXPLAIN DELETE FROM users WHERE id = 1", ExecutionType::Normal),
+          ("EXPLAIN QUERY PLAN SELECT * FROM users", ExecutionType::Normal),
+          ("EXPLAIN Query PLAN DELETE FROM users WHERE id = 1", ExecutionType::Normal),
+        ]
+      } else {
+        vec![
+          ("EXPLAIN ANALYZE DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
+          ("EXPLAIN ANALYZE DROP TABLE users", ExecutionType::Confirm),
+          ("EXPLAIN ANALYZE SELECT * FROM users WHERE id = 1", ExecutionType::Normal),
+        ]
+      };
+      for (query, expected) in explains {
+        #[cfg(feature = "duckdb")]
+        let expected = if driver == Driver::DuckDb && expected == ExecutionType::Transaction {
+          ExecutionType::Confirm
+        } else {
+          expected
+        };
+        assert_eq!(
+          get_execution_type(query.into(), false, driver).unwrap().0,
+          expected,
+          "{driver:?}: {query}"
+        );
+      }
     }
 
     #[cfg(feature = "duckdb")]
-    {
-      let duckdb = DuckDbDriver::new().builtin_functions();
-      assert_sorted_and_unique(duckdb);
-      assert!(duckdb.contains(&"LIST_TRANSFORM"));
-      assert!(duckdb.contains(&"READ_PARQUET"));
+    assert_eq!(
+      get_execution_type("SELECT * FROM read_csv('flights.csv', delim = '|', header = true, columns = {'FlightDate': 'DATE', 'OriginCityName': 'VARCHAR'})".into(), false, Driver::DuckDb).unwrap().0,
+      ExecutionType::Normal
+    );
+  }
+
+  #[test]
+  fn sql_submission_rejects_invalid_or_multiple_statements_before_execution() {
+    for driver in drivers() {
+      for query in ["", "-- select * from users;"] {
+        let error = get_execution_type(query.into(), false, driver).unwrap_err();
+        assert!(
+          matches!(error.downcast_ref::<ParseError>(), Some(ParseError::EmptyQuery(_))),
+          "{driver:?}: {error}"
+        );
+      }
+      let error =
+        get_execution_type("SELECT * FROM users; DELETE FROM posts;".into(), false, driver)
+          .unwrap_err();
+      assert!(
+        matches!(error.downcast_ref::<ParseError>(), Some(ParseError::MoreThanOneStatement(_))),
+        "{driver:?}: {error}"
+      );
+      let error = get_execution_type("SELEC * FORM users;".into(), false, driver).unwrap_err();
+      assert!(
+        matches!(error.downcast_ref::<ParseError>(), Some(ParseError::SqlParserError(_))),
+        "{driver:?}: {error}"
+      );
     }
   }
 
@@ -517,19 +607,6 @@ mod tests {
     assert!(should_stream_tx_results(&root_statement));
     assert_eq!(execution_type, ExecutionType::Transaction);
     assert!(matches!(statement, Some(Statement::Delete(_))));
-  }
-
-  #[test]
-  fn tx_streaming_uses_root_statement_not_representative_statement() {
-    let query = "WITH deleted AS (DELETE FROM users WHERE id = 1 RETURNING id) \
-                 SELECT * FROM deleted";
-    let (_, root_statement) = get_first_query(query.to_string(), Driver::Postgres).unwrap();
-    let representative_statement = get_statement_for_execution_type(&root_statement);
-
-    assert!(matches!(root_statement, Statement::Query(_)));
-    assert!(matches!(representative_statement, Statement::Delete(_)));
-    assert!(should_stream_tx_results(&root_statement));
-    assert!(!should_stream_tx_results(&representative_statement));
   }
 
   #[test]

@@ -833,51 +833,115 @@ impl TableForYank {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::components::app_state_with_focus;
   use crate::database::Header;
 
   #[test]
-  fn error_text_includes_os_error() {
-    let os_error = std::io::Error::from_raw_os_error(2);
-    let os_message = os_error.to_string();
-    let error = eyre::Report::new(os_error).wrap_err("Failed to launch external editor 'vi'");
+  fn query_errors_are_rendered_and_copied_with_the_underlying_cause() {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut data = Data::new();
+    data.register_action_handler(tx).unwrap();
+    let error = std::io::Error::new(std::io::ErrorKind::NotFound, "editor executable missing");
+    data.set_data_state(
+      Some(Err(eyre::Report::new(error).wrap_err("Failed to launch editor"))),
+      None,
+    );
+    let state = app_state_with_focus(Focus::Data);
+    let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(100, 8)).unwrap();
+    terminal.draw(|frame| data.draw(frame, frame.area(), &state).unwrap()).unwrap();
+    let rendered: String =
+      terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect();
+    let expected = "Failed to launch editor: editor executable missing";
+    assert!(rendered.contains(expected));
 
-    assert_eq!(error_text(&error), format!("Failed to launch external editor 'vi': {os_message}"));
+    data
+      .handle_key_events(
+        KeyEvent::new(crossterm::event::KeyCode::Char('y'), crossterm::event::KeyModifiers::NONE),
+        &state,
+      )
+      .unwrap();
+    assert_eq!(rx.try_recv().unwrap(), Action::CopyData(expected.into()));
   }
 
   #[test]
-  fn compact_column_widths_use_display_width() {
-    let rows = Rows {
-      headers: vec![
-        Header { name: "id".to_owned(), type_name: "int4".to_owned() },
-        Header { name: "name".to_owned(), type_name: "text".to_owned() },
-      ],
-      rows: vec![vec!["1".to_owned(), "日本語".to_owned()], vec!["2".to_owned(), "ab".to_owned()]],
-      rows_affected: None,
-    };
+  fn compact_results_render_unicode_and_cap_long_values_without_losing_copied_data() {
+    let family = "👨‍👩‍👧‍👦";
+    let long = "日".repeat(50_000);
+    let mut data = Data::new();
+    let config: Config = toml::from_str("[settings]\ndata_compact_columns = true").unwrap();
+    data.register_config_handler(config).unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    data.register_action_handler(tx).unwrap();
+    data.set_data_state(
+      Some(Ok(Rows {
+        headers: vec![
+          Header { name: "name".into(), type_name: "text".into() },
+          Header { name: "value".into(), type_name: "text".into() },
+        ],
+        rows: vec![vec!["日本語".into(), family.into()], vec!["café".into(), long.clone()]],
+        rows_affected: None,
+      })),
+      None,
+    );
+    let state = app_state_with_focus(Focus::Data);
+    let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(80, 12)).unwrap();
+    terminal.draw(|frame| data.draw(frame, frame.area(), &state).unwrap()).unwrap();
+    let buffer = terminal.backend().buffer();
+    let rendered: String = buffer.content.iter().map(|cell| cell.symbol()).collect();
+    assert!(rendered.contains(family));
+    assert!(rendered.contains("café"));
+    // Wide characters occupy two cells. The second column starts after the
+    // seven-cell compact name column and the configured inter-column spacing.
+    let japanese_row =
+      (0..12).find(|&y| buffer.cell(Position::new(1, y)).unwrap().symbol() == "日").unwrap();
+    assert_eq!(
+      buffer.cell(Position::new(1 + 7 + COLUMN_SPACING, japanese_row)).unwrap().symbol(),
+      family
+    );
+    assert_eq!(buffer.content.iter().filter(|cell| cell.symbol() == "日").count(), 19);
 
-    // "日本語" is 3 chars but occupies 6 terminal cells, plus 1 cell of padding.
-    assert_eq!(Data::compact_column_widths(&rows), vec![5, 7]);
+    // Rendering truncates the long value; copying the selected cell preserves it.
+    for code in [
+      crossterm::event::KeyCode::Char('j'),
+      crossterm::event::KeyCode::Char('w'),
+      crossterm::event::KeyCode::Char('v'),
+      crossterm::event::KeyCode::Char('y'),
+    ] {
+      data
+        .handle_key_events(KeyEvent::new(code, crossterm::event::KeyModifiers::NONE), &state)
+        .unwrap();
+    }
+    assert_eq!(rx.try_recv().unwrap(), Action::CopyData(long));
   }
 
   #[test]
-  fn clamp_render_text_never_exceeds_the_column_width() {
-    // 4 wide chars occupy 8 cells, so only 3 of them fit in a 7 cell column.
-    assert_eq!(Data::clamp_render_text("日本語テ", 7), "日本語");
-    assert_eq!(Data::clamp_render_text("日本語テ", 8), "日本語テ");
-    assert_eq!(Data::clamp_render_text("abcd", 3), "abc");
-  }
-
-  #[test]
-  fn clamp_render_text_keeps_zwj_sequences_whole() {
-    // a family emoji is one glyph of 2 cells, but 7 chars whose widths sum to 8,
-    // so measuring per char would keep only the first man and drop the rest
-    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}";
-    assert_eq!(Data::cell_display_width(family), 2);
-    assert_eq!(Data::clamp_render_text(family, 2), family);
-    assert_eq!(Data::clamp_render_text(family, 1), "");
-    // a value fitting its own measured width must survive clamping intact
-    let value = format!("{family}ab");
-    assert_eq!(Data::clamp_render_text(&value, Data::cell_display_width(&value)), value);
+  fn yank_all_includes_query_history_and_aligns_unicode_columns() {
+    let mut state = app_state_with_focus(Focus::Data);
+    state.history.push(crate::app::HistoryEntry {
+      query_lines: vec!["select *".into(), "from t".into()],
+      timestamp: chrono::Local::now(),
+    });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut data = Data::new();
+    data.register_action_handler(tx).unwrap();
+    data.set_data_state(
+      Some(Ok(Rows {
+        headers: vec![
+          Header { name: "id".into(), type_name: "int".into() },
+          Header { name: "name".into(), type_name: "text".into() },
+          Header { name: "age".into(), type_name: "int".into() },
+        ],
+        rows: vec![
+          vec!["1".into(), "café".into(), "30".into()],
+          vec!["2".into(), "abcd".into(), "40".into()],
+          vec!["3".into(), "日本語".into(), "50".into()],
+        ],
+        rows_affected: None,
+      })),
+      None,
+    );
+    data.update(Action::YankAll, &state).unwrap();
+    assert_eq!(rx.try_recv().unwrap(), Action::CopyData("select *\nfrom t\n\nid | name   | age\n---+--------+-----\n1  | café   | 30\n2  | abcd   | 40\n3  | 日本語 | 50\n".into()));
   }
 
   #[test]
@@ -925,110 +989,5 @@ mod tests {
       .unwrap();
 
     assert_eq!(rx.try_recv(), Ok(Action::ToggleDataFullscreen));
-  }
-
-  #[test]
-  fn cell_display_width_stops_at_the_maximum() {
-    let long = "x".repeat(100_000);
-    assert_eq!(Data::cell_display_width(&long), MAX_COLUMN_WIDTH as usize);
-    // a value shorter than the cap is still measured exactly
-    assert_eq!(Data::cell_display_width("abc"), 3);
-  }
-}
-
-#[cfg(test)]
-mod yank {
-
-  use std::collections::VecDeque;
-
-  use crate::components::data::TableForYank;
-
-  #[test]
-  fn to_columns_is_works() {
-    let headers = vec!["id".to_string(), "name".to_string(), "age".to_string()];
-    let rows = vec![
-      vec!["id1".to_string(), "name1".to_string(), "age1".to_string()],
-      vec!["id2".to_string(), "name2".to_string(), "age2".to_string()],
-      vec!["id3".to_string(), "name3".to_string(), "age3".to_string()],
-    ];
-
-    let result = TableForYank::to_columns(&headers, &rows);
-
-    let expected = vec![
-      VecDeque::from(["id".to_string(), "id1".to_string(), "id2".to_string(), "id3".to_string()]),
-      VecDeque::from([
-        "name".to_string(),
-        "name1".to_string(),
-        "name2".to_string(),
-        "name3".to_string(),
-      ]),
-      VecDeque::from([
-        "age".to_string(),
-        "age1".to_string(),
-        "age2".to_string(),
-        "age3".to_string(),
-      ]),
-    ];
-
-    assert_eq!(expected, result)
-  }
-
-  #[test]
-  fn yank_aligns_columns_by_display_width() {
-    let headers = vec!["id".to_string(), "name".to_string(), "age".to_string()];
-    let rows = vec![
-      vec!["1".to_string(), "café".to_string(), "30".to_string()],
-      vec!["2".to_string(), "abcd".to_string(), "40".to_string()],
-      vec!["3".to_string(), "日本語".to_string(), "50".to_string()],
-    ];
-
-    let mut data_to_yank = TableForYank {
-      sql: vec!["select * from t".to_string()],
-      table: TableForYank::to_columns(&headers, &rows),
-    };
-
-    let result = data_to_yank.yank();
-
-    let expected = "\
-select * from t
-
-id | name   | age
----+--------+-----
-1  | café   | 30
-2  | abcd   | 40
-3  | 日本語 | 50
-";
-
-    assert_eq!(expected, result);
-  }
-
-  #[test]
-  fn yank_is_works() {
-    let headers = vec!["id".to_string(), "name".to_string(), "age".to_string()];
-    let rows = vec![
-      vec!["id1".to_string(), "name1".to_string(), "age1".to_string()],
-      vec!["id2".to_string(), "name2".to_string(), "age2".to_string()],
-      vec!["id3".to_string(), "name3".to_string(), "age3".to_string()],
-    ];
-
-    let mut data_to_yank = TableForYank {
-      sql: vec!["select".to_string(), "*".to_string(), "from".to_string(), "something".to_string()],
-      table: TableForYank::to_columns(&headers, &rows),
-    };
-
-    let result = data_to_yank.yank();
-
-    let expected = "\
-select
-*
-from
-something
-
- id  | name  | age
------+-------+------
- id1 | name1 | age1
- id2 | name2 | age2
- id3 | name3 | age3
-";
   }
 }

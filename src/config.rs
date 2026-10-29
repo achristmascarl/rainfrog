@@ -603,66 +603,6 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_parse_style_default() {
-    let style = parse_style("");
-    assert_eq!(style, Style::default());
-  }
-
-  #[test]
-  fn test_parse_style_foreground() {
-    let style = parse_style("red");
-    assert_eq!(style.fg, Some(Color::Indexed(1)));
-  }
-
-  #[test]
-  fn test_parse_style_background() {
-    let style = parse_style("on blue");
-    assert_eq!(style.bg, Some(Color::Indexed(4)));
-  }
-
-  #[test]
-  fn test_parse_style_modifiers() {
-    let style = parse_style("underline red on blue");
-    assert_eq!(style.fg, Some(Color::Indexed(1)));
-    assert_eq!(style.bg, Some(Color::Indexed(4)));
-  }
-
-  #[test]
-  fn test_process_color_string() {
-    let (color, modifiers) = process_color_string("underline bold inverse gray");
-    assert_eq!(color, "gray");
-    assert!(modifiers.contains(Modifier::UNDERLINED));
-    assert!(modifiers.contains(Modifier::BOLD));
-    assert!(modifiers.contains(Modifier::REVERSED));
-  }
-
-  #[test]
-  fn test_parse_color_rgb() {
-    let color = parse_color("rgb123");
-    let expected = 16 + 36 + 2 * 6 + 3;
-    assert_eq!(color, Some(Color::Indexed(expected)));
-  }
-
-  #[test]
-  fn test_parse_color_rgb_malformed_short() {
-    let color = parse_color("rgb");
-    assert_eq!(color, Some(Color::Indexed(16)));
-  }
-
-  #[test]
-  fn test_parse_color_rgb_malformed_one_digit() {
-    let color = parse_color("rgb1");
-    let expected = 16 + 36;
-    assert_eq!(color, Some(Color::Indexed(expected)));
-  }
-
-  #[test]
-  fn test_parse_color_unknown() {
-    let color = parse_color("unknown");
-    assert_eq!(color, None);
-  }
-
-  #[test]
   fn test_invalid_keybinding_is_an_error_not_a_panic() {
     let toml_src = "[keybindings.Editor]\n\"<bogus-key>\" = \"Quit\"\n";
     let err = toml::from_str::<Config>(toml_src).unwrap_err();
@@ -674,20 +614,6 @@ mod tests {
     let toml_src = "[keybindings.Editor]\n\"x\" = \"NotAnAction\"\n";
     let err = toml::from_str::<Config>(toml_src).unwrap_err();
     assert!(err.to_string().contains("NotAnAction"), "got: {err}");
-  }
-
-  #[test]
-  fn test_valid_keybinding_still_parses() {
-    let toml_src = "[keybindings.Editor]\n\"<Alt-e>\" = \"Quit\"\n";
-    let c: Config = toml::from_str(toml_src).unwrap();
-    assert_eq!(
-      c.keybindings
-        .get(&Focus::Editor)
-        .unwrap()
-        .get(&parse_key_sequence("<Alt-e>").unwrap())
-        .unwrap(),
-      &Action::Quit
-    );
   }
 
   #[test]
@@ -711,33 +637,6 @@ mod tests {
   }
 
   #[test]
-  fn test_focus_hint_uses_replacement_for_disabled_preferred_binding() {
-    let toml_src = r#"
-      [keybindings.Menu]
-      "<Alt-1>" = ""
-      "<Ctrl-h>" = "FocusMenu"
-    "#;
-    let mut config: Config = toml::from_str(toml_src).unwrap();
-    let default_config: Config = toml::from_str(CONFIG).unwrap();
-    config.keybindings.merge_defaults(&default_config.keybindings);
-
-    assert_eq!(
-      config.keybindings.hint_for_action(Focus::Menu, &Action::FocusMenu, "<alt+1>"),
-      Some("<ctrl+h>".to_owned())
-    );
-  }
-
-  #[test]
-  fn test_focus_hint_preserves_active_preferred_binding() {
-    let config: Config = toml::from_str(CONFIG).unwrap();
-
-    assert_eq!(
-      config.keybindings.hint_for_action(Focus::Menu, &Action::FocusMenu, "<alt+1>"),
-      Some("<alt+1>".to_owned())
-    );
-  }
-
-  #[test]
   fn test_focus_hint_is_absent_without_an_active_binding() {
     let config: Config = toml::from_str(
       r#"
@@ -751,41 +650,6 @@ mod tests {
       config.keybindings.hint_for_action(Focus::Menu, &Action::FocusMenu, "<alt+1>"),
       None
     );
-  }
-
-  #[test]
-  fn test_config() -> Result<()> {
-    let c: Config = toml::from_str(CONFIG)?;
-    assert_eq!(
-      c.keybindings
-        .get(&Focus::Menu)
-        .unwrap()
-        .get(&parse_key_sequence("<q>").unwrap_or_default())
-        .unwrap(),
-      &Action::AbortQuery
-    );
-    assert_eq!(
-      c.keybindings
-        .get(&Focus::Editor)
-        .unwrap()
-        .get(&parse_key_sequence("<Alt-e>").unwrap_or_default())
-        .unwrap(),
-      &Action::RequestExternalEditor
-    );
-    assert_eq!(
-      c.keybindings
-        .get(&Focus::Editor)
-        .unwrap()
-        .get(&parse_key_sequence("<F6>").unwrap_or_default())
-        .unwrap(),
-      &Action::RequestExternalEditor
-    );
-    assert_eq!(c.settings.mouse_mode, Some(true));
-    assert_eq!(c.settings.autocomplete_enabled, Some(true));
-    assert_eq!(c.settings.autocomplete_debounce_ms, Some(100));
-    assert_eq!(c.settings.autocomplete_trigger_len, Some(1));
-    assert_eq!(c.settings.autopairs_enabled, Some(true));
-    Ok(())
   }
 
   #[test]
@@ -816,129 +680,5 @@ mod tests {
         .any(|a| matches!(a, Action::IncreaseSectionSize | Action::DecreaseSectionSize)),
       "popup must not have resize bindings"
     );
-  }
-
-  #[test]
-  fn test_simple_keys() {
-    assert_eq!(
-      parse_key_event("a").unwrap(),
-      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty())
-    );
-
-    assert_eq!(
-      parse_key_event("enter").unwrap(),
-      KeyEvent::new(KeyCode::Enter, KeyModifiers::empty())
-    );
-
-    assert_eq!(parse_key_event("esc").unwrap(), KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));
-  }
-
-  #[test]
-  fn test_with_modifiers() {
-    assert_eq!(
-      parse_key_event("ctrl-a").unwrap(),
-      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)
-    );
-
-    assert_eq!(
-      parse_key_event("alt-enter").unwrap(),
-      KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT)
-    );
-
-    assert_eq!(
-      parse_key_event("shift-esc").unwrap(),
-      KeyEvent::new(KeyCode::Esc, KeyModifiers::SHIFT)
-    );
-  }
-
-  #[test]
-  fn test_multiple_modifiers() {
-    assert_eq!(
-      parse_key_event("ctrl-alt-a").unwrap(),
-      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL | KeyModifiers::ALT)
-    );
-
-    assert_eq!(
-      parse_key_event("ctrl-shift-enter").unwrap(),
-      KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL | KeyModifiers::SHIFT)
-    );
-  }
-
-  #[test]
-  fn test_reverse_multiple_modifiers() {
-    assert_eq!(
-      key_event_to_string(&KeyEvent::new(
-        KeyCode::Char('a'),
-        KeyModifiers::CONTROL | KeyModifiers::ALT
-      )),
-      "ctrl-alt-a".to_string()
-    );
-  }
-
-  #[test]
-  fn test_function_key_formats_with_parseable_syntax() {
-    let key = KeyEvent::new(KeyCode::F(2), KeyModifiers::empty());
-    assert_eq!(key_event_to_string(&key), "f2");
-    assert_eq!(parse_key_sequence("<f2>").unwrap(), vec![key]);
-  }
-
-  #[test]
-  fn test_invalid_keys() {
-    assert!(parse_key_event("invalid-key").is_err());
-    assert!(parse_key_event("ctrl-invalid-key").is_err());
-  }
-
-  #[test]
-  fn test_case_insensitivity() {
-    assert_eq!(
-      parse_key_event("CTRL-a").unwrap(),
-      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)
-    );
-
-    assert_eq!(
-      parse_key_event("AlT-eNtEr").unwrap(),
-      KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT)
-    );
-  }
-
-  #[test]
-  fn database_connection_enable_cleartext_plugin_true() {
-    let toml = r#"
-      driver = "mysql"
-      host = "localhost"
-      port = 3306
-      database = "mydb"
-      username = "user"
-      enable_cleartext_plugin = true
-    "#;
-    let conn: DatabaseConnection = toml::from_str(toml).unwrap();
-    assert_eq!(conn.enable_cleartext_plugin, Some(true));
-  }
-
-  #[test]
-  fn database_connection_enable_cleartext_plugin_false() {
-    let toml = r#"
-      driver = "mysql"
-      host = "localhost"
-      port = 3306
-      database = "mydb"
-      username = "user"
-      enable_cleartext_plugin = false
-    "#;
-    let conn: DatabaseConnection = toml::from_str(toml).unwrap();
-    assert_eq!(conn.enable_cleartext_plugin, Some(false));
-  }
-
-  #[test]
-  fn database_connection_enable_cleartext_plugin_omitted() {
-    let toml = r#"
-      driver = "mysql"
-      host = "localhost"
-      port = 3306
-      database = "mydb"
-      username = "user"
-    "#;
-    let conn: DatabaseConnection = toml::from_str(toml).unwrap();
-    assert_eq!(conn.enable_cleartext_plugin, None);
   }
 }

@@ -892,25 +892,6 @@ mod tests {
   }
 
   #[test]
-  fn submit_action_executes_non_empty_visual_selection() {
-    let mut editor = Editor::new();
-    editor.textarea = TextArea::from(["select 1;", "select 2;"]);
-    editor.textarea.move_cursor(CursorMove::Bottom);
-    editor.textarea.start_selection();
-    editor.textarea.move_cursor(CursorMove::End);
-    editor.vim_state = Vim::new(Mode::Visual);
-    let (action_tx, mut action_rx) = mpsc::unbounded_channel();
-    editor.register_action_handler(action_tx).unwrap();
-
-    editor.update(Action::SubmitEditorQuery, &app_state_with_focus(Focus::Editor)).unwrap();
-
-    assert_eq!(
-      action_rx.try_recv().unwrap(),
-      Action::Query(vec!["select 2;".into()], false, false)
-    );
-  }
-
-  #[test]
   fn modified_enter_executes_non_empty_visual_selection() {
     let mut editor = Editor::new();
     editor.textarea = TextArea::from(["select 1;", "select 2;"]);
@@ -935,18 +916,52 @@ mod tests {
   }
 
   #[test]
-  fn query_submission_requires_visual_mode_and_non_empty_selection() {
+  fn submit_action_executes_the_whole_query_without_an_active_visual_selection() {
     let mut editor = Editor::new();
-    editor.textarea = TextArea::from(["select 1;", "select 2;"]);
-    editor.textarea.start_selection();
-    editor.vim_state = Vim::new(Mode::Visual);
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    editor.register_action_handler(tx).unwrap();
+    let state = app_state_with_focus(Focus::Editor);
+    for (mode, move_selection) in [(Mode::Visual, false), (Mode::Normal, true)] {
+      editor.textarea = TextArea::from(["select 1;", "select 2;"]);
+      editor.textarea.start_selection();
+      if move_selection {
+        editor.textarea.move_cursor(CursorMove::End);
+      }
+      editor.vim_state = Vim::new(mode);
+      editor.update(Action::SubmitEditorQuery, &state).unwrap();
+      assert_eq!(
+        rx.try_recv().unwrap(),
+        Action::Query(vec!["select 1;".into(), "select 2;".into()], false, false)
+      );
+    }
+  }
 
-    assert_eq!(editor.query_lines_to_submit(), ["select 1;", "select 2;"]);
-
-    editor.textarea.move_cursor(CursorMove::End);
-    editor.vim_state = Vim::new(Mode::Normal);
-
-    assert_eq!(editor.query_lines_to_submit(), ["select 1;", "select 2;"]);
+  #[test]
+  fn accepting_completion_preserves_unicode_and_surrounding_quotes() {
+    let state = app_state_with_focus(Focus::Editor);
+    for (query, label, insert_text, expected) in [
+      ("select café", "café_total", "café_total", "select café_total"),
+      ("select \"full na", "full name", "\"full name\"", "select \"full name\""),
+      ("select '\"', na", "name", "name", "select '\"', name"),
+    ] {
+      let mut editor = Editor::new();
+      editor.vim_state = Vim::new(Mode::Insert);
+      editor.textarea.insert_str(query);
+      let mut completion_response = response(&[]);
+      completion_response.candidates.push(
+        CompletionCandidate::new(label, CompletionKind::Column, CompletionSource::Database)
+          .with_insert_text(insert_text),
+      );
+      editor.apply_completion_response(completion_response);
+      editor
+        .handle_events(
+          Some(Event::Key(KeyEvent::new(KeyCode::Tab, crossterm::event::KeyModifiers::NONE))),
+          Vec::new(),
+          &state,
+        )
+        .unwrap();
+      assert_eq!(editor.textarea.lines(), &[expected], "{query}");
+    }
   }
 
   #[test]

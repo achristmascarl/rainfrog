@@ -936,43 +936,6 @@ mod tests {
   }
 
   #[test]
-  fn test_resized_percent_steps_and_clamps() {
-    assert_eq!(resized_percent(25, 5), 30);
-    assert_eq!(resized_percent(25, -5), 20);
-    assert_eq!(resized_percent(90, 5), 90);
-    assert_eq!(resized_percent(10, -5), 10);
-  }
-
-  #[test]
-  fn test_resize_focused_section_menu() {
-    let mut app = test_app(Focus::Menu);
-    app.resize_focused_section(SECTION_RESIZE_STEP);
-    assert_eq!(app.menu_width_percent, 30);
-    assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
-    app.resize_focused_section(-SECTION_RESIZE_STEP);
-    assert_eq!(app.menu_width_percent, DEFAULT_MENU_WIDTH_PERCENT);
-  }
-
-  #[test]
-  fn test_resize_focused_section_tabs() {
-    for focus in [Focus::Editor, Focus::History, Focus::Favorites] {
-      let mut app = test_app(focus);
-      app.resize_focused_section(SECTION_RESIZE_STEP);
-      assert_eq!(app.tabs_height_percent, 50, "focus: {focus:?}");
-      assert_eq!(app.menu_width_percent, DEFAULT_MENU_WIDTH_PERCENT, "focus: {focus:?}");
-    }
-  }
-
-  #[test]
-  fn test_resize_focused_section_data_inverts() {
-    let mut app = test_app(Focus::Data);
-    app.resize_focused_section(SECTION_RESIZE_STEP);
-    assert_eq!(app.tabs_height_percent, 40);
-    app.resize_focused_section(-SECTION_RESIZE_STEP);
-    assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
-  }
-
-  #[test]
   fn test_fullscreen_keeps_minimum_panes_and_restores_both_splits() {
     use ratatui::{Terminal, backend::TestBackend};
 
@@ -1071,22 +1034,34 @@ mod tests {
     app.resize_focused_section(SECTION_RESIZE_STEP);
     assert_eq!(markers(&mut app, &mut terminal, &tx), (40, 18));
 
-    app.state.focus = Focus::Editor;
-    app.resize_focused_section(SECTION_RESIZE_STEP);
-    assert_eq!(markers(&mut app, &mut terminal, &tx), (40, 20));
+    for focus in [Focus::Editor, Focus::History, Focus::Favorites] {
+      app.set_focus(focus);
+      app.resize_focused_section(SECTION_RESIZE_STEP);
+      assert_eq!(markers(&mut app, &mut terminal, &tx), (40, 20));
+      app.resize_focused_section(-SECTION_RESIZE_STEP);
+    }
 
-    app.state.focus = Focus::Data;
+    app.set_focus(Focus::Data);
     app.resize_focused_section(SECTION_RESIZE_STEP);
     app.resize_focused_section(SECTION_RESIZE_STEP);
-    assert_eq!(markers(&mut app, &mut terminal, &tx), (40, 16));
-  }
+    assert_eq!(markers(&mut app, &mut terminal, &tx), (40, 14));
 
-  #[test]
-  fn test_resize_focused_section_popup_noop() {
-    let mut app = test_app(Focus::PopUp);
-    app.resize_focused_section(SECTION_RESIZE_STEP);
-    assert_eq!(app.menu_width_percent, DEFAULT_MENU_WIDTH_PERCENT);
-    assert_eq!(app.tabs_height_percent, DEFAULT_TABS_HEIGHT_PERCENT);
+    // Repeated resizing stays within the usable layout, and a popup cannot
+    // resize the panes behind it.
+    for (delta, expected) in [(SECTION_RESIZE_STEP, (90, 4)), (-SECTION_RESIZE_STEP, (10, 36))] {
+      app.set_focus(Focus::Menu);
+      for _ in 0..30 {
+        app.resize_focused_section(delta);
+      }
+      app.set_focus(Focus::Data);
+      for _ in 0..30 {
+        app.resize_focused_section(delta);
+      }
+      assert_eq!(markers(&mut app, &mut terminal, &tx), expected);
+      app.set_focus(Focus::PopUp);
+      app.resize_focused_section(-delta);
+      assert_eq!(markers(&mut app, &mut terminal, &tx), expected);
+    }
   }
 
   #[test]

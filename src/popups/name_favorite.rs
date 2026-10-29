@@ -96,12 +96,19 @@ mod tests {
   use crate::{components::app_state_with_focus, focus::Focus};
 
   #[test]
-  fn paste_uses_the_same_name_sanitization_as_typed_input() {
+  fn pasted_favorite_name_is_sanitized_before_submitting_the_query() {
     let mut favorite = NameFavorite::new(Vec::new(), vec!["select 1".to_string()]);
     let mut app_state = app_state_with_focus(Focus::PopUp);
 
     favorite.handle_paste_events("my favorite!?_v2-東京\n", &mut app_state).unwrap();
 
-    assert_eq!(favorite.name, "myfavorite_v2-東京");
+    let key = crossterm::event::KeyEvent::new(KeyCode::Enter, crossterm::event::KeyModifiers::NONE);
+    let Some(PopUpPayload::NamedFavorite(name, query)) =
+      favorite.handle_key_events(key, &mut app_state).unwrap()
+    else {
+      panic!("expected a named favorite to be submitted");
+    };
+    assert_eq!(name, "myfavorite_v2-東京");
+    assert_eq!(query, ["select 1"]);
   }
 }
