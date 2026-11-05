@@ -6,7 +6,7 @@ use sqlparser::dialect::DuckDbDialect;
 use sqlparser::dialect::GenericDialect;
 
 use sqlparser::{
-  ast::{Query, SetExpr, Statement},
+  ast::{Query, SetExpr, Statement, UtilityOption},
   dialect::{Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
   keywords,
   parser::{Parser, ParserError},
@@ -296,7 +296,9 @@ fn get_statement_execution_type(statement: &Statement) -> ExecutionTypeInfo {
         display_statement: statement.clone(),
       },
     },
-    Statement::Explain { statement: explained_statement, analyze, .. } if *analyze => {
+    Statement::Explain { statement: explained_statement, analyze, options, .. }
+      if *analyze || has_analyze_option(options.as_deref()) =>
+    {
       let info = get_statement_execution_type(explained_statement);
       ExecutionTypeInfo {
         execution_type: info.execution_type,
@@ -315,6 +317,17 @@ fn get_statement_execution_type(statement: &Statement) -> ExecutionTypeInfo {
       display_statement: statement.clone(),
     },
   }
+}
+
+// postgres also accepts `EXPLAIN (ANALYZE) ...`, which sqlparser stores as an option instead of
+// setting `analyze`. `ANALYZE false`, `off` or `0` turns it off again.
+fn has_analyze_option(options: Option<&[UtilityOption]>) -> bool {
+  options.unwrap_or_default().iter().any(|option| {
+    option.name.value.eq_ignore_ascii_case("analyze")
+      && option.arg.as_ref().is_none_or(|arg| {
+        !matches!(arg.to_string().to_ascii_lowercase().as_str(), "false" | "off" | "0")
+      })
+  })
 }
 
 fn get_query_execution_type(query: &Query) -> Option<ExecutionTypeInfo> {
@@ -651,5 +664,37 @@ mod tests {
       get_execution_type(query.to_string(), false, Driver::Postgres).unwrap().0,
       ExecutionType::Normal
     );
+  }
+
+  #[test]
+  fn parenthesized_explain_analyze_uses_explained_statement_execution_type() {
+    let test_cases = vec![
+      ("EXPLAIN (ANALYZE) UPDATE users SET name = 'Jane' WHERE id = 1", ExecutionType::Transaction),
+      ("EXPLAIN (ANALYZE true) DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
+      ("EXPLAIN (ANALYZE on, BUFFERS) DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
+      ("EXPLAIN (VERBOSE, analyze) DROP TABLE users", ExecutionType::Confirm),
+      ("EXPLAIN (ANALYZE) SELECT * FROM users WHERE id = 1", ExecutionType::Normal),
+      ("EXPLAIN (ANALYZE false) DELETE FROM users WHERE id = 1", ExecutionType::Normal),
+      ("EXPLAIN (ANALYZE off) DELETE FROM users WHERE id = 1", ExecutionType::Normal),
+      ("EXPLAIN (VERBOSE) UPDATE users SET name = 'Jane' WHERE id = 1", ExecutionType::Normal),
+    ];
+
+    for (query, expected) in test_cases {
+      assert_eq!(
+        get_execution_type(query.to_string(), false, Driver::Postgres).unwrap().0,
+        expected,
+        "Failed for query: {query}"
+      );
+    }
+
+    let query = "EXPLAIN (ANALYZE) UPDATE users SET name = 'Jane' WHERE id = 1";
+    let (_, statement) = get_execution_type(query.to_string(), false, Driver::Postgres).unwrap();
+    let (_, root_statement) = get_first_query(query.to_string(), Driver::Postgres).unwrap();
+
+    assert!(matches!(statement, Some(Statement::Update { .. })));
+    assert!(matches!(
+      get_display_statement_for_execution_type(&root_statement),
+      Statement::Explain { statement, .. } if matches!(*statement, Statement::Update { .. })
+    ));
   }
 }
