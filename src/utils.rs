@@ -141,22 +141,18 @@ pub fn initialize_logging() -> Result<()> {
   std::fs::create_dir_all(directory.clone())?;
   let log_path = directory.join(LOG_FILE.clone());
   let log_file = std::fs::OpenOptions::new().create(true).append(true).open(log_path)?;
-  // TODO: Audit that the environment access only happens in single-threaded code.
-  unsafe {
-    std::env::set_var(
-      "RUST_LOG",
-      std::env::var("RUST_LOG")
-        .or_else(|_| std::env::var(LOG_ENV.clone()))
-        .unwrap_or_else(|_| format!("{}=info", env!("CARGO_CRATE_NAME"))),
-    )
-  };
+  // NOTE: Tokio's worker threads are already running here. Build the filter directly
+  // from the environment values to avoid unsafe process-wide environment mutation.
+  let log_directives = std::env::var("RUST_LOG")
+    .or_else(|_| std::env::var(LOG_ENV.clone()))
+    .unwrap_or_else(|_| format!("{}=info", env!("CARGO_CRATE_NAME")));
   let file_subscriber = tracing_subscriber::fmt::layer()
     .with_file(true)
     .with_line_number(true)
     .with_writer(log_file)
     .with_target(false)
     .with_ansi(false)
-    .with_filter(tracing_subscriber::filter::EnvFilter::from_default_env());
+    .with_filter(tracing_subscriber::filter::EnvFilter::new(log_directives));
   tracing_subscriber::registry().with(file_subscriber).with(ErrorLayer::default()).init();
   Ok(())
 }
