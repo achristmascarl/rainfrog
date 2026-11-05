@@ -12,7 +12,6 @@ use duckdb::{
   Connection,
   types::{OrderedMap, TimeUnit, Value as DuckValue},
 };
-use tokio::sync::oneshot::error::TryRecvError;
 use tracing::Instrument;
 
 mod worker;
@@ -68,6 +67,9 @@ impl Database for DuckDbDriver {
 
   async fn abort_query(&mut self) -> Result<bool> {
     let Some(task) = self.task.as_mut() else { return Ok(false) };
+    // TODO: Avoid awaiting native cancellation on the UI/quit path. Blocking I/O, such as
+    // read_csv on a named pipe awaiting a writer, may not observe interrupts, leaving this
+    // wait stuck indefinitely and preventing UI input and terminal cleanup.
     let result = task.request.cancel_and_wait().await;
     self.task = None;
     result?;
@@ -76,15 +78,15 @@ impl Database for DuckDbDriver {
 
   async fn get_query_results(&mut self) -> Result<DbTaskResult> {
     let Some(task) = self.task.as_mut() else { return Ok(DbTaskResult::NoTask) };
-    match task.request.response.try_recv() {
-      Ok(rows) => {
+    match task.request.try_result() {
+      Ok(Some(rows)) => {
         let task = self.task.take().unwrap();
         Ok(DbTaskResult::Finished(QueryResultsWithMetadata::new(rows, task.statement_type)))
       },
-      Err(TryRecvError::Empty) => Ok(DbTaskResult::Pending),
-      Err(TryRecvError::Closed) => {
+      Ok(None) => Ok(DbTaskResult::Pending),
+      Err(error) => {
         self.task = None;
-        Err(eyre::eyre!("DuckDB worker stopped before returning a result"))
+        Err(error)
       },
     }
   }
@@ -102,7 +104,7 @@ impl Database for DuckDbDriver {
   }
 
   fn start_load_menu(&self) -> Result<tokio::task::JoinHandle<Result<Rows>>> {
-    let mut request = self.worker()?.submit(move |connection, cancelled| {
+    let request = self.worker()?.submit(move |connection, cancelled| {
       run_query(
         connection,
         "select table_schema,
@@ -119,16 +121,14 @@ impl Database for DuckDbDriver {
         cancelled,
       )
     })?;
-    Ok(tokio::spawn(async move {
-      (&mut request.response).await.map_err(|_| eyre::eyre!("DuckDB worker stopped"))?
-    }.in_current_span()))
+    Ok(tokio::spawn(request.wait().in_current_span()))
   }
 
   fn start_load_columns(
     &self,
     tables: Vec<TableRef>,
   ) -> Result<tokio::task::JoinHandle<Result<Vec<TableColumns>>>> {
-    let mut request = self.worker()?.submit(move |connection, cancelled| {
+    let request = self.worker()?.submit(move |connection, cancelled| {
       let mut output = Vec::with_capacity(tables.len());
       for table in tables {
         let schema = table.schema.replace('\'', "''");
@@ -140,9 +140,7 @@ impl Database for DuckDbDriver {
       }
       Ok(output)
     })?;
-    Ok(tokio::spawn(async move {
-      (&mut request.response).await.map_err(|_| eyre::eyre!("DuckDB worker stopped"))?
-    }.in_current_span()))
+    Ok(tokio::spawn(request.wait().in_current_span()))
   }
 
   fn preview_rows_query(&self, schema: &str, table: &str) -> String {
@@ -411,7 +409,7 @@ mod tests {
   }
 
   async fn track_progress(driver: &DuckDbDriver) -> duckdb::ProgressHandle {
-    let mut request = driver
+    let request = driver
       .worker()
       .unwrap()
       .submit(|connection, _| {
@@ -420,7 +418,7 @@ mod tests {
         Ok(connection.progress_handle())
       })
       .unwrap();
-    (&mut request.response).await.unwrap().unwrap()
+    request.wait().await.unwrap()
   }
 
   async fn wait_for_execution(progress: &duckdb::ProgressHandle) {
@@ -540,7 +538,7 @@ mod tests {
     execute(&mut driver, "CREATE TEMP TABLE kept(id integer)").await;
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
     let (release_tx, release_rx) = std::sync::mpsc::channel();
-    let mut preceding = driver
+    let preceding = driver
       .worker()
       .unwrap()
       .submit(move |connection, cancelled| {
@@ -561,7 +559,7 @@ mod tests {
     .await
     .unwrap();
     assert!(aborted.unwrap());
-    assert_eq!((&mut preceding.response).await.unwrap().unwrap().rows, vec![vec!["123"]]);
+    assert_eq!(preceding.wait().await.unwrap().rows, vec![vec!["123"]]);
     assert_eq!(execute(&mut driver, "SELECT count(*) FROM kept").await.rows, vec![vec!["0"]]);
   }
 

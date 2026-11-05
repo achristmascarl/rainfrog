@@ -10,7 +10,7 @@ use std::{
 
 use color_eyre::eyre::{Result, eyre};
 use duckdb::{Config, Connection, InterruptHandle};
-use tokio::sync::oneshot;
+use tokio::sync::oneshot::{self, error::TryRecvError};
 
 const INTERRUPT_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -25,12 +25,29 @@ struct WorkerControl {
 }
 
 pub(super) struct Request<T> {
-  pub response: oneshot::Receiver<Result<T>>,
+  response: oneshot::Receiver<Result<T>>,
   cancelled: Arc<AtomicBool>,
   control: Arc<WorkerControl>,
 }
 
 impl<T> Request<T> {
+  /// The outer error means the worker stopped; the inner result belongs to the request.
+  pub fn try_result(&mut self) -> Result<Option<Result<T>>> {
+    match self.response.try_recv() {
+      Ok(result) => Ok(Some(result)),
+      Err(TryRecvError::Empty) => Ok(None),
+      Err(TryRecvError::Closed) => Err(eyre!("DuckDB worker stopped before returning a result")),
+    }
+  }
+
+  pub async fn wait(mut self) -> Result<T> {
+    self.receive().await?
+  }
+
+  async fn receive(&mut self) -> Result<Result<T>> {
+    (&mut self.response).await.map_err(|_| eyre!("DuckDB worker stopped before returning a result"))
+  }
+
   pub fn cancel(&self) {
     self.cancelled.store(true, Ordering::Relaxed);
     let state = self.control.state.lock().unwrap();
@@ -45,8 +62,8 @@ impl<T> Request<T> {
       // DuckDB can reset an interrupt between preparation and execution.
       self.cancel();
       tokio::select! {
-        result = &mut self.response => {
-          let _ = result.map_err(|_| eyre!("DuckDB worker stopped before returning a result"))?;
+        result = self.receive() => {
+          let _ = result?;
           return Ok(());
         },
         _ = tokio::time::sleep(INTERRUPT_INTERVAL) => {},
@@ -61,9 +78,11 @@ impl<T> Drop for Request<T> {
   }
 }
 
+type JobFn = Box<dyn FnOnce(&Connection, &WorkerControl) -> bool + Send>;
+
 struct Job {
-  run: Box<dyn FnOnce(&Connection) + Send>,
-  cancelled: Arc<AtomicBool>,
+  // Returns false when shutdown prevents the job from starting.
+  run: JobFn,
   span: tracing::Span,
 }
 
@@ -93,13 +112,9 @@ impl Worker {
         return;
       }
       for job in jobs {
-        let mut state = control.state.lock().unwrap();
-        if state.shutdown {
+        if !job.span.in_scope(|| (job.run)(&connection, &control)) {
           break;
         }
-        state.active = Some(job.cancelled);
-        drop(state);
-        job.span.in_scope(|| (job.run)(&connection));
       }
     })?;
     let control =
@@ -114,15 +129,22 @@ impl Worker {
     let (response_tx, response) = oneshot::channel();
     let cancelled = Arc::new(AtomicBool::new(false));
     let job_cancelled = cancelled.clone();
-    let control = self.control.clone();
     let job = Job {
-      cancelled: cancelled.clone(),
       span: tracing::Span::current(),
-      run: Box::new(move |connection| {
+      run: Box::new(move |connection, control| {
+        let mut state = control.state.lock().unwrap();
+        if state.shutdown {
+          return false;
+        }
+        state.active = Some(job_cancelled.clone());
+        drop(state);
+
         let result =
           check_cancelled(&job_cancelled).and_then(|()| operation(connection, &job_cancelled));
+        // Clear the active request before publishing its result or starting another job.
         control.state.lock().unwrap().active = None;
         let _ = response_tx.send(result);
+        true
       }),
     };
     self.commands.as_ref().unwrap().send(job).map_err(|_| eyre!("DuckDB worker is unavailable"))?;
