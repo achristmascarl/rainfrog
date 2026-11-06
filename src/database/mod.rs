@@ -320,18 +320,23 @@ fn get_statement_execution_type(statement: &Statement) -> ExecutionTypeInfo {
 }
 
 // postgres also accepts `EXPLAIN (ANALYZE) ...`, which sqlparser stores as an option instead of
-// setting `analyze`. `ANALYZE false`, `off` or `0` turns it off again, quoted or not.
+// setting `analyze`. `ANALYZE false`, `off` or `0` turns it off again, quoted or not. if ANALYZE
+// is given more than once, postgres uses the last one.
 fn has_analyze_option(options: Option<&[UtilityOption]>) -> bool {
-  options.unwrap_or_default().iter().any(|option| {
-    option.name.value.eq_ignore_ascii_case("analyze")
-      && option.arg.as_ref().is_none_or(|arg| {
+  options
+    .unwrap_or_default()
+    .iter()
+    .rfind(|option| option.name.value.eq_ignore_ascii_case("analyze"))
+    .is_some_and(|option| {
+      option.arg.as_ref().is_none_or(|arg| {
         let value = match arg {
           Expr::Value(value) => value.clone().into_string().unwrap_or_else(|| value.to_string()),
+          Expr::Identifier(ident) => ident.value.clone(),
           _ => arg.to_string(),
         };
         !matches!(value.to_ascii_lowercase().as_str(), "false" | "off" | "0")
       })
-  })
+    })
 }
 
 fn get_query_execution_type(query: &Query) -> Option<ExecutionTypeInfo> {
@@ -683,6 +688,9 @@ mod tests {
       ("EXPLAIN (ANALYZE 'false') DELETE FROM users WHERE id = 1", ExecutionType::Normal),
       ("EXPLAIN (ANALYZE 'OFF') DELETE FROM users WHERE id = 1", ExecutionType::Normal),
       ("EXPLAIN (ANALYZE 'on') DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
+      ("EXPLAIN (ANALYZE \"off\") DELETE FROM users WHERE id = 1", ExecutionType::Normal),
+      ("EXPLAIN (ANALYZE true, ANALYZE false) DELETE FROM users", ExecutionType::Normal),
+      ("EXPLAIN (ANALYZE false, ANALYZE) DELETE FROM users", ExecutionType::Transaction),
       ("EXPLAIN (VERBOSE) UPDATE users SET name = 'Jane' WHERE id = 1", ExecutionType::Normal),
     ];
 
