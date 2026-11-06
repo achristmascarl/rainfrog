@@ -241,7 +241,8 @@ fn duck_value_to_string(value: &DuckValue) -> String {
     DuckValue::Decimal(v) => v.to_string(),
     DuckValue::Timestamp(unit, raw) => format_timestamp(*unit, *raw),
     DuckValue::Text(text) => text.clone(),
-    DuckValue::Blob(bytes) | DuckValue::Geometry(bytes) => bytes_to_string(bytes),
+    DuckValue::Blob(bytes) => bytes_to_string(bytes),
+    DuckValue::Geometry(bytes) => bytes_to_hex(bytes),
     DuckValue::Date32(days) => format_date(*days),
     DuckValue::Time64(unit, raw) => format_time(*unit, *raw),
     DuckValue::Interval { months, days, nanos } => format_interval(*months, *days, *nanos),
@@ -329,14 +330,16 @@ fn format_map(map: &OrderedMap<DuckValue, DuckValue>) -> String {
 fn bytes_to_string(bytes: &[u8]) -> String {
   match std::str::from_utf8(bytes) {
     Ok(text) => text.to_owned(),
-    Err(_) => {
-      let mut output = String::from("0x");
-      for b in bytes {
-        let _ = write!(&mut output, "{b:02X}");
-      }
-      output
-    },
+    Err(_) => bytes_to_hex(bytes),
   }
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+  let mut output = String::from("0x");
+  for b in bytes {
+    let _ = write!(&mut output, "{b:02X}");
+  }
+  output
 }
 
 impl DuckDbDriver {
@@ -440,8 +443,9 @@ mod tests {
        '340282366920938463463374607431768211455'::UHUGEINT AS huge, \
        '123456789012345678901234567890.12345678'::DECIMAL(38, 8) AS amount, \
        from_hex('0101000000000000000000F03F0000000000000040')::GEOMETRY AS point, \
+       from_hex('010100000000000000000000000000000000000000')::GEOMETRY AS origin, \
        [1, NULL, 3] AS items",
-      "SELECT huge, amount, point, items FROM samples",
+      "SELECT huge, amount, point, origin, items FROM samples",
     ];
 
     for (index, query) in queries.iter().enumerate() {
@@ -452,7 +456,7 @@ mod tests {
       if index == 1 {
         assert_eq!(
           rows.headers.iter().map(|header| header.name.as_str()).collect::<Vec<_>>(),
-          vec!["huge", "amount", "point", "items"]
+          vec!["huge", "amount", "point", "origin", "items"]
         );
         assert_eq!(
           rows.rows,
@@ -460,6 +464,7 @@ mod tests {
             "340282366920938463463374607431768211455",
             "123456789012345678901234567890.12345678",
             "0x0101000000000000000000F03F0000000000000040",
+            "0x010100000000000000000000000000000000000000",
             "[1, NULL, 3]",
           ]]
         );
