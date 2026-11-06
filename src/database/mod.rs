@@ -321,7 +321,8 @@ fn get_statement_execution_type(statement: &Statement) -> ExecutionTypeInfo {
 
 // postgres also accepts `EXPLAIN (ANALYZE) ...` (or the ANALYSE spelling), which sqlparser stores
 // as an option instead of setting `analyze`. if it is given more than once, postgres uses the last
-// one. `false`, `off` and `0` turn it off however they are quoted or written, e.g. `'off'` or `00`.
+// one. `false`, `off` and zero (e.g. `'off'` or `00`) count as off. any other value either runs the
+// statement or is rejected by postgres, so it counts as on.
 fn has_analyze_option(options: Option<&[UtilityOption]>) -> bool {
   options
     .unwrap_or_default()
@@ -695,6 +696,9 @@ mod tests {
       ("EXPLAIN (ANALYZE true, ANALYZE false) DELETE FROM users", ExecutionType::Normal),
       ("EXPLAIN (ANALYZE false, ANALYZE) DELETE FROM users", ExecutionType::Transaction),
       ("EXPLAIN (ANALYSE) DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
+      ("EXPLAIN (ANALYZE off, analyse) DELETE FROM users", ExecutionType::Transaction),
+      ("EXPLAIN (ANALYZE 1) DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
+      ("EXPLAIN (ANALYZE TRUE) DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
       ("EXPLAIN (ANALYZE 00) DELETE FROM users WHERE id = 1", ExecutionType::Normal),
       ("EXPLAIN (ANALYZE -0) DELETE FROM users WHERE id = 1", ExecutionType::Normal),
       ("EXPLAIN (VERBOSE) UPDATE users SET name = 'Jane' WHERE id = 1", ExecutionType::Normal),
