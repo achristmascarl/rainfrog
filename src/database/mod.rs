@@ -121,18 +121,15 @@ pub trait Database {
   /// for the terminal tab.
   async fn init(&mut self, args: Cli) -> Result<String>;
 
-  /// Spawns a tokio task that runs the query. The task should
-  /// expect to be polled via the `get_query_results()` method.
+  /// Starts a query asynchronously. Poll its result via `get_query_results()`.
   async fn start_query(&mut self, query: String, bypass_parser: bool) -> Result<()>;
 
-  /// Aborts the tokio task running the active query or transaction.
-  /// Some drivers also kill the process that was running the query,
-  /// so that the query does not continue running in the background.
-  /// This behavior needs to be implemented by the driver.
+  /// Cancels the active query or transaction. Stopping work in the database,
+  /// in addition to cancelling the local task, must be implemented by the driver.
   async fn abort_query(&mut self) -> Result<bool>;
 
-  /// Polls the tokio task for the active query or transaction if
-  /// it exists. Returns `DbTaskResult::NoTask` if no task is running,
+  /// Polls the active query or transaction if it exists.
+  /// Returns `DbTaskResult::NoTask` if no task is running,
   /// `DbTaskResult::Pending` if the task is still running.
   async fn get_query_results(&mut self) -> Result<DbTaskResult>;
 
