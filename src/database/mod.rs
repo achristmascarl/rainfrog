@@ -319,14 +319,16 @@ fn get_statement_execution_type(statement: &Statement) -> ExecutionTypeInfo {
   }
 }
 
-// postgres also accepts `EXPLAIN (ANALYZE) ...`, which sqlparser stores as an option instead of
-// setting `analyze`. `ANALYZE false`, `off` or `0` turns it off again, quoted or not. if ANALYZE
-// is given more than once, postgres uses the last one.
+// postgres also accepts `EXPLAIN (ANALYZE) ...` (or the ANALYSE spelling), which sqlparser stores
+// as an option instead of setting `analyze`. if it is given more than once, postgres uses the last
+// one. `false`, `off` and `0` turn it off however they are quoted or written, e.g. `'off'` or `00`.
 fn has_analyze_option(options: Option<&[UtilityOption]>) -> bool {
   options
     .unwrap_or_default()
     .iter()
-    .rfind(|option| option.name.value.eq_ignore_ascii_case("analyze"))
+    .rfind(|option| {
+      matches!(option.name.value.to_ascii_lowercase().as_str(), "analyze" | "analyse")
+    })
     .is_some_and(|option| {
       option.arg.as_ref().is_none_or(|arg| {
         let value = match arg {
@@ -334,7 +336,8 @@ fn has_analyze_option(options: Option<&[UtilityOption]>) -> bool {
           Expr::Identifier(ident) => ident.value.clone(),
           _ => arg.to_string(),
         };
-        !matches!(value.to_ascii_lowercase().as_str(), "false" | "off" | "0")
+        let value = value.to_ascii_lowercase();
+        value != "false" && value != "off" && value.parse::<i64>() != Ok(0)
       })
     })
 }
@@ -691,6 +694,9 @@ mod tests {
       ("EXPLAIN (ANALYZE \"off\") DELETE FROM users WHERE id = 1", ExecutionType::Normal),
       ("EXPLAIN (ANALYZE true, ANALYZE false) DELETE FROM users", ExecutionType::Normal),
       ("EXPLAIN (ANALYZE false, ANALYZE) DELETE FROM users", ExecutionType::Transaction),
+      ("EXPLAIN (ANALYSE) DELETE FROM users WHERE id = 1", ExecutionType::Transaction),
+      ("EXPLAIN (ANALYZE 00) DELETE FROM users WHERE id = 1", ExecutionType::Normal),
+      ("EXPLAIN (ANALYZE -0) DELETE FROM users WHERE id = 1", ExecutionType::Normal),
       ("EXPLAIN (VERBOSE) UPDATE users SET name = 'Jane' WHERE id = 1", ExecutionType::Normal),
     ];
 
