@@ -607,8 +607,6 @@ export RAINFROG_FAVORITES=~/.config/rainfrog/favorites
 ## known issues and limitations
 
 - geometry types are not currently supported
-- for x11 and wayland, yanking does not copy to the system clipboard, only
-  to the query editor's buffer. see <https://github.com/achristmascarl/rainfrog/issues/83>
 - in visual mode, when selecting an entire line, the behavior is not the same as
   vim's, as it simply starts the selection at the head of the line, so
   moving up or down in lines will break the selection.
