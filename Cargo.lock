@@ -2538,6 +2538,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "linux-keyutils"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83270a18e9f90d0707c41e9f35efada77b64c0e6f3f1810e71c8368a864d5590"
+dependencies = [
+ "bitflags 2.13.0",
+ "libc",
+]
+
+[[package]]
+name = "linux-keyutils-keyring-store"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39fbed79f71dc21eb21d3d07c0e908a3c58ff9a1fdbf5cf44230fb3deb6d994b"
+dependencies = [
+ "keyring-core",
+ "linux-keyutils",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3443,8 +3463,10 @@ dependencies = [
  "human-panic",
  "indexmap",
  "keyring",
+ "keyring-core",
  "lazy_static",
  "libc",
+ "linux-keyutils-keyring-store",
  "log",
  "oracle",
  "percent-encoding",
@@ -3469,6 +3491,7 @@ dependencies = [
  "unicode-width",
  "vergen",
  "vergen-git2",
+ "zbus-secret-service-keyring-store",
 ]
 
 [[package]]
