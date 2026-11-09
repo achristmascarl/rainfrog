@@ -57,6 +57,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.os-name }}
+      # rust-cache can leave unpacked DuckDB directories without their completion marker.
+      # Remove this workaround when libduckdb-sys ships duckdb/duckdb-rs#936.
+      - name: Remove incomplete DuckDB sources
+        if: ${{ matrix.target == null }}
+        shell: bash
+        run: |
+          for dir in target/duckdb-sources/*; do
+            if [[ -d "$dir" && ! -f "$dir/.complete" ]]; then
+              rm -rf -- "$dir"
+            fi
+          done
       - name: Run tests (cross)
         if: ${{ matrix.target != null }}
         uses: houseabsolute/actions-rust-cross@v0
@@ -186,5 +197,13 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Remove incomplete DuckDB sources
+        shell: bash
+        run: |
+          for dir in target/duckdb-sources/*; do
+            if [[ -d "$dir" && ! -f "$dir/.complete" ]]; then
+              rm -rf -- "$dir"
+            fi
+          done
       - name: Clippy check
         run: cargo clippy --all-targets --all-features --workspace -- -D warnings
