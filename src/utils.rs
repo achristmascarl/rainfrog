@@ -32,7 +32,7 @@ lazy_static! {
   pub static ref LOG_FILE: String = format!("{}.log", env!("CARGO_PKG_NAME"));
 }
 
-fn project_directory() -> Option<ProjectDirs> {
+pub(crate) fn project_directory() -> Option<ProjectDirs> {
   ProjectDirs::from("dev", "rainfrog", env!("CARGO_PKG_NAME"))
 }
 

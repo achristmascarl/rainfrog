@@ -390,6 +390,9 @@ if no database connection in the config is set as the default connection,
 a prompt will appear to select the desired database. The user will also be 
 prompted for the password for the selected database and will have the option to 
 store it in a platform specific keychain for future reuse.
+On macOS and Linux, Rainfrog saves passwords by connection name and username in
+a shared keychain entry. Existing passwords move into that entry when first used.
+On Windows, each connection and username still has its own entry.
 On Linux, Rainfrog uses Secret Service when available and falls back to the
 kernel keyring, which clears on reboot. If neither is available, the password is
 used for the current connection only.
