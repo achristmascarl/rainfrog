@@ -120,6 +120,10 @@ fn prompt_for_password(
     "" | "Y" | "y" => {
       match entry.set_password(password.as_ref()).wrap_err("Failed to save password in keyring") {
         Ok(()) => println!("Password saved in keyring"),
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        Err(error) if error.is::<shared::LockUnavailable>() => {
+          eprintln!("{error:#}. Using the password for this connection only.");
+        },
         Err(error) if storage_unavailable(&error) => {
           eprintln!("Credential store unavailable. Using the password for this connection only.");
         },
@@ -144,6 +148,14 @@ pub fn get_password(
       return Ok(password);
     },
     Ok((entry, None)) => Some(entry),
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    Err(error) if error.is::<shared::LockUnavailable>() => {
+      if reenter_password {
+        eprintln!("Could not revoke any saved password.");
+      }
+      eprintln!("{error:#}. Using the password for this connection only.");
+      None
+    },
     Err(error) if storage_unavailable(&error) => {
       if reenter_password {
         eprintln!("Could not revoke any password in the unavailable credential store.");

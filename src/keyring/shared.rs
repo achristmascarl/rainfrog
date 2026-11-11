@@ -1,8 +1,9 @@
 use std::{
   collections::BTreeMap,
+  fmt,
   fs::{self, File, OpenOptions},
   io,
-  os::{fd::AsRawFd, unix::fs::OpenOptionsExt},
+  os::unix::fs::OpenOptionsExt,
   path::{Path, PathBuf},
 };
 
@@ -14,6 +15,17 @@ use crate::{Result, utils::project_directory};
 
 // Legacy account names always contain a hyphen.
 const SHARED_ACCOUNT: &str = "secrets";
+
+#[derive(Debug)]
+pub(super) struct LockUnavailable;
+
+impl fmt::Display for LockUnavailable {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str("Could not lock shared credentials")
+  }
+}
+
+impl std::error::Error for LockUnavailable {}
 
 #[derive(Default, Deserialize, Serialize)]
 struct Secrets {
@@ -83,10 +95,8 @@ impl PasswordEntry {
     build: impl Fn(&str) -> KeyringResult<Entry>,
   ) -> Result<Self> {
     // The keyring is shared across Rainfrog configs, including when RAINFROG_DATA is overridden.
-    let lock_path = project_directory()
-      .ok_or_else(|| eyre!("Could not locate the credential lock directory"))?
-      .data_local_dir()
-      .join("secrets.lock");
+    let lock_path =
+      project_directory().ok_or(LockUnavailable)?.data_local_dir().join("secrets.lock");
     Ok(Self {
       shared: build(SHARED_ACCOUNT)?,
       legacy: build(&legacy_account(connection_name, username))?,
@@ -97,7 +107,7 @@ impl PasswordEntry {
   }
 
   pub(super) fn read_or_revoke(self, reenter_password: bool) -> Result<(Self, Option<Password>)> {
-    let _lock = lock_secrets(&self.lock_path).wrap_err("Could not lock shared credentials")?;
+    let _lock = lock_secrets(&self.lock_path).wrap_err(LockUnavailable)?;
     let mut secrets = self.load()?;
     if reenter_password {
       // Clear the old entry first so a later lookup cannot migrate a revoked password back.
@@ -128,7 +138,7 @@ impl PasswordEntry {
   }
 
   pub(super) fn set_password(&self, password: &str) -> Result<()> {
-    let _lock = lock_secrets(&self.lock_path).wrap_err("Could not lock shared credentials")?;
+    let _lock = lock_secrets(&self.lock_path).wrap_err(LockUnavailable)?;
     let mut secrets = self.load()?;
     secrets.insert_password(&self.connection_name, &self.username, password);
     self.save(&secrets)
@@ -159,13 +169,10 @@ fn lock_secrets(path: &Path) -> io::Result<File> {
     .custom_flags(libc::O_NOFOLLOW)
     .open(path)?;
   loop {
-    // The open file owns the lock until it is dropped.
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } == 0 {
-      return Ok(file);
-    }
-    let error = io::Error::last_os_error();
-    if error.kind() != io::ErrorKind::Interrupted {
-      return Err(error);
+    match file.lock() {
+      Ok(()) => return Ok(file),
+      Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+      Err(error) => return Err(error),
     }
   }
 }
