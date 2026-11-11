@@ -8,6 +8,14 @@ use keyring_core::{Entry, Error, Result as KeyringResult, api::CredentialStoreAp
 
 use crate::Result;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod shared;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use shared::PasswordEntry;
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+type PasswordEntry = Entry;
+
 const SERVICE: &str = "rainfrog";
 
 pub struct Password(String);
@@ -18,35 +26,35 @@ impl AsRef<str> for Password {
   }
 }
 
-fn storage_unavailable(error: &Error) -> bool {
-  matches!(error, Error::NoDefaultStore | Error::NoStorageAccess(_))
-    || (cfg!(target_os = "linux") && matches!(error, Error::PlatformFailure(_)))
+fn storage_unavailable(error: &eyre::Report) -> bool {
+  let error = error.downcast_ref::<Error>();
+  matches!(error, Some(Error::NoDefaultStore | Error::NoStorageAccess(_)))
+    || (cfg!(target_os = "linux") && matches!(error, Some(Error::PlatformFailure(_))))
 }
 
-fn read_or_revoke(
-  entry: Entry,
-  reenter_password: bool,
-) -> KeyringResult<(Entry, Option<Password>)> {
-  let password = if reenter_password {
-    entry.delete_credential().map(|()| None)
-  } else {
-    entry.get_password().map(|password| Some(Password(password)))
-  };
-  match password {
-    Ok(password) => Ok((entry, password)),
-    Err(Error::NoEntry) => Ok((entry, None)),
+fn allow_missing<T>(result: KeyringResult<T>) -> KeyringResult<Option<T>> {
+  match result {
+    Ok(value) => Ok(Some(value)),
+    Err(Error::NoEntry) => Ok(None),
     Err(error) => Err(error),
   }
 }
 
+fn legacy_account(connection_name: &str, username: &str) -> String {
+  format!("{connection_name}-{username}")
+}
+
 #[cfg(target_os = "linux")]
 fn open_password_entry(
-  user: &str,
+  connection_name: &str,
+  username: &str,
   reenter_password: bool,
-) -> KeyringResult<(Entry, Option<Password>)> {
-  let secret_service = zbus_secret_service_keyring_store::Store::new()
-    .and_then(|store| store.build(SERVICE, user, None))
-    .and_then(|entry| read_or_revoke(entry, reenter_password));
+) -> Result<(PasswordEntry, Option<Password>)> {
+  let secret_service = (|| {
+    let store = zbus_secret_service_keyring_store::Store::new()?;
+    PasswordEntry::new(connection_name, username, |account| store.build(SERVICE, account, None))?
+      .read_or_revoke(reenter_password)
+  })();
   match secret_service {
     Err(ref error) if storage_unavailable(error) => {},
     result => return result,
@@ -55,25 +63,46 @@ fn open_password_entry(
     eprintln!("Could not revoke any password saved in Secret Service.");
   }
 
-  // Match keyring v3's Linux key description so existing credentials can be reused.
-  let description = format!("keyring-rs:{user}@{SERVICE}");
-  let modifiers = std::collections::HashMap::from([("description", description.as_str())]);
-  let entry = linux_keyutils_keyring_store::Store::new()?.build(SERVICE, user, Some(&modifiers))?;
-  let result = read_or_revoke(entry, reenter_password)?;
+  let store = linux_keyutils_keyring_store::Store::new()?;
+  let entry = PasswordEntry::new(connection_name, username, |account| {
+    // Match keyring v3's Linux key description so existing credentials can be reused.
+    let description = format!("keyring-rs:{account}@{SERVICE}");
+    let modifiers = std::collections::HashMap::from([("description", description.as_str())]);
+    store.build(SERVICE, account, Some(&modifiers))
+  })?;
+  let result = entry.read_or_revoke(reenter_password)?;
   eprintln!("Secret Service unavailable. Using the Linux kernel keyring until reboot or expiry.");
   Ok(result)
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
 fn open_password_entry(
-  user: &str,
+  connection_name: &str,
+  username: &str,
   reenter_password: bool,
-) -> KeyringResult<(Entry, Option<Password>)> {
-  read_or_revoke(Entry::new(SERVICE, user)?, reenter_password)
+) -> Result<(PasswordEntry, Option<Password>)> {
+  PasswordEntry::new(connection_name, username, |account| Entry::new(SERVICE, account))?
+    .read_or_revoke(reenter_password)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn open_password_entry(
+  connection_name: &str,
+  username: &str,
+  reenter_password: bool,
+) -> Result<(PasswordEntry, Option<Password>)> {
+  let entry = Entry::new(SERVICE, &legacy_account(connection_name, username))?;
+  let password = if reenter_password {
+    allow_missing(entry.delete_credential())?;
+    None
+  } else {
+    allow_missing(entry.get_password())?.map(Password)
+  };
+  Ok((entry, password))
 }
 
 fn prompt_for_password(
-  entry: Option<&Entry>,
+  entry: Option<&PasswordEntry>,
   connection_name: &str,
   username: &str,
 ) -> Result<Password> {
@@ -88,12 +117,18 @@ fn prompt_for_password(
   io::stdout().flush()?;
   io::stdin().read_line(&mut save)?;
   match save.trim() {
-    "" | "Y" | "y" => match entry.set_password(password.as_ref()) {
-      Ok(()) => println!("Password saved in keyring"),
-      Err(error) if storage_unavailable(&error) => {
-        eprintln!("Credential store unavailable. Using the password for this connection only.");
-      },
-      Err(error) => return Err(error).wrap_err("Failed to save password in keyring"),
+    "" | "Y" | "y" => {
+      match entry.set_password(password.as_ref()).wrap_err("Failed to save password in keyring") {
+        Ok(()) => println!("Password saved in keyring"),
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        Err(error) if error.is::<shared::LockUnavailable>() => {
+          eprintln!("{error:#}. Using the password for this connection only.");
+        },
+        Err(error) if storage_unavailable(&error) => {
+          eprintln!("Credential store unavailable. Using the password for this connection only.");
+        },
+        Err(error) => return Err(error),
+      }
     },
     "n" | "N" => println!("Password not saved in keyring"),
     _ => return Err(eyre::Report::msg("Unrecognized save option")),
@@ -107,13 +142,20 @@ pub fn get_password(
   username: &str,
   reenter_password: bool,
 ) -> Result<Password> {
-  let user = format!("{connection_name}-{username}");
-  let entry = match open_password_entry(&user, reenter_password) {
+  let entry = match open_password_entry(connection_name, username, reenter_password) {
     Ok((_, Some(password))) => {
       println!("Password found in keyring");
       return Ok(password);
     },
     Ok((entry, None)) => Some(entry),
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    Err(error) if error.is::<shared::LockUnavailable>() => {
+      if reenter_password {
+        eprintln!("Could not revoke any saved password.");
+      }
+      eprintln!("{error:#}. Using the password for this connection only.");
+      None
+    },
     Err(error) if storage_unavailable(&error) => {
       if reenter_password {
         eprintln!("Could not revoke any password in the unavailable credential store.");

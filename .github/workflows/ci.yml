@@ -52,7 +52,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.88
+          toolchain: 1.89
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
@@ -74,7 +74,7 @@ jobs:
         env:
           RUSTFLAGS: ${{ matrix.cross-rustflags }}
         with:
-          toolchain: 1.88
+          toolchain: 1.89
           command: test
           target: ${{ matrix.target }}
           args: "${{ matrix.features }} --workspace"
