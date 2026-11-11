@@ -192,6 +192,9 @@ impl Config {
     if cfg.settings.autopairs_enabled.is_none() {
       cfg.settings.autopairs_enabled = default_config.settings.autopairs_enabled;
     }
+    if cfg.settings.persist_query_history.is_none() {
+      cfg.settings.persist_query_history = default_config.settings.persist_query_history;
+    }
 
     Ok(cfg)
   }
@@ -472,6 +475,7 @@ pub struct Settings {
   pub autocomplete_debounce_ms: Option<u64>,
   pub autocomplete_trigger_len: Option<usize>,
   pub autopairs_enabled: Option<bool>,
+  pub persist_query_history: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deref, DerefMut)]

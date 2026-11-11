@@ -6,6 +6,8 @@ autocomplete_enabled = true
 autocomplete_debounce_ms = 100
 autocomplete_trigger_len = 1
 autopairs_enabled = true
+# Restore the last 50 queries across sessions. Set false for in-memory history only.
+persist_query_history = true
 
 [db]
 # you can add frequently used database connections here. example:
