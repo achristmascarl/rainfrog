@@ -79,6 +79,10 @@ pub trait Component {
   fn init(&mut self, area: Rect) -> Result<()> {
     Ok(())
   }
+  /// Give text input priority over configured shortcuts while a prompt is focused.
+  fn captures_key(&self, _key: KeyEvent) -> bool {
+    false
+  }
   /// Handle incoming events and produce actions if necessary.
   ///
   /// # Arguments

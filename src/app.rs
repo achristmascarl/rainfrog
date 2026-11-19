@@ -389,6 +389,11 @@ impl App {
               event_consumed = true;
             }
           },
+          tui::Event::Key(key)
+            if self.state.focus == Focus::Editor && self.components.editor.captures_key(key) =>
+          {
+            self.last_tick_key_events.clear();
+          },
           tui::Event::Key(key) => {
             if let Some(keymap) = self.config.keybindings.get(&self.state.focus) {
               if let Some(action) = keymap.get(&vec![key]) {

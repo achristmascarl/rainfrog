@@ -489,6 +489,11 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `$`               | Move cursor to end of line             |
 | `gg`              | Jump to top of editor                  |
 | `G`               | Jump to bottom of current list         |
+| `/`               | Open the search prompt in normal mode  |
+| `Enter` in search | Find the next match and highlight matches |
+| `n`, `N`          | Repeat search forward or backward with wraparound |
+| `Esc` in search   | Cancel the prompt and keep the previous search |
+| `Esc` in normal mode | Clear search highlights and restore keyword colors |
 | `Esc`             | Return to normal mode                  |
 | `i`               | Enter insert (edit) mode               |
 | `I`               | Enter insert mode at beginning of line |
@@ -507,6 +512,10 @@ Vim keybindings in rainfrog can be found at [vim.rs](./src/vim.rs).
 | `Ctrl+f`*, `Alt+f`  | Save query to favorites                |
 
 *only works in normal mode
+
+Search matches literal text within a line, ignoring case. Pressing `Enter` with
+an empty prompt keeps the previous search. You can still use `n` and `N` after
+clearing the highlights.
 
 <!-- TOC --><a name="query-history"></a>
 #### query history
