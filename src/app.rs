@@ -238,6 +238,28 @@ impl App {
     self.set_focus(Focus::PopUp);
   }
 
+  fn keybinding_action(&mut self, key: KeyEvent) -> Option<&Action> {
+    let captured = match self.state.focus {
+      Focus::Menu => self.components.menu.captures_key(key),
+      Focus::Favorites => self.components.favorites.captures_key(key),
+      _ => false,
+    };
+    if captured {
+      self.last_tick_key_events.clear();
+      return None;
+    }
+
+    let keymap = self.config.keybindings.get(&self.state.focus)?;
+    if let Some(action) = keymap.get(&vec![key]) {
+      return Some(action);
+    }
+    if self.popup.is_some() {
+      return None;
+    }
+    self.last_tick_key_events.push(key);
+    keymap.get(&self.last_tick_key_events)
+  }
+
   fn last_focused_tab(&mut self) {
     match self.last_focused_tab {
       Focus::Editor => self.set_focus(Focus::Editor),
@@ -390,83 +412,72 @@ impl App {
             }
           },
           tui::Event::Key(key) => {
-            if let Some(keymap) = self.config.keybindings.get(&self.state.focus) {
-              if let Some(action) = keymap.get(&vec![key]) {
-                log::info!("Got action: {action:?}");
-                action_tx.send(action.clone())?;
-                event_consumed = true;
-              } else if let Some(popup) = &mut self.popup {
-                // popup captures all inputs. if it returns a payload, that means
-                // it is finished and should be closed
-                let payload = popup.handle_key_events(key, &mut self.state)?;
-                match payload {
-                  Some(PopUpPayload::SetDataTable(result, statement)) => {
-                    self.set_data_state(result, statement);
+            if let Some(action) = self.keybinding_action(key) {
+              log::info!("Got action: {action:?}");
+              action_tx.send(action.clone())?;
+              event_consumed = true;
+            } else if let Some(popup) = &mut self.popup
+              && self.config.keybindings.contains_key(&self.state.focus)
+            {
+              // popup captures all inputs. if it returns a payload, that means
+              // it is finished and should be closed
+              let payload = popup.handle_key_events(key, &mut self.state)?;
+              match payload {
+                Some(PopUpPayload::SetDataTable(result, statement)) => {
+                  self.set_data_state(result, statement);
+                  self.set_focus(Focus::Editor);
+                },
+                Some(PopUpPayload::ConfirmQuery(query)) => {
+                  action_tx.send(Action::Query(vec![query], true, false))?;
+                  self.set_focus(Focus::Editor);
+                },
+                Some(PopUpPayload::ConfirmBypass(query)) => {
+                  action_tx.send(Action::Query(vec![query], true, true))?;
+                  self.set_focus(Focus::Editor);
+                },
+                Some(PopUpPayload::ConfirmExport(confirmed)) => {
+                  if confirmed {
+                    action_tx.send(Action::ExportData(ExportFormat::CSV))?;
+                    self.set_popup(Box::new(Exporting::new()));
+                  } else {
+                    self.set_focus(Focus::Data);
+                  }
+                },
+                Some(PopUpPayload::ConfirmYank(confirmed)) => {
+                  if confirmed {
+                    action_tx.send(Action::YankAll)?;
+                  } else {
+                    self.set_focus(Focus::Data);
+                  }
+                },
+                Some(PopUpPayload::Cancel) => {
+                  self.last_focused_component();
+                },
+                Some(PopUpPayload::NamedFavorite(name, query_lines)) => {
+                  self.state.favorites.add_entry(name, query_lines);
+                  self.set_focus(Focus::Editor);
+                },
+                Some(PopUpPayload::CommitTx) => {
+                  let response = database.commit_tx().await?;
+                  self.state.last_query_end = Some(chrono::Utc::now());
+                  if let Some(results) = response {
+                    let statement_type = results.data_statement_type();
+                    self.set_data_state(Some(results.results), statement_type);
                     self.set_focus(Focus::Editor);
-                  },
-                  Some(PopUpPayload::ConfirmQuery(query)) => {
-                    action_tx.send(Action::Query(vec![query], true, false))?;
-                    self.set_focus(Focus::Editor);
-                  },
-                  Some(PopUpPayload::ConfirmBypass(query)) => {
-                    action_tx.send(Action::Query(vec![query], true, true))?;
-                    self.set_focus(Focus::Editor);
-                  },
-                  Some(PopUpPayload::ConfirmExport(confirmed)) => {
-                    if confirmed {
-                      action_tx.send(Action::ExportData(ExportFormat::CSV))?;
-                      self.set_popup(Box::new(Exporting::new()));
-                    } else {
-                      self.set_focus(Focus::Data);
-                    }
-                  },
-                  Some(PopUpPayload::ConfirmYank(confirmed)) => {
-                    if confirmed {
-                      action_tx.send(Action::YankAll)?;
-                    } else {
-                      self.set_focus(Focus::Data);
-                    }
-                  },
-                  Some(PopUpPayload::Cancel) => {
-                    self.last_focused_component();
-                  },
-                  Some(PopUpPayload::NamedFavorite(name, query_lines)) => {
-                    self.state.favorites.add_entry(name, query_lines);
-                    self.set_focus(Focus::Editor);
-                  },
-                  Some(PopUpPayload::CommitTx) => {
-                    let response = database.commit_tx().await?;
-                    self.state.last_query_end = Some(chrono::Utc::now());
-                    if let Some(results) = response {
-                      let statement_type = results.data_statement_type();
-                      self.set_data_state(Some(results.results), statement_type);
-                      self.set_focus(Focus::Editor);
-                    }
-                  },
-                  Some(PopUpPayload::RollbackTx) => {
-                    database.rollback_tx().await?;
-                    self.state.last_query_end = Some(chrono::Utc::now());
-                    self.set_data_state(
-                      Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
-                      Some(Statement::Rollback { chain: false, savepoint: None }),
-                    );
-                    self.set_focus(Focus::Editor);
-                  },
-                  None => {},
-                }
-                event_consumed = true;
-              } else {
-                // If the key was not handled as a single key action,
-                // then consider it for multi-key combinations.
-                self.last_tick_key_events.push(key);
-
-                // Check for multi-key combinations
-                if let Some(action) = keymap.get(&self.last_tick_key_events) {
-                  log::info!("Got action: {action:?}");
-                  action_tx.send(action.clone())?;
-                  event_consumed = true;
-                }
+                  }
+                },
+                Some(PopUpPayload::RollbackTx) => {
+                  database.rollback_tx().await?;
+                  self.state.last_query_end = Some(chrono::Utc::now());
+                  self.set_data_state(
+                    Some(Ok(Rows { headers: vec![], rows: vec![], rows_affected: None })),
+                    Some(Statement::Rollback { chain: false, savepoint: None }),
+                  );
+                  self.set_focus(Focus::Editor);
+                },
+                None => {},
               }
+              event_consumed = true;
             }
           },
           _ => {},
@@ -933,6 +944,61 @@ mod tests {
       tabs_height_percent: DEFAULT_TABS_HEIGHT_PERCENT,
       data_fullscreen_restore: None,
     }
+  }
+
+  #[test]
+  fn schema_search_gets_printable_keys_before_shortcuts() {
+    assert_search_key_routing(Focus::Menu, "queue", '5', Action::FocusFavorites);
+  }
+
+  #[test]
+  fn favorites_search_gets_printable_keys_before_shortcuts() {
+    assert_search_key_routing(Focus::Favorites, "query", '1', Action::FocusMenu);
+  }
+
+  fn assert_search_key_routing(focus: Focus, text: &str, switch_key: char, switch: Action) {
+    use crossterm::event::{KeyCode, KeyModifiers};
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let mut app = test_app(focus);
+    app.set_focus(focus);
+    app.config = toml::from_str(default_config_contents()).unwrap();
+    app.components.menu.set_table_list(Some(Ok(Rows {
+      headers: vec![],
+      rows: vec![vec!["main".into(), "queue".into(), "table".into()]],
+      rows_affected: None,
+    })));
+    let abort = KeyEvent::from(KeyCode::Char('q'));
+    assert_eq!(app.keybinding_action(abort), Some(&Action::AbortQuery));
+
+    for c in std::iter::once('/').chain(text.chars()) {
+      let key = KeyEvent::from(KeyCode::Char(c));
+      assert_eq!(app.keybinding_action(key), None);
+      match focus {
+        Focus::Menu => app.components.menu.handle_key_events(key, &app.state).unwrap(),
+        Focus::Favorites => app.components.favorites.handle_key_events(key, &app.state).unwrap(),
+        _ => unreachable!(),
+      };
+    }
+    assert_eq!(
+      app.keybinding_action(KeyEvent::new(KeyCode::Char(switch_key), KeyModifiers::ALT)),
+      Some(&switch)
+    );
+
+    let mut terminal = Terminal::new(TestBackend::new(100, 24)).unwrap();
+    let (tx, _rx) = mpsc::unbounded_channel();
+    terminal.draw(|f| app.draw_layout(f, tx).unwrap()).unwrap();
+    let rendered: String =
+      terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect();
+    assert!(rendered.contains(&format!("/ {text}")));
+
+    let enter = KeyEvent::from(KeyCode::Enter);
+    match focus {
+      Focus::Menu => app.components.menu.handle_key_events(enter, &app.state).unwrap(),
+      Focus::Favorites => app.components.favorites.handle_key_events(enter, &app.state).unwrap(),
+      _ => unreachable!(),
+    };
+    assert_eq!(app.keybinding_action(abort), Some(&Action::AbortQuery));
   }
 
   #[test]

@@ -5,7 +5,7 @@ use ratatui::{prelude::*, widgets::*};
 use symbols::scrollbar;
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::{Component, Frame};
+use super::{Component, Frame, is_printable_key};
 use crate::{
   action::{Action, MenuItemKind, MenuPreview, MenuTarget},
   app::AppState,
@@ -381,6 +381,10 @@ impl Default for Menu {
 }
 
 impl Component for Menu {
+  fn captures_key(&self, key: KeyEvent) -> bool {
+    !self.loading && self.search_focused && is_printable_key(key)
+  }
+
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
