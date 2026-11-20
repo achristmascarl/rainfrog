@@ -1,5 +1,5 @@
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyEvent, MouseEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use ratatui::layout::Rect;
 use strum::EnumIter;
 use tokio::sync::mpsc::UnboundedSender;
@@ -40,6 +40,11 @@ pub(crate) fn app_state_with_focus(focus: crate::focus::Focus) -> AppState {
   }
 }
 
+fn is_printable_key(key: KeyEvent) -> bool {
+  matches!(key.code, KeyCode::Char(c) if !c.is_control())
+    && matches!(key.modifiers, KeyModifiers::NONE | KeyModifiers::SHIFT)
+}
+
 pub trait Component {
   /// Register an action handler that can send actions for processing if necessary.
   ///
@@ -78,6 +83,10 @@ pub trait Component {
   /// * `Result<()>` - An Ok result or an error.
   fn init(&mut self, area: Rect) -> Result<()> {
     Ok(())
+  }
+  /// Give text input priority over configured shortcuts while a prompt is focused.
+  fn captures_key(&self, _key: KeyEvent) -> bool {
+    false
   }
   /// Handle incoming events and produce actions if necessary.
   ///

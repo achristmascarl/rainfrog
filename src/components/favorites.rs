@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{prelude::*, symbols::scrollbar, widgets::*};
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::{Component, Frame};
+use super::{Component, Frame, is_printable_key};
 use crate::{action::Action, app::AppState, config::Config, focus::Focus};
 
 #[derive(Default)]
@@ -179,6 +179,10 @@ impl Favorites {
 }
 
 impl Component for Favorites {
+  fn captures_key(&self, key: KeyEvent) -> bool {
+    self.search_focused && is_printable_key(key)
+  }
+
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
