@@ -13,7 +13,7 @@ use sqlparser::ast::Statement;
 use sqlx::{
   Column, Either, Row, ValueRef,
   pool::PoolConnection,
-  postgres::{PgConnectOptions, PgConnection, PgPoolOptions, PgSslMode, Postgres},
+  postgres::{PgConnectOptions, PgConnection, PgPoolOptions, PgSslMode, Postgres, types::Oid},
   types::Uuid,
 };
 use tokio::sync::Mutex;
@@ -523,7 +523,7 @@ impl PostgresDriver {
 }
 
 async fn query_with_pool(pool: Arc<sqlx::Pool<Postgres>>, query: String) -> Result<Rows> {
-  query_with_stream(&*pool.clone(), &query).await
+  query_with_stream(&mut *pool.acquire().await?, &query).await
 }
 
 async fn query_with_conn(conn: &mut PgConnection, query: String) -> Result<Rows> {
@@ -595,7 +595,14 @@ fn spawn_tx_task(
   })
 }
 
-async fn query_with_stream<'a, E>(e: E, query: &'a str) -> Result<Rows>
+async fn query_with_stream(conn: &mut PgConnection, query: &str) -> Result<Rows> {
+  let (mut rows, unknown_types) = fetch_rows(&mut *conn, query).await?;
+  rows.headers = resolve_type_names(conn, rows.headers, unknown_types).await?;
+  Ok(rows)
+}
+
+// Generic over the executor (not `&mut PgConnection`) so the future stays `Send` in `tokio::spawn`.
+async fn fetch_rows<'a, E>(e: E, query: &'a str) -> Result<(Rows, UnknownTypes)>
 where
   E: sqlx::Executor<'a, Database = sqlx::Postgres>,
 {
@@ -603,6 +610,7 @@ where
   let mut query_rows = vec![];
   let mut query_rows_affected: Option<u64> = None;
   let mut headers: Headers = vec![];
+  let mut unknown_types: UnknownTypes = vec![];
   while let Some(item) = stream.next().await {
     match item {
       Ok(Either::Left(result)) => {
@@ -614,12 +622,13 @@ where
         query_rows.push(row_to_vec(&row));
         if headers.is_empty() {
           headers = get_headers(&row);
+          unknown_types = get_unknown_type_oids(&row);
         }
       },
       Err(e) => return Err(eyre::Report::new(e)),
     }
   }
-  Ok(Rows { rows_affected: query_rows_affected, headers, rows: query_rows })
+  Ok((Rows { rows_affected: query_rows_affected, headers, rows: query_rows }, unknown_types))
 }
 
 async fn query_with_tx(
@@ -636,7 +645,7 @@ where
   match first_query {
     Ok((first_query, statement_type)) => match statement_type {
       statement_type if super::should_stream_tx_results(&statement_type) => {
-        let result = query_with_stream(&mut *tx, &first_query).await;
+        let result = query_with_stream(&mut tx, &first_query).await;
         match result {
           Ok(result) => (Ok(Either::Right(result)), tx),
           Err(e) => (Err(e), tx),
@@ -668,6 +677,51 @@ fn get_headers(row: &<sqlx::Postgres as sqlx::Database>::Row) -> Headers {
     .iter()
     .map(|col| Header { name: col.name().to_string(), type_name: col.type_info().to_string() })
     .collect()
+}
+
+type UnknownTypes = Vec<(usize, u32)>;
+
+fn get_unknown_type_oids(row: &<sqlx::Postgres as sqlx::Database>::Row) -> UnknownTypes {
+  row
+    .columns()
+    .iter()
+    .enumerate()
+    .filter_map(|(i, col)| {
+      let type_info = col.type_info();
+      // sqlx has no public way to tell a type it knows only by OID; it is displayed as "?"
+      if type_info.to_string() != "?" {
+        return None;
+      }
+      Some((i, type_info.oid()?.0))
+    })
+    .collect()
+}
+
+async fn resolve_type_names(
+  conn: &mut PgConnection,
+  mut headers: Headers,
+  unknown_types: UnknownTypes,
+) -> Result<Headers> {
+  if unknown_types.is_empty() {
+    return Ok(headers);
+  }
+
+  let oids: Vec<Oid> = unknown_types.iter().map(|(_, oid)| Oid(*oid)).collect();
+  let names: Vec<(Oid, String)> =
+    sqlx::query_as("select oid, format_type(oid, null) from pg_type where oid = any($1)")
+      .bind(oids)
+      .fetch_all(conn)
+      .await?;
+
+  for (oid, name) in names {
+    for (i, _) in unknown_types.iter().filter(|(_, o)| *o == oid.0) {
+      if let Some(header) = headers.get_mut(*i) {
+        header.type_name = name.clone();
+      }
+    }
+  }
+
+  Ok(headers)
 }
 
 fn row_to_vec(row: &<sqlx::Postgres as sqlx::Database>::Row) -> Vec<String> {
@@ -953,5 +1007,57 @@ mod tests {
     ]);
     let opts = PostgresDriver::build_connection_opts(args).unwrap();
     assert!(matches!(opts.get_ssl_mode(), PgSslMode::Require));
+  }
+
+  const DEV_POSTGRES_URL: &str = "postgres://root:password@localhost:5499/rainfrog?sslmode=disable";
+
+  #[tokio::test]
+  async fn query_results_show_custom_type_names_in_headers() {
+    let pool =
+      Arc::new(PgPoolOptions::new().max_connections(3).connect(DEV_POSTGRES_URL).await.unwrap());
+
+    sqlx::raw_sql(
+      "drop schema if exists rainfrog_test cascade;
+       create schema rainfrog_test;
+       create type rainfrog_test.mood as enum ('sad', 'ok', 'happy');
+       create domain rainfrog_test.positive_int as int check (value > 0);
+       create table rainfrog_test.custom_types (
+         id int primary key,
+         current_mood rainfrog_test.mood,
+         note text,
+         mood_history rainfrog_test.mood[],
+         score rainfrog_test.positive_int
+       );
+       insert into rainfrog_test.custom_types values (1, 'happy', 'hello', '{sad,ok}', 5);",
+    )
+    .execute(pool.as_ref())
+    .await
+    .unwrap();
+
+    let rows = query_with_pool(
+      pool.clone(),
+      "select id, current_mood, note, mood_history, score, current_mood as mood_again
+       from rainfrog_test.custom_types"
+        .into(),
+    )
+    .await
+    .unwrap();
+    sqlx::raw_sql("drop schema rainfrog_test cascade").execute(pool.as_ref()).await.unwrap();
+
+    let headers: Vec<(&str, &str)> =
+      rows.headers.iter().map(|h| (h.name.as_str(), h.type_name.as_str())).collect();
+    assert_eq!(
+      headers,
+      vec![
+        ("id", "INT4"),
+        ("current_mood", "rainfrog_test.mood"),
+        ("note", "TEXT"),
+        ("mood_history", "rainfrog_test.mood[]"),
+        // Postgres reports a domain column as its base type
+        ("score", "INT4"),
+        ("mood_again", "rainfrog_test.mood"),
+      ]
+    );
+    assert_eq!(rows.rows, vec![vec!["1", "happy", "hello", "{sad,ok}", "5", "happy"]]);
   }
 }
