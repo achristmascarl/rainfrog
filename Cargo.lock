@@ -3473,6 +3473,7 @@ dependencies = [
  "pretty_assertions",
  "ratatui",
  "ratatui-textarea",
+ "regex",
  "rpassword",
  "serde",
  "serde_json",

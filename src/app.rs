@@ -411,6 +411,11 @@ impl App {
               event_consumed = true;
             }
           },
+          tui::Event::Key(key)
+            if self.state.focus == Focus::Editor && self.components.editor.captures_key(key) =>
+          {
+            self.last_tick_key_events.clear();
+          },
           tui::Event::Key(key) => {
             if let Some(action) = self.keybinding_action(key) {
               log::info!("Got action: {action:?}");

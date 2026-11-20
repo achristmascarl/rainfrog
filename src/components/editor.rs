@@ -2,8 +2,11 @@ use color_eyre::eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui_textarea::{CursorMove, Input, Key, TextArea};
+use regex::Regex;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use super::{Component, Frame};
 use crate::{
@@ -96,6 +99,9 @@ pub struct Editor<'a> {
   textarea: TextArea<'a>,
   vim_state: Vim,
   cursor_style: Style,
+  search_draft: Option<String>,
+  last_search: Option<Regex>,
+  search_message: Option<&'static str>,
   last_query_duration: Option<chrono::Duration>,
   completion: CompletionMenuState,
   completion_viewport: ViewportState,
@@ -130,6 +136,9 @@ impl Editor<'_> {
       textarea,
       vim_state: Vim::new(Mode::Normal),
       cursor_style: Mode::Normal.cursor_style(),
+      search_draft: None,
+      last_search: None,
+      search_message: None,
       last_query_duration: None,
       completion: CompletionMenuState::default(),
       completion_viewport: ViewportState::default(),
@@ -311,8 +320,127 @@ impl Editor<'_> {
     }
   }
 
+  fn is_search_input(input: &Input) -> bool {
+    match input.key {
+      Key::Enter | Key::Esc => true,
+      Key::Char(_) | Key::Backspace => !input.ctrl && !input.alt,
+      _ => false,
+    }
+  }
+
+  fn handle_search_input(&mut self, input: &Input) -> bool {
+    if let Some(draft) = &mut self.search_draft {
+      if !Self::is_search_input(input) {
+        return true;
+      }
+      match input.key {
+        Key::Char(c) => draft.push(c),
+        Key::Backspace => {
+          draft.pop();
+        },
+        Key::Esc => self.search_draft = None,
+        Key::Enter if !input.ctrl && !input.alt && !input.shift => {
+          let draft = self.search_draft.take().unwrap();
+          if !draft.is_empty() {
+            let pattern = format!("(?i){}", regex::escape(&draft));
+            if self.textarea.set_search_pattern(pattern).is_ok() {
+              self.last_search = self.textarea.search_pattern().cloned();
+              self.repeat_search(false);
+            } else {
+              self.search_message = Some("Search term is too long");
+            }
+          }
+        },
+        _ => {},
+      }
+      return true;
+    }
+    if self.vim_state.mode != Mode::Normal || input.ctrl || input.alt {
+      return false;
+    }
+
+    self.search_message = None;
+    match input.key {
+      Key::Char('/') => self.search_draft = Some(String::new()),
+      Key::Char('n') => self.repeat_search(false),
+      Key::Char('N') => self.repeat_search(true),
+      Key::Esc => {
+        self.textarea.cancel_selection();
+        self.textarea.set_search_pattern(keyword_regex()).unwrap();
+      },
+      _ => return false,
+    }
+    self.vim_state.pending = Input::default();
+    true
+  }
+
+  fn repeat_search(&mut self, backward: bool) {
+    let Some(pattern) = &self.last_search else {
+      return;
+    };
+    let cursor = self.textarea.cursor();
+    let lines = self.textarea.lines();
+    let cursor_byte = lines[cursor.0]
+      .char_indices()
+      .nth(cursor.1)
+      .map_or(lines[cursor.0].len(), |(index, _)| index);
+    let cursor = (cursor.0, cursor_byte);
+    let target = {
+      // The textarea highlights non-overlapping matches starting at the beginning of each line.
+      let mut matches = lines
+        .iter()
+        .enumerate()
+        .flat_map(|(row, line)| pattern.find_iter(line).map(move |matched| (row, matched.start())));
+      if backward {
+        let mut last_before = None;
+        let mut last = None;
+        for position in matches {
+          if position < cursor {
+            last_before = Some(position);
+          }
+          last = Some(position);
+        }
+        last_before.or(last)
+      } else {
+        matches.next().and_then(|first| {
+          if first > cursor {
+            Some(first)
+          } else {
+            matches.find(|position| *position > cursor).or(Some(first))
+          }
+        })
+      }
+    };
+    if let Some((row, byte)) = target {
+      let col = lines[row][..byte].chars().count();
+      self.move_to_search_match(row, col);
+      self.search_message = None;
+    } else {
+      self.search_message = Some("No match found");
+    }
+  }
+
+  fn move_to_search_match(&mut self, row: usize, col: usize) {
+    if let (Ok(row), Ok(col)) = (u16::try_from(row), u16::try_from(col)) {
+      self.textarea.move_cursor(CursorMove::Jump(row, col));
+      return;
+    }
+    // Jump takes u16 coordinates, but the buffer can hold more rows or columns.
+    self.textarea.move_cursor(CursorMove::Jump(
+      u16::try_from(row).unwrap_or(u16::MAX),
+      u16::try_from(col).unwrap_or(u16::MAX),
+    ));
+    for _ in usize::from(u16::MAX)..row {
+      self.textarea.move_cursor(CursorMove::Down);
+    }
+    let current_col = self.textarea.cursor().1;
+    for _ in current_col..col {
+      self.textarea.move_cursor(CursorMove::Forward);
+    }
+  }
+
   pub fn transition_vim_state(&mut self, input: Input, app_state: &AppState) -> Result<()> {
-    if self.handle_completion_input(input.clone(), app_state) {
+    if self.handle_search_input(&input) || self.handle_completion_input(input.clone(), app_state) {
       return Ok(());
     }
     if self.handle_autopair_input(&input) {
@@ -379,6 +507,10 @@ impl Editor<'_> {
 }
 
 impl Component for Editor<'_> {
+  fn captures_key(&self, key: KeyEvent) -> bool {
+    self.search_draft.is_some() && Self::is_search_input(&Input::from(key))
+  }
+
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.vim_state.register_action_handler(self.command_tx.clone())?;
     self.command_tx = Some(tx);
@@ -395,7 +527,7 @@ impl Component for Editor<'_> {
     mouse: MouseEvent,
     app_state: &AppState,
   ) -> Result<Option<Action>> {
-    if app_state.focus != Focus::Editor {
+    if app_state.focus != Focus::Editor || self.search_draft.is_some() {
       return Ok(None);
     }
     match mouse.kind {
@@ -437,7 +569,11 @@ impl Component for Editor<'_> {
     let before = self.textarea.lines().to_vec();
     let cursor_before = self.textarea.cursor();
     if let Some(Event::Paste(text)) = event {
-      self.textarea.insert_str(text);
+      if let Some(draft) = &mut self.search_draft {
+        draft.extend(text.chars().filter(|c| !c.is_control()));
+      } else {
+        self.textarea.insert_str(text);
+      }
     } else if let Some(Event::Mouse(event)) = event {
       self.handle_mouse_events(event, app_state).unwrap();
     } else if let Some(Event::Key(key)) = event {
@@ -462,9 +598,12 @@ impl Component for Editor<'_> {
 
   fn update(&mut self, action: Action, app_state: &AppState) -> Result<Option<Action>> {
     self.drain_completion_responses();
-    if app_state.focus != Focus::Editor && self.completion.is_visible() {
-      self.completion.dismiss();
-      self.cancel_completion();
+    if app_state.focus != Focus::Editor {
+      self.search_draft = None;
+      if self.completion.is_visible() {
+        self.completion.dismiss();
+        self.cancel_completion();
+      }
     }
     match action {
       Action::TriggerCompletion => self.request_completion(app_state, true),
@@ -476,12 +615,12 @@ impl Component for Editor<'_> {
           sender.send(Action::EditQueryExternally(self.textarea.lines().to_vec()))?;
         }
       },
-      Action::SubmitEditorQueryBypassParser => {
+      Action::SubmitEditorQueryBypassParser if self.search_draft.is_none() => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::Query(self.query_lines_to_submit(), false, true))?;
         }
       },
-      Action::SubmitEditorQuery => {
+      Action::SubmitEditorQuery if self.search_draft.is_none() => {
         if let Some(sender) = &self.command_tx {
           sender.send(Action::Query(self.query_lines_to_submit(), false, false))?;
         }
@@ -489,7 +628,10 @@ impl Component for Editor<'_> {
       Action::QueryToEditor(lines) => {
         self.completion.dismiss();
         self.cancel_completion();
-        self.textarea = TextArea::from(lines.clone());
+        self.search_draft = None;
+        self.last_search = None;
+        self.search_message = None;
+        self.textarea = TextArea::from(lines);
         self.textarea.set_search_pattern(keyword_regex()).unwrap();
       },
       Action::CopyData(data) => {
@@ -530,10 +672,31 @@ impl Component for Editor<'_> {
       .block()
       .border_style(if focused { Style::new().green() } else { Style::new().dim() })
       .title(Line::from(duration_string).right_aligned());
-    let inner = block.inner(area);
+    let mut inner = block.inner(area);
+    f.render_widget(block, area);
+    if inner.height > 0 {
+      let status = if let Some(draft) = &self.search_draft {
+        let mut remaining = usize::from(inner.width.saturating_sub(2));
+        let mut start = draft.len();
+        for (index, grapheme) in draft.grapheme_indices(true).rev() {
+          let Some(width) = remaining.checked_sub(grapheme.width()) else {
+            break;
+          };
+          remaining = width;
+          start = index;
+        }
+        Some(Line::styled(format!("/ {}", &draft[start..]), Style::default().fg(Color::Yellow)))
+      } else {
+        self.search_message.filter(|_| focused).map(Line::from)
+      };
+      if let Some(status) = status {
+        inner.height -= 1;
+        let status_area = Rect::new(inner.x, inner.bottom(), inner.width, 1);
+        f.render_widget(status, status_area);
+      }
+    }
 
     self.textarea.set_cursor_style(self.cursor_style);
-    self.textarea.set_block(block);
     self.textarea.set_line_number_style(if focused {
       Style::default().fg(Color::Yellow)
     } else {
@@ -542,8 +705,17 @@ impl Component for Editor<'_> {
     self.textarea.set_cursor_line_style(Style::default().not_underlined());
     self.textarea.set_hard_tab_indent(false);
     self.textarea.set_tab_length(2);
-    self.textarea.set_search_style(Style::default().fg(Color::Magenta).bold());
-    f.render_widget(&self.textarea, area);
+    let search_highlights = self
+      .last_search
+      .as_ref()
+      .zip(self.textarea.search_pattern())
+      .is_some_and(|(last, active)| last.as_str() == active.as_str());
+    self.textarea.set_search_style(if search_highlights {
+      Style::default().bg(Color::Blue)
+    } else {
+      Style::default().fg(Color::Magenta).bold()
+    });
+    f.render_widget(&self.textarea, inner);
     if focused && self.vim_state.mode == Mode::Insert && self.completion.is_visible() {
       let screen_cursor = self.textarea.screen_cursor();
       let gutter_width = self.textarea.lines().len().max(1).ilog10() as u16 + 3;
@@ -563,7 +735,7 @@ mod tests {
   use super::*;
   use crate::completion::{CompletionKind, CompletionSource, CursorPosition, TextRange};
   use crate::{components::app_state_with_focus, tui::Event};
-  use crossterm::event::KeyCode;
+  use crossterm::event::{KeyCode, KeyModifiers};
   use ratatui::backend::TestBackend;
 
   #[test]
@@ -587,6 +759,165 @@ mod tests {
       .map(|cell| cell.symbol())
       .collect();
     assert_eq!(highlighted, "SELECTFROMWHERE");
+  }
+
+  #[test]
+  fn search_repeats_through_highlighted_literal_unicode_matches() {
+    let app_state = app_state_with_focus(Focus::Editor);
+    let mut editor = Editor::new();
+    let lines = ["É.🙂 é. Éx", "α É."];
+    editor.textarea = TextArea::from(lines);
+
+    for (key, expected) in [
+      (KeyCode::Char('/'), (0, 0)),
+      (KeyCode::Char('é'), (0, 0)),
+      (KeyCode::Char('.'), (0, 0)),
+      (KeyCode::Enter, (0, 4)),
+      (KeyCode::Char('n'), (1, 2)),
+      (KeyCode::Char('n'), (0, 0)),
+      (KeyCode::Char('N'), (1, 2)),
+      (KeyCode::Char('N'), (0, 4)),
+    ] {
+      editor.handle_events(Some(Event::Key(KeyEvent::from(key))), vec![], &app_state).unwrap();
+      assert_eq!(editor.textarea.cursor(), expected, "after {key:?}");
+      assert_eq!(editor.textarea.lines(), lines);
+    }
+
+    // The cursor draws its own style over the character under it.
+    editor.textarea.move_cursor(CursorMove::End);
+    let mut terminal = Terminal::new(TestBackend::new(24, 5)).unwrap();
+    terminal.draw(|frame| editor.draw(frame, frame.area(), &app_state).unwrap()).unwrap();
+    let highlighted: String = terminal
+      .backend()
+      .buffer()
+      .content
+      .iter()
+      .filter(|cell| cell.bg == Color::Blue)
+      .map(|cell| cell.symbol())
+      .collect();
+    assert_eq!(highlighted, "É.é.É.");
+  }
+
+  #[test]
+  fn search_never_jumps_to_an_unhighlighted_overlap() {
+    let mut editor = Editor::new();
+    editor.textarea = TextArea::from(["aaaaa"]);
+    let app_state = app_state_with_focus(Focus::Editor);
+
+    for (key, expected) in [
+      (KeyCode::Char('/'), 0),
+      (KeyCode::Char('a'), 0),
+      (KeyCode::Char('a'), 0),
+      (KeyCode::Enter, 2),
+      (KeyCode::Char('n'), 0),
+      (KeyCode::Char('N'), 2),
+    ] {
+      editor.handle_events(Some(Event::Key(KeyEvent::from(key))), vec![], &app_state).unwrap();
+      assert_eq!(editor.textarea.cursor(), (0, expected));
+    }
+  }
+
+  #[test]
+  fn search_prompt_edits_a_draft_without_submitting_sql() {
+    let app_state = app_state_with_focus(Focus::Editor);
+    let mut editor = Editor::new();
+    editor.textarea = TextArea::from(["SELECT 'queue'"]);
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    editor.register_action_handler(tx).unwrap();
+
+    let key = |code, modifiers| Event::Key(KeyEvent::new(code, modifiers));
+    for event in [
+      key(KeyCode::Char('/'), KeyModifiers::NONE),
+      key(KeyCode::Char('q'), KeyModifiers::NONE),
+      Event::Paste("ueue\r\né".to_owned()),
+      key(KeyCode::Backspace, KeyModifiers::NONE),
+      key(KeyCode::Right, KeyModifiers::NONE),
+      key(KeyCode::Enter, KeyModifiers::ALT),
+    ] {
+      editor.handle_events(Some(event), vec![], &app_state).unwrap();
+    }
+    editor.update(Action::SubmitEditorQuery, &app_state).unwrap();
+    editor.update(Action::SubmitEditorQueryBypassParser, &app_state).unwrap();
+    assert_eq!(editor.search_draft.as_deref(), Some("queue"));
+    assert_eq!(editor.textarea.cursor(), (0, 0));
+    assert!(rx.try_recv().is_err());
+
+    editor
+      .handle_events(Some(key(KeyCode::Enter, KeyModifiers::NONE)), vec![], &app_state)
+      .unwrap();
+    assert_eq!(editor.textarea.cursor(), (0, 8));
+    assert_eq!(editor.textarea.lines(), ["SELECT 'queue'"]);
+    assert!(rx.try_recv().is_err());
+    editor.update(Action::SubmitEditorQuery, &app_state).unwrap();
+    assert!(matches!(rx.try_recv().unwrap(), Action::Query(..)));
+  }
+
+  #[test]
+  fn search_can_be_cancelled_cleared_repeated_and_reset_with_the_buffer() {
+    let app_state = app_state_with_focus(Focus::Editor);
+    let mut editor = Editor::new();
+    editor.textarea = TextArea::from(["SELECT FROM WHERE", "select 1"]);
+
+    for key in [Key::Char('/'), Key::Char('s'), Key::Enter] {
+      editor.transition_vim_state(Input { key, ..Input::default() }, &app_state).unwrap();
+    }
+    let cursor = editor.textarea.cursor();
+    assert_eq!(cursor, (1, 0));
+
+    for keys in [vec![Key::Char('/'), Key::Char('x'), Key::Esc], vec![Key::Char('/'), Key::Enter]] {
+      for key in keys {
+        editor.transition_vim_state(Input { key, ..Input::default() }, &app_state).unwrap();
+      }
+      assert_eq!(editor.textarea.cursor(), cursor);
+      assert_eq!(editor.textarea.search_pattern().unwrap().as_str(), "(?i)s");
+    }
+
+    for (key, expected) in
+      [(Key::Esc, cursor), (Key::Char('n'), (0, 0).into()), (Key::Char('N'), cursor)]
+    {
+      editor.transition_vim_state(Input { key, ..Input::default() }, &app_state).unwrap();
+      assert_eq!(editor.textarea.cursor(), expected);
+    }
+    editor.textarea.move_cursor(CursorMove::End);
+
+    let mut terminal = Terminal::new(TestBackend::new(30, 5)).unwrap();
+    terminal.draw(|frame| editor.draw(frame, frame.area(), &app_state).unwrap()).unwrap();
+    let highlighted: String = terminal
+      .backend()
+      .buffer()
+      .content
+      .iter()
+      .filter(|cell| cell.fg == Color::Magenta && cell.symbol() != " ")
+      .map(|cell| cell.symbol())
+      .collect();
+    assert_eq!(highlighted, "SELECTFROMWHEREselect");
+
+    editor.update(Action::QueryToEditor(vec!["select 2".into()]), &app_state).unwrap();
+    assert!(editor.last_search.is_none());
+    assert_eq!(editor.textarea.search_pattern().unwrap().as_str(), keyword_regex());
+  }
+
+  #[test]
+  fn a_search_miss_is_visible_and_insert_mode_keeps_ordinary_input() {
+    let app_state = app_state_with_focus(Focus::Editor);
+    let mut editor = Editor::new();
+    editor.textarea = TextArea::from(["SELECT 1"]);
+    for key in [Key::Char('/'), Key::Char('z'), Key::Enter] {
+      editor.transition_vim_state(Input { key, ..Input::default() }, &app_state).unwrap();
+    }
+    assert_eq!(editor.textarea.cursor(), (0, 0));
+
+    let mut terminal = Terminal::new(TestBackend::new(22, 4)).unwrap();
+    terminal.draw(|frame| editor.draw(frame, frame.area(), &app_state).unwrap()).unwrap();
+    let display: String =
+      terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect();
+    assert!(display.contains("No match found"));
+
+    for c in ['i', '/', 'n', 'N'] {
+      editor.transition_vim_state(char_input(c), &app_state).unwrap();
+    }
+    assert_eq!(editor.textarea.lines(), ["/nNSELECT 1"]);
+    assert!(editor.search_draft.is_none());
   }
 
   fn response(candidates: &[&str]) -> CompletionResponse {
